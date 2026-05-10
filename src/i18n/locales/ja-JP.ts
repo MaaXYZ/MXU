@@ -106,16 +106,16 @@ export default {
     minimizeToTray: '閉じる時にトレイに最小化',
     minimizeToTrayHint: '閉じるボタンをクリックすると、終了せずにシステムトレイに隠れます',
     autoStart: 'スタートアップ時に起動',
-    autoStartHint: 'システム起動時にこのアプリケーションを自動的に起動します',
-    autoStartInstance: '起動後に自動実行',
+    autoStartHint: 'チェックを入れると、Windowsのタスクスケジューラに "MXU --autostart" が追加され、PC起動時に自動で立ち上がります。チェックを外すと、タスクは削除されます。',
+    autoStartInstance: '自動モードのデフォルト動作',
     autoStartInstanceHint:
-      '起動後に自動的にアクティブにしてタスクを実行する設定を選択します。他の設定のスケジュールタスクは通常通り実行されます',
+      '自動モード（起動方法 "MXU --autostart"）で実行される際のデフォルト設定です。選択されていない設定でも、スケジュールが設定されていれば時間通りに実行されます。自動モードでの実行時は、自動更新をスキップします。',
     autoStartInstanceNone: '自動実行しない',
     autoStartInstanceRemoved:
       '以前選択した設定「{{name}}」が削除されました。自動実行は無効になりました',
-    autoRunOnLaunch: '手動起動時も自動実行',
+    autoRunOnLaunch: '手動起動を自動として扱う',
     autoRunOnLaunchHint:
-      '手動でアプリを開く際も、上で選択した設定を自動実行します（無効な場合はシステム起動時のみ実行）',
+      '手動モード（起動方法 "MXU" またはアイコンのダブルクリック）において、チェックを入れると自動モードのロジックに従って実行されます。',
     confirmBeforeDelete: '削除操作の前に確認する',
     confirmBeforeDeleteHint: '削除/一覧クリア等の危険な操作の前に確認ダイアログを表示します',
     helpImproveSoftware: 'ソフトウェアの改善に協力',
