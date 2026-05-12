@@ -304,3 +304,118 @@ pub fn build_launch_command(
 
     cmd
 }
+
+/// 获取当前 instance 所有已勾选 task 的状态
+///
+/// - 输出为数组，按照 instance 中 task 的顺序排列。
+/// - 数组的每项是一个包含两个字符串的数组：[任务名称(i18n), 任务状态("idle","pending","running","succeeded","failed")]。
+pub fn get_checked_task_status_of_instance(
+    app_handle: Option<&AppHandle>,
+    instance_id: Option<&str>,
+) -> Vec<Vec<String>> {
+    let app_config_state = app_handle
+        .and_then(|app| {
+            Some(
+                app.try_state::<Arc<crate::commands::AppConfigState>>()
+                    .unwrap(),
+            )
+        })
+        .unwrap();
+    let translations = app_config_state.translations.lock().ok().unwrap(); // content as (dist => locales/interface/<selected-language>.ts)
+    let config = app_config_state.config.lock().ok().unwrap(); // content as (dist => configs/mxu-<program-name>.ts)
+
+    // i18n
+    let language = config
+        .get("settings")
+        .and_then(|v| v.get("language"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("system");
+    let i18n = translations
+        .get(match language {
+            // get i18n task name by (i18n["task.<task-name>.label"])
+            "zh-TW" => "zh_tw",
+            "en-US" => "en_us",
+            "ja-JP" => "ja_jp",
+            "ko-KR" => "ko_kr",
+            _ => "zh_cn",
+        })
+        .unwrap_or_default();
+
+    // instance (config)
+    let id = instance_id.unwrap_or("");
+    let instance_config_list = config.get("instances");
+    let instance_config = instance_config_list
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|inst| inst.get("id").and_then(|v| v.as_str()) == Some(id))
+        .unwrap();
+
+    // instance (runtime)
+    let maa_state = app_handle
+        .and_then(|app| Some(app.try_state::<Arc<crate::commands::MaaState>>().unwrap()))
+        .unwrap();
+    let instance_runtime_list = maa_state.instances.lock().ok().unwrap();
+    let instance_runtime = instance_runtime_list
+        .get(instance_id.unwrap_or_default())
+        .unwrap();
+
+    return instance_runtime
+        .task_run_state
+        .pending_task_ids
+        .iter()
+        .filter_map(|&maa_task_id| {
+            if let Some(selected_task_id) =
+                instance_runtime.task_run_state.mappings.get(&maa_task_id)
+            {
+                if let Some(status) = instance_runtime
+                    .task_run_state
+                    .statuses
+                    .get(selected_task_id)
+                {
+                    let task_config_list = instance_config.get("tasks").unwrap();
+                    let task_config = task_config_list
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .find(|task| {
+                            task.get("id").and_then(|v| v.as_str())
+                                == Some(selected_task_id.as_str())
+                        })
+                        .unwrap();
+                    let task_name = task_config
+                        .get("taskName")
+                        .unwrap()
+                        .as_str()
+                        .unwrap()
+                        .to_string();
+                    let custom_name = task_config
+                        .get("customName")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let task_name_i18n = i18n
+                        .get(format!("task.{}.label", task_name))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    // custom name / task name (i18n) / task name
+                    // => task status ("idle","pending","running","succeeded","failed")
+                    let name: String = if !custom_name.is_empty() {
+                        custom_name
+                    } else if !task_name_i18n.is_empty() {
+                        task_name_i18n
+                    } else {
+                        task_name
+                    };
+                    Some(vec![name, status.to_string()])
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .collect();
+}
