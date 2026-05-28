@@ -150,7 +150,7 @@ export default {
       programPlaceholder: '프로그램 경로를 입력하거나 오른쪽 찾아보기를 클릭...',
       argsLabel: '추가 인수',
       argsPlaceholder: '추가 인수 입력(선택 사항, 템플릿 변수 지원)',
-      argsDescription: '템플릿 변수 {{STATUS}} {{S_BASE64}} {{S_CSV}} {{S_JSON}} {{S_JSON_BASE64}} 는 현재 인스턴스의 선택된 모든 작업의 실시간 상태를 나타냅니다. 자세한 내용은 https://github.com/MistEO/MXU/blob/main/src-tauri/src/mxu_actions.rs#L207 를 참조하세요.',
+      argsDescription: '템플릿 변수 {{STATUS}} {{S_BASE64}} {{S_CSV}} {{S_JSON}} {{S_JSON_BASE64}} 는 현재 인스턴스의 선택된 모든 작업의 실시간 상태를 나타냅니다. 자세한 내용은 https://github.com/MistEO/MXU/blob/main/src-tauri/src/mxu_actions.rs 를 참조하세요.',
       waitLabel: '종료 대기',
       waitDescription:
         '비활성화하면 실행 후 즉시 계속합니다. 활성화하면 프로세스 종료 후 계속합니다. 스크립트 등 동기 완료가 필요한 작업에 적합합니다',

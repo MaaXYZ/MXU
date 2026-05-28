@@ -4,6 +4,7 @@
 
 use super::types::{MaaCallbackEvent, MaaState, StateChangedEvent};
 use crate::ws_broadcast::{WsBroadcast, WsEvent};
+use log::error;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
@@ -313,16 +314,31 @@ pub fn get_checked_task_status_of_instance(
     app_handle: Option<&AppHandle>,
     instance_id: Option<&str>,
 ) -> Vec<Vec<String>> {
-    let app_config_state = app_handle
-        .and_then(|app| {
-            Some(
-                app.try_state::<Arc<crate::commands::AppConfigState>>()
-                    .unwrap(),
-            )
-        })
-        .unwrap();
-    let translations = app_config_state.translations.lock().ok().unwrap(); // content as (dist => locales/interface/<selected-language>.ts)
-    let config = app_config_state.config.lock().ok().unwrap(); // content as (dist => configs/mxu-<program-name>.ts)
+    let app_config_state =
+        match app_handle.and_then(|app| app.try_state::<Arc<crate::commands::AppConfigState>>()) {
+            Some(state) => state,
+            None => {
+                error!("[MXU_STATUS] fail to get resource [app_config_state]");
+                return vec![];
+            }
+        };
+    let translations = match app_config_state.translations.lock() {
+        Ok(guard) => guard,
+        Err(e) => {
+            error!(
+                "[MXU_STATUS] fail to lock resource [app_config_state.translations]: {:?}",
+                e
+            );
+            return vec![];
+        }
+    };
+    let config = match app_config_state.config.lock() {
+        Ok(guard) => guard,
+        Err(e) => {
+            error!("[MXU_STATUS] fail to lock resource [app_config_state.config]: {:?}", e);
+            return vec![];
+        }
+    };
 
     // i18n
     let language = config
@@ -343,23 +359,52 @@ pub fn get_checked_task_status_of_instance(
 
     // instance (config)
     let id = instance_id.unwrap_or("");
-    let instance_config_list = config.get("instances");
-    let instance_config = instance_config_list
-        .unwrap()
-        .as_array()
-        .unwrap()
+    let instance_config_list = match config.get("instances").and_then(|v| v.as_array()) {
+        Some(list) => list,
+        None => {
+            error!("[MXU_STATUS] config data [configs/mxu-*.json > .instances] should be [array]");
+            return vec![];
+        }
+    };
+    let instance_config = match instance_config_list
         .iter()
         .find(|inst| inst.get("id").and_then(|v| v.as_str()) == Some(id))
-        .unwrap();
+    {
+        Some(inst) => inst,
+        None => {
+            error!("[MXU_STATUS] config data [configs/mxu-*.json > .instances] should contains [object] item with whose [.id = {}]", id);
+            return vec![];
+        }
+    };
 
     // instance (runtime)
-    let maa_state = app_handle
-        .and_then(|app| Some(app.try_state::<Arc<crate::commands::MaaState>>().unwrap()))
-        .unwrap();
-    let instance_runtime_list = maa_state.instances.lock().ok().unwrap();
-    let instance_runtime = instance_runtime_list
-        .get(instance_id.unwrap_or_default())
-        .unwrap();
+    let maa_state =
+        match app_handle.and_then(|app| app.try_state::<Arc<crate::commands::MaaState>>()) {
+            Some(state) => state,
+            None => {
+                error!("[MXU_STATUS] fail to get resource [maa_state]");
+                return vec![];
+            }
+        };
+
+    let instance_runtime_list = match maa_state.instances.lock() {
+        Ok(guard) => guard,
+        Err(e) => {
+            error!("[MXU_STATUS] fail to lock resource [maa_state]: {:?}", e);
+            return vec![];
+        }
+    };
+
+    let instance_runtime = match instance_runtime_list.get(instance_id.unwrap_or_default()) {
+        Some(runtime) => runtime,
+        None => {
+            error!(
+                "[MXU_STATUS] runtime data [maa_state.instances[{}]] should be [object]",
+                instance_id.unwrap_or_default()
+            );
+            return vec![];
+        }
+    };
 
     return instance_runtime
         .task_run_state
@@ -374,22 +419,15 @@ pub fn get_checked_task_status_of_instance(
                     .statuses
                     .get(selected_task_id)
                 {
-                    let task_config_list = instance_config.get("tasks").unwrap();
-                    let task_config = task_config_list
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .find(|task| {
-                            task.get("id").and_then(|v| v.as_str())
-                                == Some(selected_task_id.as_str())
-                        })
-                        .unwrap();
+                    let task_config_list = instance_config.get("tasks")?.as_array()?;
+                    let task_config = task_config_list.iter().find(|task| {
+                        task.get("id").and_then(|v| v.as_str()) == Some(selected_task_id.as_str())
+                    })?;
                     let task_name = task_config
                         .get("taskName")
-                        .unwrap()
-                        .as_str()
-                        .unwrap()
-                        .to_string();
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                        .unwrap_or("".to_string());
                     let custom_name = task_config
                         .get("customName")
                         .and_then(|v| v.as_str())
@@ -398,16 +436,23 @@ pub fn get_checked_task_status_of_instance(
                     let task_name_i18n = i18n
                         .get(format!("task.{}.label", task_name))
                         .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
+                        .map(|s| s.to_string())
+                        .unwrap_or("".to_string());
                     // custom name / task name (i18n) / task name
                     // => task status ("idle","pending","running","succeeded","failed")
                     let name: String = if !custom_name.is_empty() {
                         custom_name
                     } else if !task_name_i18n.is_empty() {
                         task_name_i18n
-                    } else {
+                    } else if !task_name.is_empty(){
                         task_name
+                    } else {
+                        error!(
+                            "[MXU_STATUS] config data [configs/mxu-*.json > .instances[.id = \"{}\"].tasks[.id = \"{}\"].taskName] should be [string]",
+                            id,
+                            selected_task_id
+                        );
+                        return None
                     };
                     Some(vec![name, status.to_string()])
                 } else {

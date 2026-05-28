@@ -148,7 +148,7 @@ export default {
       programPlaceholder: '輸入程式路徑或點擊右側瀏覽...',
       argsLabel: '附加參數',
       argsPlaceholder: '輸入附加參數（可選，支持模板變量）',
-      argsDescription: '模板變量 {{STATUS}} {{S_BASE64}} {{S_CSV}} {{S_JSON}} {{S_JSON_BASE64}} 表示 當前實例-所有選定任務-即時狀態，詳見 https://github.com/MistEO/MXU/blob/main/src-tauri/src/mxu_actions.rs#L207 。',
+      argsDescription: '模板變量 {{STATUS}} {{S_BASE64}} {{S_CSV}} {{S_JSON}} {{S_JSON_BASE64}} 表示 當前實例-所有選定任務-即時狀態，詳見 https://github.com/MistEO/MXU/blob/main/src-tauri/src/mxu_actions.rs 。',
       waitLabel: '等待退出',
       waitDescription:
         '禁用時啟動程序後立即繼續；啟用時等待程序退出後再繼續，適用於執行腳本等需要同步完成的操作',
