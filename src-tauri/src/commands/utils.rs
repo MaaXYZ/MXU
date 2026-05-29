@@ -4,7 +4,7 @@
 
 use super::types::{MaaCallbackEvent, MaaState, StateChangedEvent};
 use crate::ws_broadcast::{WsBroadcast, WsEvent};
-use log::error;
+use log::{error, warn};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
@@ -335,7 +335,10 @@ pub fn get_checked_task_status_of_instance(
     let config = match app_config_state.config.lock() {
         Ok(guard) => guard,
         Err(e) => {
-            error!("[MXU_STATUS] fail to lock resource [app_config_state.config]: {:?}", e);
+            error!(
+                "[MXU_STATUS] fail to lock resource [app_config_state.config]: {:?}",
+                e
+            );
             return vec![];
         }
     };
@@ -372,7 +375,10 @@ pub fn get_checked_task_status_of_instance(
     {
         Some(inst) => inst,
         None => {
-            error!("[MXU_STATUS] config data [configs/mxu-*.json > .instances] should contains [object] item with whose [.id = {}]", id);
+            error!(
+                "[MXU_STATUS] config data [configs/mxu-*.json > .instances] should contains [object] item whose [.id = {}]",
+                id
+            );
             return vec![];
         }
     };
@@ -395,12 +401,12 @@ pub fn get_checked_task_status_of_instance(
         }
     };
 
-    let instance_runtime = match instance_runtime_list.get(instance_id.unwrap_or_default()) {
+    let instance_runtime = match instance_runtime_list.get(id) {
         Some(runtime) => runtime,
         None => {
             error!(
                 "[MXU_STATUS] runtime data [maa_state.instances[{}]] should be [object]",
-                instance_id.unwrap_or_default()
+                id
             );
             return vec![];
         }
@@ -434,7 +440,7 @@ pub fn get_checked_task_status_of_instance(
                         .unwrap_or("")
                         .to_string();
                     let task_name_i18n = i18n
-                        .get(format!("task.{}.label", task_name))
+                        .get(format!("task.{:?}.label", task_name))
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string())
                         .unwrap_or("".to_string());
@@ -447,19 +453,30 @@ pub fn get_checked_task_status_of_instance(
                     } else if !task_name.is_empty(){
                         task_name
                     } else {
-                        error!(
-                            "[MXU_STATUS] config data [configs/mxu-*.json > .instances[.id = \"{}\"].tasks[.id = \"{}\"].taskName] should be [string]",
+                        warn!(
+                            "[MXU_STATUS] config data [configs/mxu-*.json > .instances[.id = {}].tasks[.id = {}].taskName] should be [non-empty string]",
                             id,
                             selected_task_id
                         );
                         return None
                     };
-                    Some(vec![name, status.to_string()])
+                    return Some(vec![name, status.to_string()])
                 } else {
-                    None
+                    warn!(
+                        "[MXU_STATUS] status not found in runtime data [maa_state.instances[{}].task_run_state.statuses] for task in config data [configs/mxu-*.json > .instances[.id = {}].tasks[.id = {}]",
+                        id,
+                        id,
+                        selected_task_id
+                    );
+                    return None
                 }
             } else {
-                None
+                warn!(
+                    "[MXU_STATUS] task not found in config data [configs/mxu-*.json > .instances[.id = {}] related to runtime data [maa_state.instances[{}].task_run_state.pending_task_ids]",
+                    id,
+                    id
+                );
+                return None
             }
         })
         .collect();
