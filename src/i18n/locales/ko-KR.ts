@@ -107,7 +107,7 @@ export default {
     autoStartHint: '체크하면 Windows 작업 스케줄러에 "MXU --autostart"를 추가하여 부팅 시 자동으로 시작합니다. 체크를 해제하면 해당 작업은 제거됩니다.',
     autoStartInstance: '자동 모드의 기본 실행',
     autoStartInstanceHint:
-      '자동 모드(실행 방식 "MXU --autostart")에서 실행되는 기본 구성입니다. 선택되지 않은 구성이라도 예약 작업이 설정되어 있으면 정해진 시간에 실행됩니다. 자동 모드로 실행 시 자동 업데이트는 건너뜁니다.',
+      '자동 모드(실행 방식 "MXU --autostart")에서 실행되는 기본 구성입니다. 선택되지 않은 구성이라도 예약 작업이 설정되어 있으면 정해진 시간에 실행됩니다. 자동 모드에서도 자동 업데이트가 실행됩니다(팝업 없음). 업데이트 성공 여부와 상관없이 계속 진행됩니다.',
     autoStartInstanceNone: '자동 실행 안 함',
     autoStartInstanceRemoved:
       '이전에 선택한 구성 "{{name}}"이(가) 삭제되었습니다. 자동 실행이 비활성화되었습니다',

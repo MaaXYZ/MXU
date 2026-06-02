@@ -108,7 +108,7 @@ export default {
     autoStartHint: 'If checked, "MXU --autostart" will be added to the Windows Task Scheduler to enable startup on boot. If unchecked, it will be removed.',
     autoStartInstance: 'Default execution for Auto Mode',
     autoStartInstanceHint:
-      'The default configuration executed in Auto Mode (launch method "MXU --autostart"). Unselected configurations will still execute at their scheduled times if a task is set. Automatic updates will be skipped when running in Auto Mode.',
+      'The default configuration executed in Auto Mode (launch method "MXU --autostart"). Unselected configurations will still execute at their scheduled times if a task is set. Automatic mode will still perform auto-updates (no pop-ups), and execution will continue regardless of whether the update succeeds or fails.',
     autoStartInstanceNone: 'Do not auto-execute',
     autoStartInstanceRemoved:
       'Previously selected configuration "{{name}}" has been deleted. Auto-execute has been disabled',

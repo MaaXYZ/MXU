@@ -106,7 +106,7 @@ export default {
     autoStartHint: '若勾選，則將 "MXU --autostart" 加入 Windows 計劃任務，實現開機自啟。若取消，則將其移除。',
     autoStartInstance: '自動模式默認執行',
     autoStartInstanceHint:
-      '在自動模式（啟動方式 "MXU --autostart"）下執行的默認配置。未選擇的配置，若設置了定時任務，也會到點執行。在自動模式下運行將跳過自動更新。',
+      '在自動模式（啟動方式 "MXU --autostart"）下執行的默認配置。未選擇的配置，若設置了定時任務，也會到點執行。自動模式仍會執行自動更新（無彈窗），更新無論成敗都會繼續執行。',
     autoStartInstanceNone: '不自動執行',
     autoStartInstanceRemoved: '之前選擇的配置「{{name}}」已被刪除，自動執行已停用',
     autoRunOnLaunch: '手動啟動視爲自動',
