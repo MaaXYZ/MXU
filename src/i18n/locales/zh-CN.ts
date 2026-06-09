@@ -104,15 +104,15 @@ export default {
     minimizeToTray: '关闭时最小化到托盘',
     minimizeToTrayHint: '点击关闭按钮时隐藏到系统托盘而非退出程序',
     autoStart: '开机自启动',
-    autoStartHint: '若勾选，则将 "MXU --autostart" 加入 Windows 计划任务，实现开机自启。若取消，则将其移除。',
+    autoStartHint: '若勾选，则将 "{{projectName}} --autostart" 加入启动项，实现开机登陆自启。若取消，则将其移除。访问 https://github.com/MistEO/MXU/blob/main/docs/run-on-start-up.md 了解更多。',
     autoStartInstance: '自动模式默认执行',
     autoStartInstanceHint:
-      '在自动模式（启动方式 "MXU --autostart"）下执行的默认配置。未选择的配置，若设置了定时任务，也会到点执行。自动模式仍会执行自动更新（无弹窗），更新无论成败都会继续执行。',
+      '在自动模式（启动方式 "{{projectName}} --autostart"）下执行的默认配置。未选择的配置，若设置了定时任务，也会到点执行。自动模式仍会执行自动更新（无弹窗），更新无论成败都会继续执行。',
     autoStartInstanceNone: '不自动执行',
     autoStartInstanceRemoved: '之前选择的配置「{{name}}」已被删除，自动执行已停用',
     autoRunOnLaunch: '手动启动视为自动',
     autoRunOnLaunchHint:
-      '在手动模式（启动方式 "MXU" 或者双击图标）下，若勾选，则按照自动模式的逻辑执行。',
+      '在手动模式（启动方式 "{{projectName}}" 或者双击图标）下，若勾选，则按照自动模式的逻辑执行。',
     confirmBeforeDelete: '删除操作需要二次确认',
     confirmBeforeDeleteHint: '删除任务、清空列表等危险操作会先弹出确认对话框',
     helpImproveSoftware: '帮助改进软件',

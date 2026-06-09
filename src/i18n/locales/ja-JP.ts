@@ -106,16 +106,16 @@ export default {
     minimizeToTray: '閉じる時にトレイに最小化',
     minimizeToTrayHint: '閉じるボタンをクリックすると、終了せずにシステムトレイに隠れます',
     autoStart: 'スタートアップ時に起動',
-    autoStartHint: 'チェックを入れると、Windowsのタスクスケジューラに "MXU --autostart" が追加され、PC起動時に自動で立ち上がります。チェックを外すと、タスクは削除されます。',
+    autoStartHint: 'チェックを入れると、"{{projectName}} --autostart" がスタートアップ項目に追加され、ログイン時に自動起動します。チェックを外すと削除されます。詳しくは https://github.com/MistEO/MXU/blob/main/docs/run-on-start-up.md を参照してください。',
     autoStartInstance: '自動モードのデフォルト動作',
     autoStartInstanceHint:
-      '自動モード（起動方法 "MXU --autostart"）で実行される際のデフォルト設定です。選択されていない設定でも、スケジュールが設定されていれば時間通りに実行されます。自動モードでもバックグラウンドで自動更新が実行されます（ポップアップは表示されません）。更新の成否にかかわらず、処理は続行されます。',
+      '自動モード（起動方法 "{{projectName}} --autostart"）で実行される際のデフォルト設定です。選択されていない設定でも、スケジュールが設定されていれば時間通りに実行されます。自動モードでもバックグラウンドで自動更新が実行されます（ポップアップは表示されません）。更新の成否にかかわらず、処理は続行されます。',
     autoStartInstanceNone: '自動実行しない',
     autoStartInstanceRemoved:
       '以前選択した設定「{{name}}」が削除されました。自動実行は無効になりました',
     autoRunOnLaunch: '手動起動を自動として扱う',
     autoRunOnLaunchHint:
-      '手動モード（起動方法 "MXU" またはアイコンのダブルクリック）において、チェックを入れると自動モードのロジックに従って実行されます。',
+      '手動モード（起動方法 "{{projectName}}" またはアイコンのダブルクリック）において、チェックを入れると自動モードのロジックに従って実行されます。',
     confirmBeforeDelete: '削除操作の前に確認する',
     confirmBeforeDeleteHint: '削除/一覧クリア等の危険な操作の前に確認ダイアログを表示します',
     helpImproveSoftware: 'ソフトウェアの改善に協力',
