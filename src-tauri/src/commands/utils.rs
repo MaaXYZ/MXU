@@ -440,7 +440,7 @@ pub fn get_checked_task_status_of_instance(
                         .unwrap_or("")
                         .to_string();
                     let task_name_i18n = i18n
-                        .get(format!("task.{:?}.label", task_name))
+                        .get(format!("task.{}.label", task_name))
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string())
                         .unwrap_or("".to_string());
