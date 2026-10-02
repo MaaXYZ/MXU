@@ -296,7 +296,8 @@ pub fn get_exe_dir() -> Result<String, String> {
 
 /// 获取应用数据目录路径
 /// - macOS: ~/Library/Application Support/MXU/
-/// - Windows/Linux: exe 所在目录
+/// - Linux: $XDG_DATA_HOME/{项目名}，默认 ~/.local/share/{项目名}
+/// - Windows: exe 所在目录
 #[tauri::command]
 pub fn get_data_dir() -> Result<String, String> {
     let data_dir = get_app_data_dir()?;

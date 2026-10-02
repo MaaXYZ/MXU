@@ -169,7 +169,8 @@ pub fn emit_config_changed(app: &AppHandle) {
 
 /// 获取应用数据目录
 /// - macOS: ~/Library/Application Support/MXU/
-/// - Windows/Linux: exe 所在目录（保持便携式部署）
+/// - Linux: $XDG_DATA_HOME/{项目名}，默认 ~/.local/share/{项目名}
+/// - Windows: exe 所在目录（保持便携式部署）
 pub fn get_app_data_dir() -> Result<PathBuf, String> {
     #[cfg(target_os = "macos")]
     {
@@ -181,11 +182,61 @@ pub fn get_app_data_dir() -> Result<PathBuf, String> {
         Ok(path)
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
     {
-        // Windows/Linux 保持便携式，使用 exe 所在目录
+        let interface_path = get_exe_directory()?.join("interface.json");
+        let content = match std::fs::read_to_string(&interface_path) {
+            Ok(content) => Some(content),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(format!("读取 interface.json 失败: {}", e)),
+        };
+        let xdg_data_home = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from);
+        let home = std::env::var_os("HOME").map(PathBuf::from);
+        linux_data_dir(content.as_deref(), xdg_data_home.as_deref(), home.as_deref())
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
         get_exe_directory()
     }
+}
+
+#[cfg(target_os = "linux")]
+fn linux_data_dir(
+    interface_content: Option<&str>,
+    xdg_data_home: Option<&std::path::Path>,
+    home: Option<&std::path::Path>,
+) -> Result<PathBuf, String> {
+    use std::path::{Component, Path};
+
+    let interface = interface_content
+        .map(super::app_config::parse_jsonc)
+        .transpose()
+        .map_err(|e| format!("解析 interface.json 失败: {}", e))?;
+    let project_name = interface
+        .as_ref()
+        .and_then(|value| value.get("name"))
+        .and_then(|value| value.as_str())
+        .unwrap_or("MXU");
+    // 项目名必须是单个目录名，避免绝对路径或 .. 逃逸数据目录。
+    let mut components = Path::new(project_name).components();
+    if project_name.is_empty()
+        || project_name.contains('/')
+        || !matches!(components.next(), Some(Component::Normal(_)))
+        || components.next().is_some()
+    {
+        return Err("interface.json 的项目名不是有效的目录名".to_string());
+    }
+
+    let base = match xdg_data_home.filter(|path| path.is_absolute()) {
+        Some(path) => path.to_path_buf(),
+        None => home
+            .filter(|path| path.is_absolute())
+            .ok_or_else(|| "无法获取有效的 HOME 环境变量".to_string())?
+            .join(".local")
+            .join("share"),
+    };
+    Ok(base.join(project_name))
 }
 
 /// 规范化路径：移除冗余的 `.`、处理 `..`、统一分隔符
@@ -303,4 +354,69 @@ pub fn build_launch_command(
     }
 
     cmd
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::linux_data_dir;
+    use std::path::{Path, PathBuf};
+
+    const INTERFACE: &str = r#"{"name": "MaaEnd"}"#;
+
+    #[test]
+    fn linux_data_dir_uses_xdg_home() {
+        assert_eq!(
+            linux_data_dir(Some(INTERFACE), Some(Path::new("/data")), None).unwrap(),
+            PathBuf::from("/data/MaaEnd")
+        );
+    }
+
+    #[test]
+    fn linux_data_dir_defaults_to_local_share() {
+        for xdg in [None, Some(Path::new("")), Some(Path::new("relative"))] {
+            assert_eq!(
+                linux_data_dir(Some(INTERFACE), xdg, Some(Path::new("/home/user"))).unwrap(),
+                PathBuf::from("/home/user/.local/share/MaaEnd")
+            );
+        }
+    }
+
+    #[test]
+    fn linux_data_dir_supports_jsonc() {
+        assert_eq!(
+            linux_data_dir(
+                Some("{ // project\n\"name\": \"MaaEnd\" }"),
+                Some(Path::new("/data")),
+                None,
+            )
+            .unwrap(),
+            PathBuf::from("/data/MaaEnd")
+        );
+    }
+
+    #[test]
+    fn linux_data_dir_defaults_to_mxu_without_project_name() {
+        for content in [None, Some("{}")] {
+            assert_eq!(
+                linux_data_dir(content, Some(Path::new("/data")), None).unwrap(),
+                PathBuf::from("/data/MXU")
+            );
+        }
+    }
+
+    #[test]
+    fn linux_data_dir_rejects_invalid_project_names() {
+        for name in ["", ".", "..", "../MaaEnd", "/tmp/MaaEnd", "a/b", "MaaEnd/"] {
+            let content = serde_json::json!({ "name": name }).to_string();
+            assert!(linux_data_dir(Some(&content), Some(Path::new("/data")), None).is_err());
+        }
+    }
+
+    #[test]
+    fn linux_data_dir_requires_valid_home_without_xdg() {
+        for home in [None, Some(Path::new("")), Some(Path::new("relative"))] {
+            assert!(linux_data_dir(Some(INTERFACE), None, home).is_err());
+        }
+        assert!(linux_data_dir(Some("invalid json"), Some(Path::new("/data")), None).is_err());
+    }
 }

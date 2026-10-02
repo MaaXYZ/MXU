@@ -39,7 +39,7 @@ export interface LoadResult {
   interface: ProjectInterface;
   translations: Record<string, Record<string, string>>;
   basePath: string;
-  dataPath: string; // 数据目录（macOS: ~/Library/Application Support/MXU/，其他平台同 basePath）
+  dataPath: string; // 数据目录（Linux: $XDG_DATA_HOME/{项目名}，macOS: ~/Library/Application Support/MXU/，Windows 同 basePath）
   webServerPort?: number; // 后端 Web 服务器实际监听端口（浏览器模式下用于 WS 直连）
   backendOS?: string; // 后端真实 OS（用于控制器过滤、更新匹配等；Tauri/HTTP 路径填充，dev 预览为空）
   backendArch?: string; // 后端真实架构
@@ -445,7 +445,7 @@ export async function autoLoadInterface(): Promise<LoadResult> {
     const basePath = relativeBasePath ? `${exeDir}/${relativeBasePath}` : exeDir;
     log.info('basePath (绝对路径):', basePath);
 
-    // 获取数据目录（macOS 使用 Application Support，其他平台同 basePath）
+    // 获取数据目录（Linux 使用 XDG，macOS 使用 Application Support，Windows 同 basePath）
     const dataPath = await getDataDir();
     log.info('dataPath (数据目录):', dataPath);
 
