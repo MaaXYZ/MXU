@@ -19,7 +19,8 @@ let cachedDataPath: string | null = null;
 /**
  * 获取应用数据目录
  * - macOS: ~/Library/Application Support/MXU/
- * - Windows/Linux: exe 所在目录
+ * - Linux: $XDG_DATA_HOME/{项目名}，默认 ~/.local/share/{项目名}
+ * - Windows: exe 所在目录
  *
  * 结果会被缓存，多次调用不会重复请求
  */
