@@ -24,6 +24,9 @@ const DEBUG_ARTIFACT_DIRS: [&str; 2] = ["on_error", "vision"];
 const DEBUG_DIR: &str = "debug";
 /// 日志导出产物目录名，与 `debug/` 同级，避免下次导出把上次的产物扫进去。
 const DEBUG_EXPORTS_DIR: &str = "debug_exports";
+/// tauri-plugin-log 从进程启动起一直握着这个文件（见 `lib.rs` 的 `file_name: mxu-tauri`）。
+/// Windows 上删除已打开文件只会摘掉目录项，后续写入进已删除句柄，导出就看不到启动日志。
+const ACTIVE_TAURI_LOG_FILE: &str = "mxu-tauri.log";
 
 #[derive(Clone)]
 struct ExportEntry {
@@ -331,8 +334,9 @@ fn clear_dir_contents(dir: &Path) -> u64 {
 }
 
 /// 递归删除 `dir` 及其所有子目录下的 .log 文件，返回删除数量。
-/// `exclude_file_name` 匹配的文件名会被跳过（当前会话正在写入的日志）。
-/// 只删文件不回收空目录，避免改动既有目录结构。
+/// `exclude_file_name` 匹配的文件名会被跳过（当前会话正在写入的前端日志）。
+/// 活动文件 `mxu-tauri.log` 同样跳过：日志插件全程握着它，删掉后写入会进已删除句柄。
+/// 已关闭的轮转文件 `mxu-tauri_*.log` 仍删除。只删文件不回收空目录，避免改动既有目录结构。
 fn remove_log_files_recursively(dir: &Path, exclude_file_name: Option<&str>) -> u64 {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
@@ -360,7 +364,10 @@ fn remove_log_files_recursively(dir: &Path, exclude_file_name: Option<&str>) -> 
             continue;
         };
 
-        if !name.ends_with(".log") || exclude_file_name == Some(name) {
+        if !name.ends_with(".log")
+            || exclude_file_name == Some(name)
+            || name == ACTIVE_TAURI_LOG_FILE
+        {
             continue;
         }
 
@@ -394,7 +401,8 @@ fn clear_log_dirs(debug_dir: &Path, exports_dir: &Path, exclude_file_name: Optio
 
 /// 递归删除 debug 目录（含所有子目录）中的 .log 文件，清空 on_error/、vision/ 内的调试产物
 /// 以及 debug_exports/ 下的日志导出产物（保留这几个目录本身）。
-/// 可选择排除一个当前正在使用的日志文件。返回删除的文件与产物总数。
+/// 可选择排除一个当前正在使用的前端日志文件。活动文件 `mxu-tauri.log` 始终保留。
+/// 返回删除的文件与产物总数。
 #[tauri::command]
 pub fn clear_log_files(exclude_file_name: Option<String>) -> Result<u64, String> {
     let data_dir = get_app_data_dir()?;
