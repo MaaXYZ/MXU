@@ -161,7 +161,8 @@ function MenuItemComponent({
             'absolute top-0 min-w-[180px] max-w-[280px]',
             'bg-bg-secondary border border-border rounded-lg shadow-lg',
             'py-1 px-1',
-            submenuDirection === 'left' ? 'right-full mr-1' : 'left-full ml-1',
+            // 负边距盖住父菜单的 px-1 间隙，否则移向子菜单时会离开 group hover 并收起
+            submenuDirection === 'left' ? 'right-full -mr-px' : 'left-full -ml-px',
             depth > 0 && 'z-[10000]',
           )}
         >
