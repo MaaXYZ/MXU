@@ -40,6 +40,7 @@ import {
   getLinuxDiscoveryNeeds,
   isDesktopWindowControllerType,
 } from '@/utils/controller';
+import { buildPlayCoverControllerConfig } from '@/utils/playCoverController';
 import { SchedulePanel } from './SchedulePanel';
 import type {
   Instance,
@@ -532,6 +533,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
           (a) => a.enabled && a.program.trim(),
         );
         let preActionControlStarted = false;
+        let preActionExecuted = false;
 
         if (allPreActions.length > 0) {
           preActionControlStarted = true;
@@ -570,6 +572,8 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                 preAction.useCmd ?? false,
               );
               throwIfPreActionStopped(targetId);
+              preActionExecuted = true;
+              needsReconnect = true;
 
               if (exitCode !== 0) {
                 log.warn(`实例 ${targetInstance.name}: 前置动作退出码非零:`, exitCode);
@@ -586,7 +590,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
             }
 
             // 所有前置程序执行完毕后，等待设备/窗口就绪再连接
-            const shouldWaitAfterPreActions = !!controller;
+            const shouldWaitAfterPreActions = preActionExecuted && !!controller;
             if (shouldWaitAfterPreActions && controller) {
               const controllerType = controller.type;
               const isWindowType = isDesktopWindowControllerType(controllerType);
@@ -701,7 +705,6 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                   }
                 }
 
-                needsReconnect = true;
                 // 设备/窗口已就绪，先等待稳定再连接
                 const settleSec = useAppStore.getState().preActionConnectDelaySec ?? 5;
                 if (settleSec > 0) {
@@ -820,11 +823,11 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               deviceName = savedDevice.wlrSocketPath;
               targetType = 'device';
             } else if (controllerType === 'PlayCover' && savedDevice.playcoverAddress) {
-              config = {
-                type: 'PlayCover',
-                address: savedDevice.playcoverAddress,
-                display_short_side: controller.display_short_side,
-              };
+              config = buildPlayCoverControllerConfig(
+                savedDevice.playcoverAddress,
+                controller.playcover?.uuid,
+                controller.display_short_side,
+              );
               deviceName = savedDevice.playcoverAddress;
               targetType = 'device';
             } else if (controllerType === 'Linux') {

@@ -9,6 +9,7 @@ import {
   getDesktopWindowFilters,
   isDesktopWindowControllerType,
 } from '@/utils/controller';
+import { buildPlayCoverControllerConfig } from '@/utils/playCoverController';
 import { startGlobalCallbackListener, waitForCtrlResult } from './callbackCache';
 
 interface UseDeviceConnectionProps {
@@ -358,12 +359,11 @@ export function useDeviceConnection({
 
       setInstanceSavedDevice(instanceId, { playcoverAddress });
 
-      const config: ControllerConfig = {
-        type: 'PlayCover',
-        address: playcoverAddress,
-        uuid: currentController?.playcover?.uuid || 'maa.playcover',
-        display_short_side: currentController?.display_short_side,
-      };
+      const config: ControllerConfig = buildPlayCoverControllerConfig(
+        playcoverAddress,
+        currentController?.playcover?.uuid,
+        currentController?.display_short_side,
+      );
 
       await connectControllerInternal(config, playcoverAddress, 'device');
     } catch (err) {
