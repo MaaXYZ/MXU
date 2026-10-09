@@ -16,6 +16,7 @@ import {
   ConnectionPanel,
 } from '@/components';
 import { BackgroundOverlay } from '@/components/BackgroundOverlay';
+import { isAllowedSettingsHotkey } from '@/components/FormControls';
 import type { BadPathType } from '@/components';
 import {
   autoLoadInterface,
@@ -1616,7 +1617,7 @@ function App() {
       const startKey = hotkeys?.startTasks || 'F10';
       const stopKey = hotkeys?.stopTasks || 'F11';
 
-      if (combo === startKey) {
+      if (isAllowedSettingsHotkey(startKey) && combo === startKey) {
         e.preventDefault();
         document.dispatchEvent(
           new CustomEvent('mxu-start-tasks', { detail: { source: 'hotkey', combo } }),
@@ -1624,7 +1625,7 @@ function App() {
         return;
       }
 
-      if (combo === stopKey) {
+      if (isAllowedSettingsHotkey(stopKey) && combo === stopKey) {
         e.preventDefault();
         document.dispatchEvent(
           new CustomEvent('mxu-stop-tasks', { detail: { source: 'hotkey', combo } }),
@@ -1655,30 +1656,39 @@ function App() {
 
     const startKey = hotkeys.startTasks || 'F10';
     const stopKey = hotkeys.stopTasks || 'F11';
+    const startAllowed = isAllowedSettingsHotkey(startKey);
+    const stopAllowed = stopKey !== startKey && isAllowedSettingsHotkey(stopKey);
 
     // Ctrl -> CommandOrControl
     const toTauriKey = (k: string) => k.replace(/^Ctrl\+/i, 'CommandOrControl+');
+
+    if (!startAllowed && !stopAllowed) {
+      setGlobalHotkeyError(null);
+      return;
+    }
 
     const GLOBAL_HOTKEY_THROTTLE_MS = 1000;
     let lastStartTime = 0;
     const registerKeys = async () => {
       // 记录正在注册的按键，失败时用于告知用户具体是哪个组合键
-      let registeringKey = startKey;
+      let registeringKey = startAllowed ? startKey : stopKey;
       try {
         const { register } = await getGlobalShortcut();
-        await register(toTauriKey(startKey), () => {
-          const now = Date.now();
-          if (now - lastStartTime < GLOBAL_HOTKEY_THROTTLE_MS) return;
-          lastStartTime = now;
-          document.dispatchEvent(
-            new CustomEvent('mxu-start-tasks', {
-              detail: { source: 'global-hotkey', combo: startKey },
-            }),
-          );
-        });
-        registeringKey = stopKey;
-        // 避免重复注册相同的键
-        if (stopKey !== startKey) {
+        if (startAllowed) {
+          registeringKey = startKey;
+          await register(toTauriKey(startKey), () => {
+            const now = Date.now();
+            if (now - lastStartTime < GLOBAL_HOTKEY_THROTTLE_MS) return;
+            lastStartTime = now;
+            document.dispatchEvent(
+              new CustomEvent('mxu-start-tasks', {
+                detail: { source: 'global-hotkey', combo: startKey },
+              }),
+            );
+          });
+        }
+        if (stopAllowed) {
+          registeringKey = stopKey;
           await register(toTauriKey(stopKey), () => {
             document.dispatchEvent(
               new CustomEvent('mxu-stop-tasks', {
@@ -1687,7 +1697,11 @@ function App() {
             );
           });
         }
-        log.info('全局快捷键已注册:', startKey, stopKey);
+        log.info(
+          '全局快捷键已注册:',
+          startAllowed ? startKey : '(skipped)',
+          stopAllowed ? stopKey : '(skipped)',
+        );
         setGlobalHotkeyError(null);
       } catch (err) {
         log.error('注册全局快捷键失败:', err);

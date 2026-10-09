@@ -94,6 +94,7 @@ export default {
     hotkeysHint:
       '仅在主界面中生效，用于开始 / 结束当前实例的任务。支持组合键（如 Ctrl+F10、Ctrl+Shift+F11），纯 F5/F12 仍保留为系统/浏览器快捷键。',
     hotkeysConflict: '开始和结束快捷键不应相同，请选择不同的按键',
+    hotkeysModifierRequired: '单独按键仅支持 F1–F24，请再加一个修饰键（如 Ctrl、Alt、Shift）',
     hotkeysGlobal: '全局快捷键',
     hotkeysGlobalHint: '开启后窗口失焦时也能使用快捷键',
     hotkeysGlobalOnlyStart: '全局模式下仅开始生效',

@@ -306,6 +306,23 @@ export function buildHotkeyCombo(
   return parts.join('+');
 }
 
+const SETTINGS_HOTKEY_MODIFIERS = new Set(['Ctrl', 'Alt', 'Shift', 'Meta']);
+
+/** 设置里的开始/结束快捷键：单独按键仅 F1–F24，其余必须带修饰键。 */
+export function isAllowedSettingsHotkey(combo: string): boolean {
+  const parts = combo.split('+').filter(Boolean);
+  if (parts.length === 0) return false;
+
+  const key = parts[parts.length - 1];
+  const modifiers = parts.slice(0, -1);
+  if (modifiers.length === 0) {
+    return /^F([1-9]|1\d|2[0-4])$/i.test(key);
+  }
+
+  const modifiersOk = modifiers.every((modifier) => SETTINGS_HOTKEY_MODIFIERS.has(modifier));
+  return modifiersOk && !SETTINGS_HOTKEY_MODIFIERS.has(key);
+}
+
 export function HotkeyInput({
   value,
   onChange,

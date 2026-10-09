@@ -1,13 +1,32 @@
+import { useState, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Keyboard, Play, StopCircle, AlertCircle, Globe } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
-import { SwitchButton, buildHotkeyCombo } from '@/components/FormControls';
+import { SwitchButton, buildHotkeyCombo, isAllowedSettingsHotkey } from '@/components/FormControls';
 import { DesktopOnlyWrapper } from '@/components/ui/DesktopOnlyWrapper';
 
 export function HotkeySection() {
   const { t } = useTranslation();
   const { hotkeys, setHotkeys } = useAppStore();
   const globalHotkeyError = useAppStore((state) => state.globalHotkeyError);
+  const [captureRejected, setCaptureRejected] = useState(false);
+  const savedHotkeyInvalid =
+    !isAllowedSettingsHotkey(hotkeys.startTasks) || !isAllowedSettingsHotkey(hotkeys.stopTasks);
+
+  const captureHotkey = (field: 'startTasks' | 'stopTasks', event: KeyboardEvent) => {
+    event.preventDefault();
+    const combo = buildHotkeyCombo(event);
+    if (!combo) return;
+    if (!isAllowedSettingsHotkey(combo)) {
+      setCaptureRejected(true);
+      return;
+    }
+    setCaptureRejected(false);
+    setHotkeys({
+      ...hotkeys,
+      [field]: combo,
+    });
+  };
 
   return (
     <section id="section-hotkeys" className="space-y-4 scroll-mt-4">
@@ -32,15 +51,7 @@ export function HotkeySection() {
                 readOnly
                 value={hotkeys.startTasks}
                 placeholder="F10"
-                onKeyDown={(e) => {
-                  e.preventDefault();
-                  const combo = buildHotkeyCombo(e);
-                  if (!combo) return;
-                  setHotkeys({
-                    ...hotkeys,
-                    startTasks: combo,
-                  });
-                }}
+                onKeyDown={(e) => captureHotkey('startTasks', e)}
                 className="w-full px-3 py-2 rounded-lg bg-bg-tertiary border border-border text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/50 cursor-pointer"
               />
             </div>
@@ -56,19 +67,18 @@ export function HotkeySection() {
                 readOnly
                 value={hotkeys.stopTasks}
                 placeholder="F11"
-                onKeyDown={(e) => {
-                  e.preventDefault();
-                  const combo = buildHotkeyCombo(e);
-                  if (!combo) return;
-                  setHotkeys({
-                    ...hotkeys,
-                    stopTasks: combo,
-                  });
-                }}
+                onKeyDown={(e) => captureHotkey('stopTasks', e)}
                 className="w-full px-3 py-2 rounded-lg bg-bg-tertiary border border-border text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/50 cursor-pointer"
               />
             </div>
           </div>
+
+          {(captureRejected || savedHotkeyInvalid) && (
+            <div className="flex items-center gap-2 text-xs text-warning">
+              <AlertCircle className="w-3 h-3" />
+              <span>{t('settings.hotkeysModifierRequired')}</span>
+            </div>
+          )}
 
           {hotkeys.startTasks === hotkeys.stopTasks && (
             <div className="flex items-center gap-2 text-xs text-warning">

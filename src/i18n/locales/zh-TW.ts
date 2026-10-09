@@ -93,6 +93,7 @@ export default {
     hotkeysHint:
       '僅在主畫面中生效，用於開始 / 結束當前執行個體的任務。支援組合鍵（例如 Ctrl+F10、Ctrl+Shift+F11），純 F5/F12 仍保留給系統 / 瀏覽器快捷鍵。',
     hotkeysConflict: '開始與結束快捷鍵不應相同，請選擇不同的按鍵',
+    hotkeysModifierRequired: '單獨按鍵僅支援 F1–F24，請再加一個修飾鍵（如 Ctrl、Alt、Shift）',
     hotkeysGlobal: '全域快捷鍵',
     hotkeysGlobalHint: '開啟後視窗失焦時也能使用快捷鍵',
     hotkeysGlobalOnlyStart: '全域模式下僅開始生效',

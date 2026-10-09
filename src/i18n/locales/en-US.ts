@@ -94,6 +94,8 @@ export default {
     hotkeysHint:
       'Effective only on the main screen, used to start/stop tasks of the current instance. Modifier combinations are supported (e.g. Ctrl+F10, Ctrl+Shift+F11); plain F5/F12 remain reserved by the system/browser.',
     hotkeysConflict: 'Start and stop hotkeys should not be the same. Please choose different keys.',
+    hotkeysModifierRequired:
+      'A single key must be F1–F24. Add a modifier such as Ctrl, Alt, or Shift.',
     hotkeysGlobal: 'Global hotkeys',
     hotkeysGlobalHint: 'Enable hotkeys when window is not focused',
     hotkeysGlobalOnlyStart: 'only start works in global mode',
