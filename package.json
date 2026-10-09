@@ -10,7 +10,7 @@
     "tauri": "tauri",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,css,json}\" \"tests/**/*.ts\" \"*.{json,md}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,css,json}\" \"tests/**/*.ts\" \"*.{json,md}\"",
-    "test": "node --test \"tests/**/*.test.ts\"",
+    "test": "node tests/run.mjs",
     "format:rust": "cd src-tauri && cargo fmt",
     "format:all": "pnpm format && pnpm format:rust",
     "prepare": "husky"
@@ -55,6 +55,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
     "prettier": "^3.5.3",
+    "tsx": "^4.23.15",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"
   },

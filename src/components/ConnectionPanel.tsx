@@ -25,6 +25,7 @@ import type { AdbDevice, Win32Window, GamescopeInstance, ControllerConfig } from
 import type { ControllerItem, ResourceItem } from '@/types/interface';
 import { computeResourcePaths } from '@/utils/resourcePath';
 import { getProcessNameFromPath } from '@/utils/paths';
+import { buildPlayCoverControllerConfig } from '@/utils/playCoverController';
 import {
   buildDesktopWindowControllerConfig,
   buildLinuxControllerConfig,
@@ -685,12 +686,11 @@ export function ConnectionPanel() {
       } else if (controllerType === 'PlayCover') {
         // 保存 PlayCover 地址到实例配置
         setInstanceSavedDevice(instanceId, { playcoverAddress });
-        config = {
-          type: 'PlayCover',
-          address: playcoverAddress,
-          uuid: currentController?.playcover?.uuid || 'maa.playcover',
-          display_short_side: currentController?.display_short_side,
-        };
+        config = buildPlayCoverControllerConfig(
+          playcoverAddress,
+          currentController?.playcover?.uuid,
+          currentController?.display_short_side,
+        );
         deviceName = playcoverAddress;
         targetType = 'device';
       } else {
