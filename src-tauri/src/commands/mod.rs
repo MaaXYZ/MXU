@@ -22,6 +22,7 @@ pub mod download;
 pub mod file_ops;
 pub mod maa_agent;
 pub mod maa_core;
+pub mod notification;
 pub mod state;
 pub mod system;
 mod task_diagnostics;

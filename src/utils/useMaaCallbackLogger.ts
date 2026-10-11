@@ -30,9 +30,21 @@ const AGENT_LOG_FLOOD_THRESHOLD = 15;
 // 每次会话只请求一次通知权限，避免多条 focus 消息重复弹权限弹窗
 let focusNotificationPermissionRequested = false;
 
-/** v2.3.0: toast/notification 渠道 - 使用系统通知 */
+/**
+ * v2.3.0: toast/notification 渠道 - 使用系统通知。
+ * Tauri 桌面端经 Rust 侧 notify-rust 发送（WebView2 的 Web Notification API
+ * 权限恒为 denied 且无权限弹窗，直接调用会静默失效）；
+ * Web 端保留浏览器 Notification API。
+ */
 async function dispatchFocusNotification(message: string) {
   try {
+    if (isTauri()) {
+      const { invoke } = await import('@tauri-apps/api/core');
+      // 系统通知不支持富文本，去掉 HTML 标签后发送
+      const plain = message.replace(/<[^>]+>/g, '');
+      await invoke('send_system_notification', { title: 'MXU', body: plain });
+      return;
+    }
     if (!('Notification' in window)) return;
     if (Notification.permission === 'granted') {
       new Notification('MXU', { body: message });
