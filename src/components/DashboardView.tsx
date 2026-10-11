@@ -44,7 +44,9 @@ import { stopInstanceTasks } from '@/services/taskStopService';
 import { buildPiEnvVars } from '@/utils/piEnv';
 import {
   formatCheckboxCountViolation,
+  formatInputValueViolation,
   validateInstanceCheckboxCounts,
+  validateInstanceInputValues,
 } from '@/utils/checkboxOptionValidation';
 
 const log = loggers.ui;
@@ -256,6 +258,30 @@ function InstanceCard({ instanceId, instanceName, isActive, onSelect }: Instance
           if (checkboxViolations.length > 0) {
             for (const violation of checkboxViolations) {
               const message = formatCheckboxCountViolation(
+                violation,
+                compatibleEnabledTasks,
+                projectInterface,
+                translations,
+                t,
+              );
+              log.warn(`[${instanceName}] ${message}`);
+              addLog(instanceId, { type: 'error', message });
+            }
+            setIsStarting(false);
+            return;
+          }
+
+          // 输入值不合法时拒绝启动，不把非法值代入 pipeline_override
+          const inputViolations = validateInstanceInputValues(
+            compatibleEnabledTasks,
+            projectInterface,
+            currentControllerName,
+            currentResourceName,
+            useAppStore.getState().globalOptionValues,
+          );
+          if (inputViolations.length > 0) {
+            for (const violation of inputViolations) {
+              const message = formatInputValueViolation(
                 violation,
                 compatibleEnabledTasks,
                 projectInterface,

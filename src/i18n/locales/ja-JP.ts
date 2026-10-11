@@ -224,6 +224,10 @@ export default {
       '{{scope}}のオプション「{{option}}」は少なくとも {{min}} 個必要です（現在 {{count}} 個）',
     checkboxMaximumExceeded:
       '{{scope}}のオプション「{{option}}」は最大 {{max}} 個までです（現在 {{count}} 個）',
+    inputValueMissing:
+      '{{scope}}のオプション「{{option}}」の「{{input}}」が空です。この入力は空を許可していません',
+    inputValueInvalid:
+      '{{scope}}のオプション「{{option}}」の「{{input}}」の現在値「{{value}}」は使用できません：{{reason}}',
     // 自動接続関連
     autoConnect: {
       searching: 'デバイスを検索中...',
@@ -371,6 +375,10 @@ export default {
     checkboxSelectedCount: '{{count}} 個選択中（{{constraint}}）',
     checkboxMinimumRequired: '少なくとも {{min}} 個選択してください（現在 {{count}} 個）',
     checkboxMaximumReached: '選択できるのは最大 {{max}} 個です',
+    inputRequired: '空にはできません',
+    inputPatternMismatch: '入力形式が要件を満たしていません',
+    inputNotInteger: '整数を入力してください',
+    invalidVerifyPattern: 'この入力項目の検証ルールが無効です。プロジェクト作者にご連絡ください',
   },
 
   // プリセット

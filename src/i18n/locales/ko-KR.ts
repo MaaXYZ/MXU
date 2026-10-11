@@ -221,6 +221,10 @@ export default {
       '{{scope}}의 옵션 「{{option}}」은(는) 최소 {{min}}개가 필요합니다 (현재 {{count}}개)',
     checkboxMaximumExceeded:
       '{{scope}}의 옵션 「{{option}}」은(는) 최대 {{max}}개까지 가능합니다 (현재 {{count}}개)',
+    inputValueMissing:
+      '{{scope}} 옵션 "{{option}}"의 "{{input}}"이(가) 비어 있습니다. 이 입력은 비어 있을 수 없습니다',
+    inputValueInvalid:
+      '{{scope}} 옵션 "{{option}}"의 "{{input}}" 현재 값 "{{value}}"을(를) 사용할 수 없습니다: {{reason}}',
     // 자동 연결 관련
     autoConnect: {
       searching: '기기 검색 중...',
@@ -366,6 +370,11 @@ export default {
     checkboxSelectedCount: '{{count}}개 선택됨 ({{constraint}})',
     checkboxMinimumRequired: '최소 {{min}}개를 선택하세요 (현재 {{count}}개)',
     checkboxMaximumReached: '최대 {{max}}개까지 선택할 수 있습니다',
+    inputRequired: '비워 둘 수 없습니다',
+    inputPatternMismatch: '입력 형식이 요구 사항과 일치하지 않습니다',
+    inputNotInteger: '정수를 입력해야 합니다',
+    invalidVerifyPattern:
+      '이 입력 항목의 검증 규칙이 올바르지 않습니다. 프로젝트 작성자에게 문의하세요',
   },
 
   // 프리셋

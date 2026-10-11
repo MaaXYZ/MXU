@@ -28,6 +28,7 @@ import {
 import { getInterfaceLangKey } from '@/i18n';
 import { findSwitchCase } from '@/utils/optionHelpers';
 import { getCheckboxMaxCount, getCheckboxMinCount } from '@/utils/checkboxOptionValidation';
+import { getInputValueError, hasDeclaredValue } from '@/utils/optionInputValue';
 import { stripInlineRichText } from '@/utils/richText';
 import { SwitchButton, TextInput, FileInput, TimeInput, HotkeyInput } from './FormControls';
 import { RichLabel } from './RichLabel';
@@ -298,19 +299,34 @@ function InputField({
         : input.default || undefined
       : resolveI18nText(input.placeholder, langKey) || input.default || undefined;
 
-  // 验证输入
+  // 验证输入：与"启动前闸门"共用同一判定（utils/optionInputValue.ts），
+  // 因此界面上没有红框的输入，运行时一定不会被拒绝；反之亦然。
   const validationError = useMemo(() => {
-    if (!input.verify || !value) return null;
-    try {
-      const regex = new RegExp(input.verify);
-      if (!regex.test(value)) {
-        return patternMsg || `输入不符合格式要求`;
-      }
-    } catch {
-      // 正则无效，跳过验证
+    const error = getInputValueError(input, value);
+    if (!error) return null;
+    switch (error.kind) {
+      case 'empty':
+        return patternMsg || t?.('optionEditor.inputRequired');
+      case 'integer':
+        return patternMsg || t?.('optionEditor.inputNotInteger');
+      case 'invalid-pattern':
+        return t?.('optionEditor.invalidVerifyPattern');
+      default:
+        return patternMsg || t?.('optionEditor.inputPatternMismatch');
     }
-    return null;
-  }, [input.verify, value, patternMsg]);
+  }, [input, value, patternMsg, t]);
+
+  // 失焦补空：声明了 default 的输入不允许长期为空（空值只在编辑过程中短暂存在）。
+  // 优先回到"上一个有值的状态"，没有历史值时用 default；没有 default 的输入保持留空。
+  const lastFilledValueRef = useRef(value !== '' ? value : '');
+  useEffect(() => {
+    if (value !== '') lastFilledValueRef.current = value;
+  }, [value]);
+  const handleBlur = useCallback(() => {
+    if (disabled || isHotkey || value !== '' || !hasDeclaredValue(input)) return;
+    const fallback = lastFilledValueRef.current || input.default || '';
+    if (fallback !== '') onChange(fallback);
+  }, [disabled, isHotkey, value, input, onChange]);
 
   return (
     <div className="space-y-1">
@@ -365,6 +381,7 @@ function InputField({
             inputMode={input.pipeline_type === 'int' ? 'numeric' : undefined}
             step={input.pipeline_type === 'int' ? 1 : undefined}
             integerOnly={input.pipeline_type === 'int'}
+            onBlur={handleBlur}
           />
         )}
       </div>

@@ -230,6 +230,10 @@ export default {
       'Option "{{option}}" in {{scope}} requires at least {{min}} selections; currently {{count}}',
     checkboxMaximumExceeded:
       'Option "{{option}}" in {{scope}} allows at most {{max}} selections; currently {{count}}',
+    inputValueMissing:
+      '{{scope}} option "{{option}}" input "{{input}}" is empty, which its format requirement does not allow',
+    inputValueInvalid:
+      '{{scope}} option "{{option}}" input "{{input}}" value "{{value}}" is not usable: {{reason}}',
     // Auto connect
     autoConnect: {
       searching: 'Searching devices...',
@@ -376,6 +380,11 @@ export default {
     checkboxSelectedCount: '{{count}} selected ({{constraint}})',
     checkboxMinimumRequired: 'Select at least {{min}} (currently {{count}})',
     checkboxMaximumReached: 'You can select at most {{max}}',
+    inputRequired: 'Cannot be empty',
+    inputPatternMismatch: 'Input does not match the required format',
+    inputNotInteger: 'Must be an integer',
+    invalidVerifyPattern:
+      'This input has an invalid validation rule; please contact the project author',
   },
 
   // Preset

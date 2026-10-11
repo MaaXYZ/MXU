@@ -222,6 +222,10 @@ export default {
       '{{scope}}的选项「{{option}}」至少需要选择 {{min}} 项，当前选择了 {{count}} 项',
     checkboxMaximumExceeded:
       '{{scope}}的选项「{{option}}」最多只能选择 {{max}} 项，当前选择了 {{count}} 项',
+    inputValueMissing:
+      '{{scope}}的选项「{{option}}」中「{{input}}」为空，该输入的格式要求不允许为空',
+    inputValueInvalid:
+      '{{scope}}的选项「{{option}}」中「{{input}}」当前值「{{value}}」不可用：{{reason}}',
     // 自动连接相关
     autoConnect: {
       searching: '搜索设备...',
@@ -365,6 +369,10 @@ export default {
     checkboxSelectedCount: '已选择 {{count}} 项（{{constraint}}）',
     checkboxMinimumRequired: '至少选择 {{min}} 项（当前 {{count}} 项）',
     checkboxMaximumReached: '最多只能选择 {{max}} 项',
+    inputRequired: '不能为空',
+    inputPatternMismatch: '输入不符合格式要求',
+    inputNotInteger: '必须是整数',
+    invalidVerifyPattern: '该输入项的校验规则无效，请联系项目作者',
   },
 
   // 预设配置

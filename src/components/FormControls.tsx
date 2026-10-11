@@ -78,6 +78,7 @@ interface TextInputProps {
   inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
   step?: number;
   integerOnly?: boolean;
+  onBlur?: () => void;
 }
 
 interface HotkeyInputProps {
@@ -116,12 +117,14 @@ export function TextInput({
   inputMode,
   step,
   integerOnly,
+  onBlur,
 }: TextInputProps) {
   return (
     <input
       type={type}
       autoComplete={type === 'password' ? 'off' : undefined}
       value={value}
+      onBlur={onBlur}
       onChange={(e) => {
         if (!integerOnly) {
           onChange(e.target.value);

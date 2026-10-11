@@ -16,6 +16,10 @@ import { useAppStore } from '@/stores/appStore';
 import { maaService } from '@/services/maaService';
 import { useResolvedContent } from '@/services/contentResolver';
 import { loggers, generateTaskPipelineOverride } from '@/utils';
+import {
+  formatInputValueViolation,
+  validateInstanceInputValues,
+} from '@/utils/checkboxOptionValidation';
 import { getInterfaceLangKey } from '@/i18n';
 import {
   addTaskPanelHeightMax,
@@ -23,7 +27,13 @@ import {
   addTaskPanelResizeStep,
 } from '@/types/config';
 import { Tooltip } from './ui/Tooltip';
-import type { TaskItem, ActionConfig, GroupItem, PretaskItem } from '@/types/interface';
+import type {
+  TaskItem,
+  ActionConfig,
+  GroupItem,
+  PretaskItem,
+  SelectedTask,
+} from '@/types/interface';
 import type { MxuSpecialTaskDefinition } from '@/types/specialTasks';
 import {
   getAllMxuSpecialTasks,
@@ -185,6 +195,7 @@ export function AddTaskPanel() {
     setShowAddTaskPanel,
     addTaskPanelHeight,
     setAddTaskPanelHeight,
+    interfaceTranslations,
   } = useAppStore();
 
   // Webhook 保留在注册表中以兼容已有任务，但不再提供新增入口。
@@ -211,6 +222,34 @@ export function AddTaskPanel() {
   // 未选择时，使用第一个控制器/资源作为默认值判断兼容性
   const selectedControllerName = instance?.controllerName || projectInterface?.controller[0]?.name;
   const selectedResourceName = instance?.resourceName || projectInterface?.resource[0]?.name;
+
+  const translations = interfaceTranslations[langKey];
+
+  /**
+   * 运行中追加任务/改配置前的兜底校验：值不合法就报错并跳过该次推送，
+   * 绝不把非法值代入 pipeline_override（上游可能因此静默失效）。
+   * 返回 true 表示应放弃这次操作。
+   */
+  const skipOnInvalidOptionValues = useCallback(
+    (checkedTask: SelectedTask): boolean => {
+      const violations = validateInstanceInputValues(
+        [checkedTask],
+        projectInterface,
+        selectedControllerName,
+        selectedResourceName,
+        useAppStore.getState().globalOptionValues,
+      );
+      if (violations.length === 0) return false;
+
+      for (const violation of violations) {
+        log.error(
+          formatInputValueViolation(violation, [checkedTask], projectInterface, translations, t),
+        );
+      }
+      return true;
+    },
+    [projectInterface, selectedControllerName, selectedResourceName, translations, t],
+  );
 
   const filteredTasks = useMemo(() => {
     if (!projectInterface) return [];
@@ -302,6 +341,8 @@ export function AddTaskPanel() {
         }
 
         // 构建 pipeline override
+        if (skipOnInvalidOptionValues(addedTask)) return;
+
         const pipelineOverride = generateTaskPipelineOverride(
           addedTask,
           projectInterface,
@@ -366,6 +407,8 @@ export function AddTaskPanel() {
         }
 
         // 构建 pipeline override
+        if (skipOnInvalidOptionValues(addedTask)) return;
+
         const pipelineOverride = generateTaskPipelineOverride(
           addedTask,
           projectInterface,

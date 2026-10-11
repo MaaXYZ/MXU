@@ -17,6 +17,10 @@ import { useAppStore, type TaskRunStatus } from '@/stores/appStore';
 import { maaService } from '@/services/maaService';
 import { useResolvedContent } from '@/services/contentResolver';
 import { generateTaskPipelineOverride } from '@/utils';
+import {
+  formatInputValueViolation,
+  validateInstanceInputValues,
+} from '@/utils/checkboxOptionValidation';
 import { OptionEditor, SwitchGrid, switchHasNestedOptions } from './OptionEditor';
 import { ContextMenu, useContextMenu } from './ContextMenu';
 import { Tooltip } from './ui/Tooltip';
@@ -464,6 +468,24 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
       return;
     }
 
+    // 值不合法时不推送 override：运行中改配置同样不能把非法值送进流水线
+    const inputViolations = validateInstanceInputValues(
+      [task],
+      projectInterface,
+      currentControllerName,
+      currentResourceName,
+      useAppStore.getState().globalOptionValues,
+    );
+    if (inputViolations.length > 0) {
+      const violationTranslations = interfaceTranslations[langKey];
+      for (const violation of inputViolations) {
+        loggers.task.error(
+          formatInputValueViolation(violation, [task], projectInterface, violationTranslations, t),
+        );
+      }
+      return;
+    }
+
     // 生成新的 pipeline override 并调用后端
     const pipelineOverride = generateTaskPipelineOverride(
       task,
@@ -483,6 +505,8 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
     projectInterface,
     currentControllerName,
     currentResourceName,
+    langKey,
+    t,
   ]);
 
   const { state: menuState, show: showMenu, hide: hideMenu } = useContextMenu();

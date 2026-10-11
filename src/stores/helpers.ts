@@ -1,5 +1,6 @@
 import type { OptionValue, OptionDefinition, PresetOptionValue, TaskItem } from '@/types/interface';
 import { findSwitchCase } from '@/utils/optionHelpers';
+import { resolveInputValue } from '@/utils/optionInputValue';
 import type { AppState } from './types';
 
 /** 生成唯一 ID */
@@ -89,15 +90,19 @@ export const sanitizeOptionValue = (
   }
 
   if (optionDef.type === 'input' && value.type === 'input') {
-    const validNames = new Set(optionDef.inputs.map((input) => input.name));
+    const inputsByName = new Map(optionDef.inputs.map((input) => [input.name, input]));
     const values: Record<string, string> = {};
     for (const [name, val] of Object.entries(value.values)) {
-      if (validNames.has(name)) values[name] = val;
+      const input = inputsByName.get(name);
+      if (!input) continue;
+      // 落盘前消除空值：声明了 default 的输入补回 default，同时把 JSON 里的 null 归一成字符串。
+      // 配置文件里不应再出现 "" / null（见 utils/optionInputValue.ts）。
+      values[name] = resolveInputValue(input, val);
     }
     const encryptedValues: Record<string, string> = {};
     if (value.encryptedValues) {
       for (const [name, val] of Object.entries(value.encryptedValues)) {
-        if (validNames.has(name)) encryptedValues[name] = val;
+        if (inputsByName.has(name)) encryptedValues[name] = val;
       }
     }
     return {

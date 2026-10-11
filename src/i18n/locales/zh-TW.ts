@@ -218,6 +218,10 @@ export default {
       '{{scope}}的選項「{{option}}」至少需要選擇 {{min}} 項，目前選擇了 {{count}} 項',
     checkboxMaximumExceeded:
       '{{scope}}的選項「{{option}}」最多只能選擇 {{max}} 項，目前選擇了 {{count}} 項',
+    inputValueMissing:
+      '{{scope}}的選項「{{option}}」中「{{input}}」為空，該輸入的格式要求不允許為空',
+    inputValueInvalid:
+      '{{scope}}的選項「{{option}}」中「{{input}}」目前值「{{value}}」不可用：{{reason}}',
     // 自動連接相关
     autoConnect: {
       searching: '搜尋裝置...',
@@ -361,6 +365,10 @@ export default {
     checkboxSelectedCount: '已選擇 {{count}} 項（{{constraint}}）',
     checkboxMinimumRequired: '至少選擇 {{min}} 項（目前 {{count}} 項）',
     checkboxMaximumReached: '最多只能選擇 {{max}} 項',
+    inputRequired: '不能為空',
+    inputPatternMismatch: '輸入不符合格式要求',
+    inputNotInteger: '必須是整數',
+    invalidVerifyPattern: '此輸入項的校驗規則無效，請聯繫專案作者',
   },
 
   // 預設設定

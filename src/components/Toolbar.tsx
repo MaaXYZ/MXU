@@ -65,7 +65,9 @@ import { onStateChanged } from '@/services/wsService';
 import { buildPiEnvVars } from '@/utils/piEnv';
 import {
   formatCheckboxCountViolation,
+  formatInputValueViolation,
   validateInstanceCheckboxCounts,
+  validateInstanceInputValues,
 } from '@/utils/checkboxOptionValidation';
 
 const log = loggers.task;
@@ -411,6 +413,30 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
       if (checkboxViolations.length > 0) {
         for (const violation of checkboxViolations) {
           const message = formatCheckboxCountViolation(
+            violation,
+            compatibleTasks,
+            projectInterface,
+            translations,
+            t,
+          );
+          log.warn(`实例 ${targetInstance.name}: ${message}`);
+          addLog(targetId, { type: 'error', message });
+        }
+        return false;
+      }
+
+      // 输入值不合法（为空但格式不允许，或不符合 verify）时拒绝启动：
+      // 绝不把非法值代入 pipeline_override——上游可能因此静默失效。
+      const inputViolations = validateInstanceInputValues(
+        compatibleTasks,
+        projectInterface,
+        controllerName,
+        resourceName,
+        useAppStore.getState().globalOptionValues,
+      );
+      if (inputViolations.length > 0) {
+        for (const violation of inputViolations) {
+          const message = formatInputValueViolation(
             violation,
             compatibleTasks,
             projectInterface,

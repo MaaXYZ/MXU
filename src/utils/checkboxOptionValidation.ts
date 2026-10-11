@@ -1,6 +1,15 @@
+/**
+ * 启动前的选项校验：checkbox 数量约束 + input/hotkey 取值合法性。
+ *
+ * 两类校验共用同一个遍历器（`validateOptionKeys`），保证校验范围与
+ * `pipelineOverride.collectOptionOverrides` 实际会代入的选项完全一致：
+ * 只看当前控制器/资源兼容的选项、当前选中的 case 及其嵌套选项，
+ * 并覆盖全局选项、资源级、控制器级、任务级与 MXU 内置任务。
+ */
 import { createDefaultOptionValue, sanitizeOptionValue } from '@/stores/helpers';
 import type {
   CheckboxOption,
+  InputItem,
   OptionDefinition,
   OptionValue,
   ProjectInterface,
@@ -10,8 +19,11 @@ import { getPretaskItem, isPretaskName } from '@/types/pretasks';
 import { getMxuSpecialTask, isMxuSpecialTask } from '@/types/specialTasks';
 import type { TFunction } from 'i18next';
 import { findSwitchCase } from './optionHelpers';
+import { getInputValueError, type InputValueErrorKind } from './optionInputValue';
+import { isPasswordInput } from './passwordOptionValues';
 
 export interface CheckboxCountViolation {
+  type: 'checkbox';
   optionKey: string;
   selectedCount: number;
   minCount: number;
@@ -20,6 +32,19 @@ export interface CheckboxCountViolation {
   taskId?: string;
   taskName?: string;
 }
+
+/** 输入值不合法：启动前会据此拒绝运行，绝不带着非法值下发流水线。 */
+export interface InputValueViolation {
+  type: 'input';
+  optionKey: string;
+  inputName: string;
+  value: string;
+  kind: InputValueErrorKind;
+  taskId?: string;
+  taskName?: string;
+}
+
+export type OptionViolation = CheckboxCountViolation | InputValueViolation;
 
 export function getCheckboxMinCount(optionDef: CheckboxOption): number {
   return optionDef.min_count ?? 0;
@@ -39,13 +64,19 @@ function resolveInterfaceLabel(
   return translations?.[label.slice(1)] ?? label.slice(1);
 }
 
-export function formatCheckboxCountViolation(
-  violation: CheckboxCountViolation,
+/** 解析违规项所属的任务/选项上下文，两个格式化函数共用。 */
+function resolveViolationContext(
+  violation: Pick<OptionViolation, 'taskId' | 'taskName' | 'optionKey'>,
   tasks: SelectedTask[],
   projectInterface: ProjectInterface | null,
   translations: Record<string, string> | undefined,
   t: TFunction,
-): string {
+): {
+  specialTask: ReturnType<typeof getMxuSpecialTask>;
+  optionDef: OptionDefinition | undefined;
+  optionLabel: string;
+  scope: string;
+} {
   const selectedTask = violation.taskId
     ? tasks.find((task) => task.id === violation.taskId)
     : undefined;
@@ -81,6 +112,42 @@ export function formatCheckboxCountViolation(
     ? t('taskList.checkboxTaskScope', { task: taskLabel })
     : t('taskList.checkboxGlobalScope');
 
+  return { specialTask, optionDef, optionLabel, scope };
+}
+
+/** 在选项定义里找到对应的输入项，用于取 label / pattern_msg。 */
+function findInputDefinition(
+  optionDef: OptionDefinition | undefined,
+  inputName: string,
+): InputItem | undefined {
+  if (optionDef?.type === 'input') return optionDef.inputs?.find((item) => item.name === inputName);
+  if (optionDef?.type === 'hotkey')
+    return optionDef.hotkeys?.find((item) => item.name === inputName);
+  return undefined;
+}
+
+const INPUT_VALUE_REASON_KEYS: Record<InputValueErrorKind, string> = {
+  empty: 'optionEditor.inputRequired',
+  pattern: 'optionEditor.inputPatternMismatch',
+  integer: 'optionEditor.inputNotInteger',
+  'invalid-pattern': 'optionEditor.invalidVerifyPattern',
+};
+
+export function formatCheckboxCountViolation(
+  violation: CheckboxCountViolation,
+  tasks: SelectedTask[],
+  projectInterface: ProjectInterface | null,
+  translations: Record<string, string> | undefined,
+  t: TFunction,
+): string {
+  const { optionLabel, scope } = resolveViolationContext(
+    violation,
+    tasks,
+    projectInterface,
+    translations,
+    t,
+  );
+
   return violation.kind === 'min'
     ? t('taskList.checkboxMinimumNotMet', {
         scope,
@@ -93,6 +160,47 @@ export function formatCheckboxCountViolation(
         option: optionLabel,
         max: violation.maxCount,
         count: violation.selectedCount,
+      });
+}
+
+export function formatInputValueViolation(
+  violation: InputValueViolation,
+  tasks: SelectedTask[],
+  projectInterface: ProjectInterface | null,
+  translations: Record<string, string> | undefined,
+  t: TFunction,
+): string {
+  const { specialTask, optionDef, optionLabel, scope } = resolveViolationContext(
+    violation,
+    tasks,
+    projectInterface,
+    translations,
+    t,
+  );
+  const inputDef = findInputDefinition(optionDef, violation.inputName);
+  const inputLabel = specialTask
+    ? t(inputDef?.label || violation.inputName)
+    : resolveInterfaceLabel(inputDef?.label, violation.inputName, translations);
+  // 项目自定义的 pattern_msg 优先（通常是给用户看的可读说明）
+  const patternMsg = inputDef?.pattern_msg
+    ? specialTask
+      ? t(inputDef.pattern_msg)
+      : resolveInterfaceLabel(inputDef.pattern_msg, '', translations)
+    : '';
+  const reason = patternMsg || t(INPUT_VALUE_REASON_KEYS[violation.kind]);
+
+  return violation.kind === 'empty'
+    ? t('taskList.inputValueMissing', {
+        scope,
+        option: optionLabel,
+        input: inputLabel,
+      })
+    : t('taskList.inputValueInvalid', {
+        scope,
+        option: optionLabel,
+        input: inputLabel,
+        value: violation.value,
+        reason,
       });
 }
 
@@ -122,8 +230,8 @@ function validateOptionKeys(
   controllerName: string | undefined,
   resourceName: string | undefined,
   context: Pick<CheckboxCountViolation, 'taskId' | 'taskName'>,
-): CheckboxCountViolation[] {
-  const violations: CheckboxCountViolation[] = [];
+): OptionViolation[] {
+  const violations: OptionViolation[] = [];
   const visited = new Set<string>();
 
   const visit = (optionKey: string) => {
@@ -145,6 +253,7 @@ function validateOptionKeys(
 
       if (selectedCount < minCount) {
         violations.push({
+          type: 'checkbox',
           optionKey,
           selectedCount,
           minCount,
@@ -154,6 +263,7 @@ function validateOptionKeys(
         });
       } else if (maxCount !== undefined && selectedCount > maxCount) {
         violations.push({
+          type: 'checkbox',
           optionKey,
           selectedCount,
           minCount,
@@ -161,6 +271,36 @@ function validateOptionKeys(
           kind: 'max',
           ...context,
         });
+      }
+
+      return;
+    }
+
+    // input / hotkey：值必须通过自身声明的格式要求（verify），否则拒绝运行。
+    // 取值方式与 pipelineOverride 的代入保持一致（空值同样按 default 解析）。
+    if (
+      (optionDef.type === 'input' || optionDef.type === 'hotkey') &&
+      (optionValue.type === 'input' || optionValue.type === 'hotkey')
+    ) {
+      const inputDefs =
+        optionDef.type === 'hotkey' ? (optionDef.hotkeys ?? []) : (optionDef.inputs ?? []);
+
+      for (const inputDef of inputDefs) {
+        // 密码字段的 values 由加密通道管理，不参与取值校验
+        if (isPasswordInput(inputDef)) continue;
+
+        const value = optionValue.values[inputDef.name] ?? inputDef.default ?? '';
+        const error = getInputValueError(inputDef, value);
+        if (error) {
+          violations.push({
+            type: 'input',
+            optionKey,
+            inputName: inputDef.name,
+            value,
+            kind: error.kind,
+            ...context,
+          });
+        }
       }
 
       return;
@@ -183,19 +323,19 @@ function validateOptionKeys(
 }
 
 /**
- * 校验一次启动中实际会使用到的 checkbox 选项。
+ * 校验一次启动中实际会使用到的选项（checkbox 数量 + 输入值）。
  * 调用方应先过滤掉与当前控制器/资源不兼容的任务。
  */
-export function validateInstanceCheckboxCounts(
+export function validateInstanceOptionViolations(
   tasks: SelectedTask[],
   projectInterface: ProjectInterface | null,
   controllerName?: string,
   resourceName?: string,
   globalOptionValues: Record<string, OptionValue> = {},
-): CheckboxCountViolation[] {
+): OptionViolation[] {
   if (!projectInterface) return [];
 
-  const violations: CheckboxCountViolation[] = [];
+  const violations: OptionViolation[] = [];
   const ordinaryTasks = tasks.filter(
     (task) => !isMxuSpecialTask(task.taskName) && !isPretaskName(task.taskName),
   );
@@ -274,4 +414,41 @@ export function validateInstanceCheckboxCounts(
   }
 
   return violations;
+}
+
+/** 只看 checkbox 数量约束（保持既有调用方语义）。 */
+export function validateInstanceCheckboxCounts(
+  tasks: SelectedTask[],
+  projectInterface: ProjectInterface | null,
+  controllerName?: string,
+  resourceName?: string,
+  globalOptionValues: Record<string, OptionValue> = {},
+): CheckboxCountViolation[] {
+  return validateInstanceOptionViolations(
+    tasks,
+    projectInterface,
+    controllerName,
+    resourceName,
+    globalOptionValues,
+  ).filter((violation): violation is CheckboxCountViolation => violation.type === 'checkbox');
+}
+
+/**
+ * 只看输入值合法性：值为空（但格式要求不接受空）或不符合 `verify` 时，调用方必须拒绝运行。
+ * 这里只报告，不改写任何值——不合法就是用户的输入，交给他自己修。
+ */
+export function validateInstanceInputValues(
+  tasks: SelectedTask[],
+  projectInterface: ProjectInterface | null,
+  controllerName?: string,
+  resourceName?: string,
+  globalOptionValues: Record<string, OptionValue> = {},
+): InputValueViolation[] {
+  return validateInstanceOptionViolations(
+    tasks,
+    projectInterface,
+    controllerName,
+    resourceName,
+    globalOptionValues,
+  ).filter((violation): violation is InputValueViolation => violation.type === 'input');
 }
