@@ -346,9 +346,15 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
         return failStart(t('taskList.autoConnect.alreadyRunning'));
       }
 
-      // 获取控制器和资源配置
-      const controllerName = selectedController[targetId] || projectInterface?.controller[0]?.name;
-      const resourceName = selectedResource[targetId] || projectInterface?.resource[0]?.name;
+      // 获取控制器和资源配置：必须按 targetInstance 解析，定时任务启动的实例可能不是当前标签页
+      const controllerName =
+        selectedController[targetId] ||
+        targetInstance.controllerName ||
+        projectInterface?.controller[0]?.name;
+      const resourceName =
+        selectedResource[targetId] ||
+        targetInstance.resourceName ||
+        projectInterface?.resource[0]?.name;
 
       // 过滤掉不兼容当前控制器/资源的任务
       const compatibleTasks = tasksToRun.filter((t) => {
@@ -1183,8 +1189,8 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               pipeline_override: generateTaskPipelineOverride(
                 selectedTask,
                 projectInterface,
-                currentControllerName,
-                currentResourceName,
+                controllerName,
+                resourceName,
                 useAppStore.getState().globalOptionValues,
               ),
               selected_task_id: selectedTask.id,
@@ -1236,8 +1242,8 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
           tcpCompatMode,
           piEnvs,
           {
-            name: currentControllerName,
-            type: projectInterface?.controller.find((c) => c.name === currentControllerName)?.type,
+            name: controllerName,
+            type: controller.type,
           },
           collectPasswordPlaintextsFromRunnableTasks(
             runnableTasks,
