@@ -193,6 +193,7 @@ export default {
       restart: '重新啟動',
       screenoff: '關閉螢幕',
       sleep: '睡眠',
+      hibernate: '休眠',
       mute: '靜音',
       unmute: '取消靜音',
     },

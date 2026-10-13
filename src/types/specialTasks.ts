@@ -466,7 +466,7 @@ const MXU_POWER_TASK_DEF_INTERNAL: TaskItem = {
   },
 };
 
-// MXU_POWER 下拉选项定义（关机/重启/息屏/睡眠/静音/解除静音）
+// MXU_POWER 下拉选项定义（关机/重启/息屏/睡眠/休眠/静音/解除静音）
 const MXU_POWER_OPTION_DEF_INTERNAL: SelectOption = {
   type: 'select',
   label: 'specialTask.power.optionLabel',
@@ -511,6 +511,17 @@ const MXU_POWER_OPTION_DEF_INTERNAL: SelectOption = {
         [MXU_POWER_ENTRY]: {
           custom_action_param: {
             power_action: 'sleep',
+          },
+        },
+      },
+    },
+    {
+      name: 'hibernate',
+      label: 'specialTask.power.hibernate',
+      pipeline_override: {
+        [MXU_POWER_ENTRY]: {
+          custom_action_param: {
+            power_action: 'hibernate',
           },
         },
       },
