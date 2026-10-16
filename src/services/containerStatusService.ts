@@ -13,6 +13,8 @@ interface ContainerStateFile {
   current_index?: number;
   accum?: number[];
   progress?: string[];
+  /** 运行内瞬态标记：本次运行因槽位达标而结束（项目侧在下次进入时清除） */
+  rotated_this_battle?: boolean;
 }
 
 const POLL_INTERVAL_MS = 2000;
@@ -39,10 +41,20 @@ async function pollOnce() {
   polling = true;
   let changed = false;
   try {
-    const { readTextFile } = await import('@tauri-apps/plugin-fs');
+    const { exists, readTextFile } = await import('@tauri-apps/plugin-fs');
     for (const def of Object.values(CONTAINER_TASKS)) {
+      const path = stateFilePath(def.stateFile);
       try {
-        const text = await readTextFile(stateFilePath(def.stateFile));
+        // 文件缺失（容器未运行过、被删除或换了基准目录）时使快照失效，
+        // 避免继续用其他位置/上一次运行的过时状态点灯与接力。
+        if (!(await exists(path))) {
+          if (snapshots[def.taskName] !== null) {
+            snapshots[def.taskName] = null;
+            changed = true;
+          }
+          continue;
+        }
+        const text = await readTextFile(path);
         const parsed = parseJsonc<ContainerStateFile>(text);
         const next = parsed && typeof parsed === 'object' ? parsed : null;
         if (JSON.stringify(next) !== JSON.stringify(snapshots[def.taskName] ?? null)) {
@@ -50,7 +62,7 @@ async function pollOnce() {
           changed = true;
         }
       } catch {
-        // 文件尚未生成（容器未运行过）或读取竞争：保留上一条快照
+        // 读取竞争（写入过程中的半截文件等）：保留上一条快照
       }
     }
   } finally {
@@ -68,6 +80,9 @@ export function refreshContainerStatusNow(): Promise<void> {
 export function setContainerStatusBasePath(path: string) {
   if (basePath === path) return;
   basePath = path;
+  // 基准目录变化后旧快照属于其他项目，先作废再重新读取
+  snapshots = {};
+  emit();
   if (path && timer === null) {
     timer = setInterval(() => void pollOnce(), POLL_INTERVAL_MS);
   }
@@ -78,6 +93,18 @@ export function setContainerStatusBasePath(path: string) {
 export function getContainerCurrentIndex(containerTaskName: string): number | undefined {
   const index = snapshots[containerTaskName]?.current_index;
   return typeof index === 'number' ? index : undefined;
+}
+
+/** 状态文件记录的槽位任务名（按槽位顺序；无数据时返回 undefined）。 */
+export function getContainerSlotTaskNames(containerTaskName: string): string[] | undefined {
+  const slots = snapshots[containerTaskName]?.slots;
+  if (!Array.isArray(slots) || slots.length === 0) return undefined;
+  return slots.map((s) => (typeof s?.task === 'string' ? s.task : ''));
+}
+
+/** 本次运行是否因槽位达标而结束（`rotated_this_battle` 标记）。 */
+export function getContainerRotatedThisBattle(containerTaskName: string): boolean {
+  return snapshots[containerTaskName]?.rotated_this_battle === true;
 }
 
 /** 容器的轮换模式（无数据时返回 undefined）。 */

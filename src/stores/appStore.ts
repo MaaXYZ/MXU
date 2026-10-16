@@ -38,7 +38,7 @@ import type {
 } from '@/types/interface';
 import type { ConnectionStatus, TaskStatus } from '@/types/maa';
 import { getMxuSpecialTask, isMxuSpecialTask, MXU_SPECIAL_TASKS } from '@/types/specialTasks';
-import { reconcileContainerTasks } from '@/utils/taskContainer';
+import { planTaskReorder, reconcileContainerTasks } from '@/utils/taskContainer';
 import {
   getPretaskItems,
   pretaskName,
@@ -788,15 +788,8 @@ export const useAppStore = create<AppState>()(
       set((state) => ({
         instances: state.instances.map((i) => {
           if (i.id !== instanceId) return i;
-          const len = i.selectedTasks.length;
-          if (oldIndex < 0 || oldIndex >= len || newIndex < 0 || newIndex >= len) return i;
-          if (oldIndex === newIndex) return i;
-
-          const tasks = [...i.selectedTasks];
-          const [removed] = tasks.splice(oldIndex, 1);
-          tasks.splice(newIndex, 0, removed);
-
-          return { ...i, selectedTasks: tasks };
+          const reordered = planTaskReorder(i.selectedTasks, oldIndex, newIndex);
+          return reordered === i.selectedTasks ? i : { ...i, selectedTasks: reordered };
         }),
       })),
 
@@ -1173,13 +1166,19 @@ export const useAppStore = create<AppState>()(
       const newId = generateId();
       const instanceNumber = state.nextInstanceNumber;
 
+      // 复制任务时同步重映射 parentId（与任务 id 使用同一份映射），
+      // 否则副本里的容器子任务会继续指向源实例的容器，脱离副本容器。
+      const idMap = new Map<string, string>();
+      sourceInstance.selectedTasks.forEach((t) => idMap.set(t.id, generateId()));
+
       const newInstance: Instance = {
         ...sourceInstance,
         id: newId,
         name: `${sourceInstance.name}${i18n.t('common.copySuffix')}`,
         selectedTasks: sourceInstance.selectedTasks.map((t) => ({
           ...t,
-          id: generateId(),
+          id: idMap.get(t.id) as string,
+          parentId: t.parentId ? idMap.get(t.parentId) : undefined,
           enabledByController: t.enabledByController ? { ...t.enabledByController } : undefined,
           optionValues: { ...t.optionValues },
         })),

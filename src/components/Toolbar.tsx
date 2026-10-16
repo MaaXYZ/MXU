@@ -1233,6 +1233,9 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
           const currentChild = children[currentIndex] ?? children[0];
           const childOverrides: unknown[] = [];
           if (currentChild) {
+            // 被容器接管的选项（如执行周期）在子条目中隐藏，其保存值不再合成，
+            // 避免用条目里残留的计划覆盖容器自己的轮换设置。
+            const hiddenKeys = containerDef.childHiddenOptions[currentChild.taskName] ?? [];
             childOverrides.push(
               ...(JSON.parse(
                 generateTaskPipelineOverride(
@@ -1241,6 +1244,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                   controllerName,
                   resourceName,
                   useAppStore.getState().globalOptionValues,
+                  hiddenKeys,
                 ),
               ) as unknown[]),
             );
@@ -1275,6 +1279,29 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
             };
           },
         );
+
+        // 容器子条目的选项会随容器运行一并下发到 pipeline_override（见
+        // buildPipelineOverride），其密码明文必须一并纳入日志脱敏列表。
+        const secretOwnerTasks: RunnableTask[] = [...runnableTasks];
+        for (const runnable of runnableTasks) {
+          if (!getContainerDefinition(runnable.selectedTask.taskName)) continue;
+          for (const child of targetInstance.selectedTasks.filter(
+            (it) => it.parentId === runnable.selectedTask.id,
+          )) {
+            const childSpecialTask = getMxuSpecialTask(child.taskName);
+            const childTaskDef =
+              childSpecialTask?.taskDef ||
+              projectInterface?.task.find((t) => t.name === child.taskName);
+            if (childTaskDef) {
+              secretOwnerTasks.push({
+                taskName: child.taskName,
+                selectedTask: child,
+                taskDef: childTaskDef,
+                specialTask: childSpecialTask,
+              });
+            }
+          }
+        }
 
         // 准备 Agent 配置（支持单个或多个 Agent）
         const agentConfigs = normalizeAgentConfigs(projectInterface?.agent);
@@ -1318,7 +1345,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
             type: controller.type,
           },
           collectPasswordPlaintextsFromRunnableTasks(
-            runnableTasks,
+            secretOwnerTasks,
             useAppStore.getState().globalOptionValues,
             projectInterface?.option ?? {},
           ),

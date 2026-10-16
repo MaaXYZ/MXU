@@ -71,3 +71,42 @@ export function normalizeContainerTasks(tasks: SelectedTask[]): SelectedTask[] {
 export function reconcileContainerTasks(tasks: SelectedTask[]): SelectedTask[] {
   return normalizeContainerTasks(tasks);
 }
+
+/**
+ * 计算任务顺序调整的结果（纯函数）：
+ * - 移动容器时连同其子任务块一起移动。否则容器一旦被拖到子任务行下方，
+ *   下一步归一化会把它当成「子任务在容器之前」而解除关联；
+ * - 其余任务按单元素移动处理（与 splice(oldIndex,1)+splice(newIndex,0) 一致）。
+ *
+ * 无变化时返回原数组引用（便于浅比较）。
+ */
+export function planTaskReorder(
+  tasks: SelectedTask[],
+  oldIndex: number,
+  newIndex: number,
+): SelectedTask[] {
+  const len = tasks.length;
+  if (oldIndex < 0 || oldIndex >= len || newIndex < 0 || newIndex >= len) return tasks;
+  if (oldIndex === newIndex) return tasks;
+
+  const moved = tasks[oldIndex];
+  const def = getContainerDefinition(moved.taskName);
+  if (!def || moved.parentId) {
+    const next = [...tasks];
+    const [removed] = next.splice(oldIndex, 1);
+    next.splice(newIndex, 0, removed);
+    return next;
+  }
+
+  // 容器：整块移动 [容器, ...其子任务]。落点在块内（自身或自己的子任务）时顺序不变。
+  const block = [moved, ...tasks.filter((t) => t.parentId === moved.id)];
+  if (newIndex >= oldIndex && newIndex <= oldIndex + block.length - 1) return tasks;
+
+  const blockIds = new Set(block.map((t) => t.id));
+  const kept = tasks.map((t, index) => ({ t, index })).filter(({ t }) => !blockIds.has(t.id));
+  const before = kept.filter(({ index }) => index < newIndex).length;
+  const insertAt = Math.min(before + (newIndex > oldIndex ? 1 : 0), kept.length);
+  const next = kept.map(({ t }) => t);
+  next.splice(insertAt, 0, ...block);
+  return next;
+}
