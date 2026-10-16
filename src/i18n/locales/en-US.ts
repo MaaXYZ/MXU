@@ -820,6 +820,19 @@ export default {
     resourceNotFound: 'Resource not found',
   },
 
+  // Rotation container
+  container: {
+    emptyHint: 'Drag a supported combat task onto this card to include it in the rotation',
+    childrenCount: 'Rotation container: {{count}} combat task(s) included',
+    releaseChild: 'Remove from container',
+    childStatus: {
+      pending: 'Not started',
+      next: 'Next up',
+      succeeded: 'Completed',
+      failed: 'Failed',
+    },
+  },
+
   // Context Menu
   contextMenu: {
     // Tab context menu
