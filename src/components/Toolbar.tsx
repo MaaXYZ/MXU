@@ -26,8 +26,6 @@ import { getMxuSpecialTask } from '@/types/specialTasks';
 import {
   isPretaskName,
   getPretaskItem,
-  getPretaskItems,
-  pretaskName,
   buildPretaskArgs,
   resolveCompatTaskDef,
 } from '@/types/pretasks';
@@ -42,15 +40,10 @@ import {
   getLinuxDiscoveryNeeds,
   isDesktopWindowControllerType,
 } from '@/utils/controller';
+import { getStartupSteps } from '@/utils/startupSteps';
 import { buildPlayCoverControllerConfig } from '@/utils/playCoverController';
 import { SchedulePanel } from './SchedulePanel';
-import type {
-  Instance,
-  TaskItem,
-  PretaskItem,
-  ControllerItem,
-  SavedDeviceInfo,
-} from '@/types/interface';
+import type { Instance, TaskItem, ControllerItem, SavedDeviceInfo } from '@/types/interface';
 import { resolveI18nText } from '@/services/contentResolver';
 import { getInterfaceLangKey } from '@/i18n';
 import { PermissionModal } from './toolbar/PermissionModal';
@@ -476,128 +469,103 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
         let needsReconnect = false;
         let shouldDelayAfterAdbConnected = false;
 
-        // v2.7.0: 连接 Controller 前执行 pretask（如游戏设置），先于前置程序运行，
-        // 确保诸如注册表写入等操作在应用被前置程序启动之前完成。
-        // pretask 以伪任务形式存在于任务列表中，此处从已启用的兼容任务中筛出，
-        // 并按协议以顶层 pretask 的声明顺序执行，与任务列表中的排列无关。
-        const pretaskOrder = getPretaskItems(projectInterface).map((item) => pretaskName(item));
-        const enabledPretasks = compatibleTasks
-          .filter((task) => isPretaskName(task.taskName))
-          .map((task) => ({ task, item: getPretaskItem(projectInterface, task.taskName) }))
-          .filter((p): p is { task: (typeof compatibleTasks)[0]; item: PretaskItem } => !!p.item)
-          .sort(
-            (a, b) => pretaskOrder.indexOf(a.task.taskName) - pretaskOrder.indexOf(b.task.taskName),
-          );
-
-        if (enabledPretasks.length > 0) {
-          await beginPreActionControl(targetId);
-          try {
-            for (const { task, item } of enabledPretasks) {
-              const args = buildPretaskArgs(
-                item,
-                task.optionValues ?? {},
-                projectInterface,
-                controllerName,
-                resourceName,
-              );
-              const displayName =
-                resolveI18nText(item.label, translations) || item.name || item.exec;
-
-              log.info(`实例 ${targetInstance.name}: 执行预任务:`, item.exec, args);
-              addLog(targetId, {
-                type: 'info',
-                message: t('action.pretaskStarting', { name: displayName }),
-              });
-
-              throwIfPreActionStopped(targetId);
-              const exitCode = await maaService.runPretask(targetId, item.exec, args, basePath);
-              throwIfPreActionStopped(targetId);
-
-              if (exitCode !== 0) {
-                log.warn(`实例 ${targetInstance.name}: 预任务退出码非零:`, exitCode);
-                addLog(targetId, {
-                  type: 'warning',
-                  message: t('action.pretaskExitCode', { code: exitCode }),
-                });
-              } else {
-                addLog(targetId, {
-                  type: 'success',
-                  message: t('action.pretaskCompleted', { name: displayName }),
-                });
-              }
-            }
-          } catch (err) {
-            if ((err instanceof Error ? err.message : String(err)) === PRE_ACTION_CANCELLED_ERROR) {
-              // 取消由外层统一处理，finally 会清理前置控制状态
-              throw err;
-            }
-            log.error(`实例 ${targetInstance.name}: 预任务执行失败:`, err);
-            addLog(targetId, {
-              type: 'error',
-              message: t('action.pretaskFailed', { error: String(err) }),
-            });
-          } finally {
-            await endPreActionControl(targetId);
-          }
-        }
-
-        // 收集所有启用且有程序路径的前置程序，按列表顺序执行
-        const allPreActions = (targetInstance.preActions ?? []).filter(
-          (a) => a.enabled && a.program.trim(),
+        const startupSteps = getStartupSteps(
+          { ...targetInstance, selectedTasks: compatibleTasks },
+          projectInterface,
+        ).filter(
+          (step) => step.type === 'pretask' || (step.item.enabled && step.item.program.trim()),
         );
-        let preActionControlStarted = false;
         let preActionExecuted = false;
 
-        if (allPreActions.length > 0) {
-          preActionControlStarted = true;
+        if (startupSteps.length > 0) {
           await beginPreActionControl(targetId);
-
           try {
-            for (const preAction of allPreActions) {
-              const programPath = preAction.program.trim();
-              const processName = programPath.split(/[/\\]/).pop() || programPath;
-
-              // 检查是否应跳过已运行的前置程序
-              if (preAction.skipIfRunning) {
-                if (await maaService.isProcessRunning(programPath)) {
-                  log.info(`实例 ${targetInstance.name}: 前置程序已在运行，跳过执行:`, processName);
+            for (const step of startupSteps) {
+              throwIfPreActionStopped(targetId);
+              try {
+                if (step.type === 'pretask') {
+                  const task = step.item;
+                  const item = getPretaskItem(projectInterface, task.taskName);
+                  if (!item) continue;
+                  const args = buildPretaskArgs(
+                    item,
+                    task.optionValues ?? {},
+                    projectInterface,
+                    controllerName,
+                    resourceName,
+                  );
+                  const displayName =
+                    resolveI18nText(item.label, translations) || item.name || item.exec;
                   addLog(targetId, {
                     type: 'info',
-                    message: t('action.preActionSkipped', { name: processName }),
+                    message: t('action.pretaskStarting', { name: displayName }),
                   });
-                  continue;
+                  const exitCode = await maaService.runPretask(targetId, item.exec, args, basePath);
+                  throwIfPreActionStopped(targetId);
+                  addLog(
+                    targetId,
+                    exitCode !== 0
+                      ? {
+                          type: 'warning',
+                          message: t('action.pretaskExitCode', { code: exitCode }),
+                        }
+                      : {
+                          type: 'success',
+                          message: t('action.pretaskCompleted', { name: displayName }),
+                        },
+                  );
+                } else {
+                  const preAction = step.item;
+                  const programPath = preAction.program.trim();
+                  const processName = programPath.split(/[\\/]/).pop() || programPath;
+                  if (preAction.skipIfRunning && (await maaService.isProcessRunning(programPath))) {
+                    addLog(targetId, {
+                      type: 'info',
+                      message: t('action.preActionSkipped', { name: processName }),
+                    });
+                    continue;
+                  }
+                  addLog(targetId, {
+                    type: 'info',
+                    message: t('action.preActionStartingNamed', { name: processName }),
+                  });
+                  throwIfPreActionStopped(targetId);
+                  const exitCode = await maaService.runAction(
+                    targetId,
+                    programPath,
+                    preAction.args,
+                    basePath,
+                    preAction.waitForExit ?? true,
+                    preAction.useCmd ?? false,
+                  );
+                  throwIfPreActionStopped(targetId);
+                  preActionExecuted = true;
+                  needsReconnect = true;
+                  addLog(
+                    targetId,
+                    exitCode !== 0
+                      ? {
+                          type: 'warning',
+                          message: t('action.preActionExitCode', { code: exitCode }),
+                        }
+                      : {
+                          type: 'success',
+                          message: t('action.preActionCompletedNamed', { name: processName }),
+                        },
+                  );
                 }
-              }
-
-              log.info(`实例 ${targetInstance.name}: 执行前置动作:`, programPath);
-              addLog(targetId, {
-                type: 'info',
-                message: t('action.preActionStartingNamed', { name: processName }),
-              });
-
-              throwIfPreActionStopped(targetId);
-              const exitCode = await maaService.runAction(
-                targetId,
-                programPath,
-                preAction.args,
-                basePath,
-                preAction.waitForExit ?? true,
-                preAction.useCmd ?? false,
-              );
-              throwIfPreActionStopped(targetId);
-              preActionExecuted = true;
-              needsReconnect = true;
-
-              if (exitCode !== 0) {
-                log.warn(`实例 ${targetInstance.name}: 前置动作退出码非零:`, exitCode);
+              } catch (err) {
+                if (
+                  (err instanceof Error ? err.message : String(err)) === PRE_ACTION_CANCELLED_ERROR
+                )
+                  throw err;
+                log.error(`实例 ${targetInstance.name}: 启动步骤执行失败:`, err);
                 addLog(targetId, {
-                  type: 'warning',
-                  message: t('action.preActionExitCode', { code: exitCode }),
-                });
-              } else {
-                addLog(targetId, {
-                  type: 'success',
-                  message: t('action.preActionCompletedNamed', { name: processName }),
+                  type: 'error',
+                  message: t(
+                    step.type === 'pretask' ? 'action.pretaskFailed' : 'action.preActionFailed',
+                    { error: String(err) },
+                  ),
                 });
               }
             }
@@ -738,19 +706,8 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                 });
               }
             }
-          } catch (err) {
-            if ((err instanceof Error ? err.message : String(err)) === PRE_ACTION_CANCELLED_ERROR) {
-              throw err;
-            }
-            log.error(`实例 ${targetInstance.name}: 前置动作执行失败:`, err);
-            addLog(targetId, {
-              type: 'error',
-              message: t('action.preActionFailed', { error: String(err) }),
-            });
           } finally {
-            if (preActionControlStarted) {
-              await endPreActionControl(targetId);
-            }
+            await endPreActionControl(targetId);
           }
         }
 
