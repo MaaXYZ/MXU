@@ -49,6 +49,8 @@ export default {
     appearance: '외관',
     hotkeys: '단축키',
     general: '일반',
+    scheduledUpdateCheck: '예약 업데이트 확인',
+    scheduledUpdateCheckTime: '매일 확인 시간 (현지 시간)',
     taskSettings: '작업 설정',
     taskSettingsEmpty: '표시할 수 있는 설정 항목이 없습니다',
     language: '언어',
