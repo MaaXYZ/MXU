@@ -206,7 +206,7 @@ export function UpdateSection() {
           isPendingGitHubDownload ||
           noUpdateInfoYet);
 
-      if (shouldTryMirrorChyan) {
+      if (shouldTryMirrorChyan && !useAppStore.getState().updateCheckLoading) {
         if (isDownloadingFromGitHub) {
           addDebugLog('检测到填入 CDK，正在停止 GitHub 下载并切换到 Mirror酱...');
           await cancelDownload();
@@ -315,6 +315,7 @@ export function UpdateSection() {
 
   // 检查更新
   const handleCheckUpdate = async () => {
+    if (useAppStore.getState().updateCheckLoading) return;
     if (!projectInterface?.mirrorchyan_rid || !projectInterface?.version) {
       addDebugLog('未配置 mirrorchyan_rid 或 version，无法检查更新');
       return;

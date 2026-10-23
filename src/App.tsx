@@ -90,7 +90,12 @@ import { WebUIBetaBanner } from './components/app/WebUIBetaBanner';
 import { startGlobalCallbackListener } from './components/connection/callbackCache';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { ScrollText } from 'lucide-react';
-import { defaultConfig, defaultWindowSize, isValidMxuConfig } from '@/types/config';
+import {
+  defaultConfig,
+  defaultScheduledUpdateCheckTime,
+  defaultWindowSize,
+  isValidMxuConfig,
+} from '@/types/config';
 
 const log = loggers.app;
 
@@ -411,7 +416,6 @@ function App() {
   }, []);
 
   const initialized = useRef(false);
-  const scheduledUpdateCheckInProgressRef = useRef(false);
   const downloadStartedRef = useRef(false);
   const pendingAutoTasksRef = useRef(false);
   // 自动任务已分发但尚未完成启动时，也要阻止下载完成触发自动安装。
@@ -556,7 +560,6 @@ function App() {
     const isUpdateBusy = () => {
       const state = useAppStore.getState();
       return (
-        state.updateCheckLoading ||
         state.downloadStatus === 'downloading' ||
         state.downloadStatus === 'completed' ||
         state.installStatus !== 'idle'
@@ -564,9 +567,10 @@ function App() {
     };
 
     const checkForScheduledUpdate = async () => {
-      if (scheduledUpdateCheckInProgressRef.current || isUpdateBusy()) return;
-      scheduledUpdateCheckInProgressRef.current = true;
-      const { mirrorChyanSettings, proxySettings } = useAppStore.getState();
+      const state = useAppStore.getState();
+      if (state.updateCheckLoading || isUpdateBusy()) return;
+      state.setUpdateCheckLoading(true);
+      const { mirrorChyanSettings, proxySettings } = state;
       try {
         log.info('定时检查更新');
         const updateResult = await checkAndPrepareDownload({
@@ -596,7 +600,7 @@ function App() {
       } catch (err) {
         log.warn('定时检查更新失败:', err);
       } finally {
-        scheduledUpdateCheckInProgressRef.current = false;
+        state.setUpdateCheckLoading(false);
       }
     };
 
@@ -768,6 +772,13 @@ function App() {
       // 应用配置
       if (config.instances.length > 0) {
         importConfig(config);
+      } else {
+        // 无实例时单独恢复定时检查偏好
+        const state = useAppStore.getState();
+        state.setScheduledUpdateCheckEnabled(config.settings.scheduledUpdateCheckEnabled === true);
+        state.setScheduledUpdateCheckTime(
+          config.settings.scheduledUpdateCheckTime ?? defaultScheduledUpdateCheckTime,
+        );
       }
 
       // 初始化匿名遥测（仅当 interface 声明了 telemetry.sentry.dsn 且非调试 / 开发版本）
