@@ -399,6 +399,7 @@ export default {
     portal: 'Portal',
     uinputWidth: '宽 (px)',
     uinputHeight: '高 (px)',
+    uinputDimensionsRequired: '请先填写有效的 UInput 屏幕宽度和高度（正整数）',
     playcover: 'PlayCover (macOS)',
     macos: 'macOS 窗口',
     macosPermissionsRequired:

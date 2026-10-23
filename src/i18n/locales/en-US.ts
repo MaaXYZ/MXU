@@ -412,6 +412,8 @@ export default {
     portal: 'Portal',
     uinputWidth: 'Width (px)',
     uinputHeight: 'Height (px)',
+    uinputDimensionsRequired:
+      'Enter valid UInput screen width and height (positive integers) first.',
     playcover: 'PlayCover (macOS)',
     macos: 'macOS Window',
     macosPermissionsRequired:

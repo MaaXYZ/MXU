@@ -407,6 +407,7 @@ export default {
     portal: 'Portal',
     uinputWidth: '幅 (px)',
     uinputHeight: '高さ (px)',
+    uinputDimensionsRequired: 'UInput の画面の幅と高さを正の整数で入力してください。',
     playcover: 'PlayCover (macOS)',
     macos: 'macOS ウィンドウ',
     macosPermissionsRequired:

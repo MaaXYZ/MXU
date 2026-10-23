@@ -402,6 +402,7 @@ export default {
     portal: 'Portal',
     uinputWidth: '너비 (px)',
     uinputHeight: '높이 (px)',
+    uinputDimensionsRequired: 'UInput 화면 너비와 높이를 양의 정수로 먼저 입력하세요.',
     playcover: 'PlayCover (macOS)',
     macos: 'macOS 창',
     macosPermissionsRequired:

@@ -25,6 +25,7 @@ import type { AdbDevice, Win32Window, GamescopeInstance, ControllerConfig } from
 import type { ControllerItem, ResourceItem } from '@/types/interface';
 import { computeResourcePaths } from '@/utils/resourcePath';
 import { buildPlayCoverControllerConfig } from '@/utils/playCoverController';
+import { hasValidUinputDimensions, parseUinputDimension } from '@/utils/linuxUinput';
 import {
   buildDesktopWindowControllerConfig,
   buildLinuxControllerConfig,
@@ -41,14 +42,6 @@ import {
   waitForResResult,
   autoReconnectAttempted,
 } from './connection';
-
-/** 将 uinput 尺寸输入字符串解析为正整数；空串或非法输入返回 undefined */
-function parseUinputDimension(value: string): number | undefined {
-  const trimmed = value.trim();
-  if (!trimmed) return undefined;
-  const n = Number.parseInt(trimmed, 10);
-  return Number.isFinite(n) && n > 0 ? n : undefined;
-}
 
 export function ConnectionPanel() {
   const { t } = useTranslation();
@@ -1040,6 +1033,14 @@ export function ConnectionPanel() {
   // Linux：判断给定选择是否满足当前配置所需的全部设备
   const isLinuxReadyWith = (instance: GamescopeInstance | null, wlr: string | null) => {
     if (!linuxNeeds) return false;
+    if (
+      isUinputInput &&
+      !hasValidUinputDimensions(
+        parseUinputDimension(uinputScreenWidth),
+        parseUinputDimension(uinputScreenHeight),
+      )
+    )
+      return false;
     if (linuxNeeds.needGamescopeNode || linuxNeeds.needEisSocket) {
       if (!instance) return false;
       if (linuxNeeds.needGamescopeNode && instance.pipewire_node_id === 0) return false;
@@ -1055,6 +1056,21 @@ export function ConnectionPanel() {
     setDeviceError(null);
 
     try {
+      const parsedWidth = parseUinputDimension(uinputScreenWidth);
+      const parsedHeight = parseUinputDimension(uinputScreenHeight);
+
+      const config = buildLinuxControllerConfig(
+        currentController,
+        {
+          wlrSocketPath: wlr ?? undefined,
+          pwNodeId: instance?.pipewire_node_id,
+          eisSocketPath: instance?.eis_socket_path || undefined,
+          uinputScreenWidth: parsedWidth,
+          uinputScreenHeight: parsedHeight,
+        },
+        t('controller.uinputDimensionsRequired'),
+      );
+
       if (isConnected) {
         await maaService.destroyInstance(instanceId).catch(() => {});
         setIsConnected(false);
@@ -1067,17 +1083,6 @@ export function ConnectionPanel() {
       }
 
       await maaService.createInstance(instanceId).catch(() => {});
-
-      const parsedWidth = parseUinputDimension(uinputScreenWidth);
-      const parsedHeight = parseUinputDimension(uinputScreenHeight);
-
-      const config = buildLinuxControllerConfig(currentController, {
-        wlrSocketPath: wlr ?? undefined,
-        pwNodeId: instance?.pipewire_node_id,
-        eisSocketPath: instance?.eis_socket_path || undefined,
-        uinputScreenWidth: parsedWidth,
-        uinputScreenHeight: parsedHeight,
-      });
 
       saveLinuxDeviceInfo({
         uinputScreenWidth: parsedWidth,
@@ -1614,7 +1619,12 @@ export function ConnectionPanel() {
                   type="number"
                   min={1}
                   value={uinputScreenWidth}
-                  onChange={(e) => setUinputScreenWidth(e.target.value)}
+                  onChange={(e) => {
+                    setUinputScreenWidth(e.target.value);
+                    saveLinuxDeviceInfo({
+                      uinputScreenWidth: parseUinputDimension(e.target.value),
+                    });
+                  }}
                   placeholder={t('controller.uinputWidth')}
                   disabled={isConnected || isConnecting || isRunning}
                   className={clsx(
@@ -1628,7 +1638,12 @@ export function ConnectionPanel() {
                   type="number"
                   min={1}
                   value={uinputScreenHeight}
-                  onChange={(e) => setUinputScreenHeight(e.target.value)}
+                  onChange={(e) => {
+                    setUinputScreenHeight(e.target.value);
+                    saveLinuxDeviceInfo({
+                      uinputScreenHeight: parseUinputDimension(e.target.value),
+                    });
+                  }}
                   placeholder={t('controller.uinputHeight')}
                   disabled={isConnected || isConnecting || isRunning}
                   className={clsx(

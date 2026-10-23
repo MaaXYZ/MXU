@@ -1290,6 +1290,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
         const cancelled = errMsg === PRE_ACTION_CANCELLED_ERROR;
         if (!cancelled) {
           const localizedErrMsg = errMsg
+            .replace('UINPUT_SCREEN_SIZE_REQUIRED', t('controller.uinputDimensionsRequired'))
             .replace(
               ' [[hint:spawn_file_not_found]]',
               ` ${t('taskList.autoConnect.agentSpawnHintFileNotFound')}`,

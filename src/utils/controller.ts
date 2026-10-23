@@ -1,5 +1,6 @@
 import type { ControllerItem, ControllerType, SavedDeviceInfo } from '@/types/interface';
 import type { AdbDevice, ControllerConfig } from '@/types/maa';
+import { hasValidUinputDimensions } from '@/utils/linuxUinput';
 import {
   LinuxInputMethod,
   LinuxScreencapMethod,
@@ -248,8 +249,15 @@ export function buildLinuxControllerConfig(
     uinputScreenWidth?: number;
     uinputScreenHeight?: number;
   },
+  uinputDimensionsError = 'UINPUT_SCREEN_SIZE_REQUIRED',
 ): ControllerConfig {
   const linux = controller?.linux;
+  if (
+    parseLinuxInputMethod(linux?.input) === LinuxInputMethod.UInput &&
+    !hasValidUinputDimensions(discovery.uinputScreenWidth, discovery.uinputScreenHeight)
+  ) {
+    throw new Error(uinputDimensionsError);
+  }
 
   return {
     type: 'Linux',
