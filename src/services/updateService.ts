@@ -1017,6 +1017,8 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
     const extractDir = joinPath(await dirname(zipPath), 'update_extract');
     // 增量更新失败时 Rust 端已还原为原版本
     let incremental = false;
+    // 文件已写入安装目录：之后的清理失败不再算安装失败
+    let applied = false;
 
     try {
       // 先清理上次可能残留的解压目录，避免历史文件混入本次更新
@@ -1037,6 +1039,10 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
 
       const changesJson = await invoke<ChangesJson | null>('check_changes_json', {
         extractDir,
+      }).catch((e) => {
+        // changes.json 存在但无法解析：仍是增量包，不能当完整包走兜底
+        incremental = true;
+        throw e;
       });
       incremental = changesJson !== null;
 
@@ -1065,6 +1071,8 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
         });
       }
 
+      applied = true;
+
       // 3. 清理临时文件
       onProgress?.('cleanup');
       log.info('清理临时文件...');
@@ -1085,6 +1093,12 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
 
       return true;
     } catch (error) {
+      if (applied) {
+        log.warn('更新已应用，清理临时文件时出错（忽略）:', error);
+        onProgress?.('done');
+        return true;
+      }
+
       log.error('更新安装失败:', error);
 
       if (incremental) {
