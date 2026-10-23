@@ -290,10 +290,14 @@ function InstanceCard({ instanceId, instanceName, isActive, onSelect }: Instance
             try {
               const exitCode = await maaService.runPretask(instanceId, item.exec, args, basePath);
               if (exitCode !== 0) {
+                if (currentControllerName === 'Win32-CloudWeb') {
+                  throw new Error(t('action.pretaskExitCode', { code: exitCode }));
+                }
                 log.warn(`[${instanceName}] 预任务退出码非零: ${exitCode}`);
               }
             } catch (err) {
               log.error(`[${instanceName}] 预任务执行失败:`, err);
+              if (currentControllerName === 'Win32-CloudWeb') throw err;
             }
           }
 

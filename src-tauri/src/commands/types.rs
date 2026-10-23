@@ -2,6 +2,9 @@
 //!
 //! 包含 Tauri 命令使用的数据结构和枚举
 
+#[path = "task_completion.rs"]
+mod task_completion;
+
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::process::Child;
@@ -86,6 +89,11 @@ pub enum ControllerConfig {
         screencap_method: u64,
         mouse_method: u64,
         keyboard_method: u64,
+        #[serde(default)]
+        display_short_side: Option<i32>,
+    },
+    CloudWeb {
+        handle: u64,
         #[serde(default)]
         display_short_side: Option<i32>,
     },
@@ -230,6 +238,9 @@ pub struct AllInstanceStates {
 /// 实例运行时状态（持有 MaaFramework 对象句柄）
 #[derive(Default)]
 pub struct InstanceRuntime {
+    pub pending_tasks: task_completion::TaskCompletion,
+    #[cfg(target_os = "windows")]
+    pub cloud_run: Option<super::maa_core::cloud_web_controller::CloudRun>,
     pub resource: Option<Resource>,
     pub controller: Option<Controller>,
     /// 当前控制器的配置（用于 ControllerPool 引用管理）

@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use tauri::State;
 
 use maa_framework::controller::{AdbControllerBuilder, Controller};
+#[cfg(target_os = "windows")]
 use maa_framework::resource::Resource;
 use maa_framework::tasker::Tasker;
 #[cfg(target_os = "macos")]
@@ -22,6 +23,10 @@ use super::types::{
     VersionCheckResult, Win32Window,
 };
 use super::utils::{emit_callback_event, get_maafw_dir, handle_task_callback, normalize_path};
+
+#[cfg(target_os = "windows")]
+#[path = "cloud_web_controller.rs"]
+pub(super) mod cloud_web_controller;
 
 /// MaaFramework 最小支持版本
 const MIN_MAAFW_VERSION: &str = "5.12.1";
@@ -900,6 +905,26 @@ pub async fn connect_controller_impl(
                 )
                 .map_err(|e| e.to_string())?
             }
+            #[cfg(target_os = "windows")]
+            ControllerConfig::CloudWeb { handle, .. } => {
+                let hwnd = windows::Win32::Foundation::HWND(*handle as *mut _);
+                let mut process_id = 0;
+                unsafe {
+                    windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(
+                        hwnd,
+                        Some(&mut process_id),
+                    );
+                }
+                if process_id == 0 {
+                    return Err("Cloud WebView window process is unavailable".into());
+                }
+                Controller::new_custom(cloud_web_controller::CloudWebController::new(process_id))
+                    .map_err(|e| e.to_string())?
+            }
+            #[cfg(not(target_os = "windows"))]
+            ControllerConfig::CloudWeb { .. } => {
+                return Err("Cloud WebView control is only supported on Windows".into());
+            }
             ControllerConfig::MacOS {
                 handle,
                 screencap_method,
@@ -1029,6 +1054,9 @@ pub async fn connect_controller_impl(
                 display_short_side, ..
             }
             | ControllerConfig::Win32 {
+                display_short_side, ..
+            }
+            | ControllerConfig::CloudWeb {
                 display_short_side, ..
             }
             | ControllerConfig::MacOS {
@@ -1374,27 +1402,43 @@ pub fn run_task_impl(
         return Err("Tasker not initialized even after rebuild".to_string());
     }
 
+    #[cfg(target_os = "windows")]
+    let new_cloud_run = if instance.cloud_run.is_none() {
+        if let Some(ControllerConfig::CloudWeb { handle, .. }) = instance.controller_config.as_ref()
+        {
+            Some(cloud_web_controller::CloudRun::acquire(*handle)?)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
     let job = tasker
         .post_task(entry, pipeline_override)
         .map_err(|e| e.to_string())?;
+    #[cfg(target_os = "windows")]
+    if let Some(lease) = new_cloud_run {
+        instance.cloud_run = Some(lease);
+    }
     let task_id = job.id;
+    instance.pending_tasks.add(task_id);
 
     if !instance.task_ids.contains(&task_id) {
         instance.task_ids.push(task_id);
     }
 
+    let task_run_state = &mut instance.task_run_state;
+    if !task_run_state.pending_task_ids.contains(&task_id) {
+        task_run_state.pending_task_ids.push(task_id);
+    }
+    task_run_state.overall_status = Some("Running".to_string());
     if let Some(selected_task_id) = selected_task_id {
-        let task_run_state = &mut instance.task_run_state;
-        if !task_run_state.pending_task_ids.contains(&task_id) {
-            task_run_state.pending_task_ids.push(task_id);
-        }
         task_run_state
             .mappings
             .insert(task_id, selected_task_id.to_string());
         task_run_state
             .statuses
             .insert(selected_task_id.to_string(), "pending".to_string());
-        task_run_state.overall_status = Some("Running".to_string());
     }
 
     Ok(task_id)
@@ -1479,6 +1523,7 @@ pub fn stop_task_impl(state: &MaaState, instance_id: &str) -> Result<(), String>
     instance.stop_in_progress = true;
     instance.stop_started_at = Some(Instant::now());
     instance.task_ids.clear();
+    instance.pending_tasks.cancel();
 
     // 将剩余 pending 任务标记为 failed，更新整体状态
     {
@@ -1494,7 +1539,22 @@ pub fn stop_task_impl(state: &MaaState, instance_id: &str) -> Result<(), String>
     // 遥测：用户取消，以 cancelled 结束当前运行的 Transaction（幂等，仅首次生效）
     super::telemetry::on_run_cancelled(instance_id);
 
+    #[cfg(target_os = "windows")]
+    if let Some(ControllerConfig::CloudWeb { handle, .. }) = instance.controller_config.as_ref() {
+        cloud_web_controller::cancel_pending(*handle);
+    }
     tasker.post_stop().map_err(|e| e.to_string())?;
+    #[cfg(target_os = "windows")]
+    if let Some(lease) = instance.cloud_run.take() {
+        let tasker = tasker.clone();
+        std::thread::spawn(move || {
+            // Preserve ownership until cancellation and input release finish.
+            while tasker.running() {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            lease.finish();
+        });
+    }
     Ok(())
 }
 

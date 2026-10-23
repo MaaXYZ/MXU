@@ -755,6 +755,9 @@ pub async fn run_pretask(
                 "run_pretask wait cancelled by stop request: {}",
                 instance_id
             );
+            // A cancelled pre-task must not resume input when a cloud queue later
+            // completes. The separately launched browser host stays open.
+            let _ = child.kill();
             std::thread::spawn(move || {
                 let _ = child.wait();
             });

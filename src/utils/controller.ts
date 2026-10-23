@@ -80,6 +80,14 @@ export function buildDesktopWindowControllerConfig(
   controller: ControllerItem | undefined,
   handle: number,
 ): ControllerConfig | null {
+  if (controller?.type === 'Win32' && controller.name === 'Win32-CloudWeb') {
+    return {
+      type: 'CloudWeb',
+      handle,
+      display_short_side: controller.display_short_side,
+    };
+  }
+
   if (controller?.type === 'Win32') {
     return {
       type: 'Win32',

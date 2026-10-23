@@ -514,6 +514,9 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               throwIfPreActionStopped(targetId);
 
               if (exitCode !== 0) {
+                if (controllerName === 'Win32-CloudWeb') {
+                  return failStart(t('action.pretaskExitCode', { code: exitCode }));
+                }
                 log.warn(`实例 ${targetInstance.name}: 预任务退出码非零:`, exitCode);
                 addLog(targetId, {
                   type: 'warning',
@@ -532,6 +535,9 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               throw err;
             }
             log.error(`实例 ${targetInstance.name}: 预任务执行失败:`, err);
+            if (controllerName === 'Win32-CloudWeb') {
+              return failStart(t('action.pretaskFailed', { error: String(err) }));
+            }
             addLog(targetId, {
               type: 'error',
               message: t('action.pretaskFailed', { error: String(err) }),
@@ -970,12 +976,19 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
             // 提前注册回调收集器，await 完成后再发起连接，避免竞态
             const collectedCallbacks: Array<{ message: string; details: { ctrl_id?: number } }> =
               [];
+            let handleConnectionCallback:
+              | ((message: string, details: { ctrl_id?: number }) => void)
+              | undefined;
             const unsubscribe = await maaService.onCallback((message, details) => {
               if (
                 message === 'Controller.Action.Succeeded' ||
                 message === 'Controller.Action.Failed'
               ) {
-                collectedCallbacks.push({ message, details });
+                if (handleConnectionCallback) {
+                  handleConnectionCallback(message, details);
+                } else {
+                  collectedCallbacks.push({ message, details });
+                }
               }
             });
 
@@ -999,7 +1012,6 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                 resolved = true;
                 clearTimeout(timeout);
                 unsubscribe();
-                unlistenCb?.();
                 unlistenState?.();
                 setInstanceConnectionStatus(targetId, 'Connected');
                 resolve(true);
@@ -1010,7 +1022,6 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                 resolved = true;
                 clearTimeout(timeout);
                 unsubscribe();
-                unlistenCb?.();
                 unlistenState?.();
                 resolve(false);
               };
@@ -1022,8 +1033,15 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                 }
               }, 30000);
 
-              // 路径 1：继续监听新的 maa-callback（Controller.Action.Succeeded/Failed）
-              let unlistenCb: (() => void) | undefined;
+              // 复用连接前已注册的监听器，避免重新订阅时遗漏完成通知。
+              handleConnectionCallback = (message, details) => {
+                if (resolved || details.ctrl_id !== ctrlId) return;
+                if (message === 'Controller.Action.Succeeded') {
+                  handleSuccess();
+                } else if (message === 'Controller.Action.Failed') {
+                  handleFailure();
+                }
+              };
               // 路径 2：监听 state-changed（兜底：后端已广播 connected 但 Action.Succeeded 可能因竞态丢失）
               // Tauri 桌面端走 app.emit() → listen()，WebSocket 端走 wsService
               let unlistenState: (() => void) | undefined;
@@ -1039,32 +1057,23 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                 return;
               }
 
-              maaService
-                .onCallback((message, details) => {
-                  if (resolved) return;
-                  if (details.ctrl_id !== ctrlId) return;
-                  if (message === 'Controller.Action.Succeeded') {
-                    handleSuccess();
-                  } else if (message === 'Controller.Action.Failed') {
-                    handleFailure();
-                  }
-                })
-                .then((cb) => {
-                  if (!resolved) {
-                    unlistenCb = cb;
-                  } else {
-                    cb();
-                  }
-                })
-                .catch((err) => {
-                  log.error(`实例 ${targetInstance.name}: 注册 maa-callback 监听失败:`, err);
-                  handleFailure();
-                });
+              const checkConnectionStatus = () => {
+                maaService
+                  .getConnectionStatus(targetId)
+                  .then((status) => {
+                    if (!resolved && status === 'Connected') {
+                      log.info(`实例 ${targetInstance.name}: 后端确认控制器已连接`);
+                      handleSuccess();
+                    }
+                  })
+                  .catch((err) => {
+                    log.warn(`实例 ${targetInstance.name}: 查询连接状态失败:`, err);
+                  });
+              };
               const handleStateChanged = (instanceId: string, kind: string) => {
                 if (resolved) return;
                 if (instanceId === targetId && kind === 'connected') {
-                  log.info(`实例 ${targetInstance.name}: 通过 state-changed 兜底判定连接成功`);
-                  handleSuccess();
+                  checkConnectionStatus();
                 }
               };
 
@@ -1077,13 +1086,18 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                   )
                   .then((dispose) => {
                     if (resolved) dispose();
-                    else unlistenState = dispose;
+                    else {
+                      unlistenState = dispose;
+                      // 连接可能在监听器注册前完成，订阅后查询实际状态补齐这一窗口。
+                      checkConnectionStatus();
+                    }
                   })
                   .catch((err) => {
                     log.warn('注册 state-changed 监听失败:', err);
                   });
               } else {
                 unlistenState = onStateChanged(handleStateChanged);
+                checkConnectionStatus();
               }
             });
           }

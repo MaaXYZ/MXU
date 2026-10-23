@@ -550,6 +550,27 @@ async fn start_single_agent(
     }).await.map_err(|e| e.to_string())?
 }
 
+// Keep newly started agents local until at least one task is accepted.
+// Every earlier return rolls back only this batch, preserving existing agents.
+#[derive(Default)]
+struct PendingAgents {
+    clients: Vec<AgentClient>,
+    children: Vec<std::process::Child>,
+}
+
+impl Drop for PendingAgents {
+    fn drop(&mut self) {
+        for client in &self.clients {
+            let _ = client.disconnect();
+        }
+        self.clients.clear();
+        for child in &mut self.children {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
 /// 启动任务的核心实现（Tauri invoke 和 HTTP handler 共享）
 pub async fn start_tasks_impl(
     app: tauri::AppHandle,
@@ -564,6 +585,9 @@ pub async fn start_tasks_impl(
     controller_info: Option<ControllerInfo>,
 ) -> Result<Vec<i64>, String> {
     info!("start_tasks_impl called");
+    if tasks.is_empty() {
+        return Err("No tasks to submit".to_string());
+    }
 
     info!("instance_id: {}", instance_id);
     info!("tasks: {:?}", tasks);
@@ -578,6 +602,9 @@ pub async fn start_tasks_impl(
             .get_mut(&instance_id)
             .ok_or("Instance not found")?;
         debug!("[start_tasks] Instance found: {}", instance_id);
+        if reset_state && !instance.pending_tasks.is_empty() {
+            return Err("Cannot reset a running task queue".to_string());
+        }
 
         let res = instance
             .resource
@@ -663,16 +690,13 @@ pub async fn start_tasks_impl(
 
     // 启动所有 Agent（如果配置了）
     debug!("[start_tasks] Checking agent configs...");
+    let mut new_agents = PendingAgents::default();
     let pi_envs = Arc::new(pi_envs.unwrap_or_default());
     if let Some(configs) = agent_configs {
         if configs.is_empty() {
             debug!("[start_tasks] Agent configs list is empty, skipping agent setup");
         } else {
             info!("[start_tasks] Starting {} agent(s)...", configs.len());
-
-            // 用于收集所有成功启动的 agent，失败时需要回滚清理
-            let mut new_clients = Vec::new();
-            let mut new_children = Vec::new();
 
             for (idx, config) in configs.iter().enumerate() {
                 let res_clone = resource.clone();
@@ -698,8 +722,8 @@ pub async fn start_tasks_impl(
                 .await
                 {
                     Ok((client, child)) => {
-                        new_clients.push(client);
-                        new_children.push(child);
+                        new_agents.clients.push(client);
+                        new_agents.children.push(child);
                     }
                     Err(e) => {
                         error!(
@@ -707,24 +731,9 @@ pub async fn start_tasks_impl(
                             idx, e
                         );
 
-                        // 回滚：清理已启动的 agent
-                        for client in &new_clients {
-                            let _ = client.disconnect();
-                        }
-                        for mut child in new_children {
-                            let _ = child.kill();
-                            let _ = child.wait();
-                        }
                         return Err(format!("Agent start failed: {}", e));
                     }
                 }
-            }
-
-            // 保存所有 agent 状态到 instance
-            let mut instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
-            if let Some(instance) = instances.get_mut(&instance_id) {
-                instance.agent_clients.extend(new_clients);
-                instance.agent_children.extend(new_children);
             }
 
             info!(
@@ -764,6 +773,23 @@ pub async fn start_tasks_impl(
         let instance = instances
             .get_mut(&instance_id)
             .ok_or("Instance not found")?;
+        #[cfg(target_os = "windows")]
+        let new_cloud_run = if instance.cloud_run.is_none() {
+            if let Some(super::types::ControllerConfig::CloudWeb { handle, .. }) =
+                instance.controller_config.as_ref()
+            {
+                Some(super::maa_core::cloud_web_controller::CloudRun::acquire(
+                    *handle,
+                )?)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        if reset_state && !instance.pending_tasks.is_empty() {
+            return Err("Cannot reset a running task queue".to_string());
+        }
         if reset_state {
             // 首批：重置任务运行状态
             instance.task_ids.clear();
@@ -785,6 +811,7 @@ pub async fn start_tasks_impl(
                 Ok(job) => {
                     info!("[start_tasks] post_task returned task_id: {}", job.id);
                     task_id_pairs.push((job.id, task.selected_task_id.clone()));
+                    instance.pending_tasks.add(job.id);
                     // 立即登记，保证回调不会先于状态
                     let state = &mut instance.task_run_state;
                     state.pending_task_ids.push(job.id);
@@ -812,6 +839,15 @@ pub async fn start_tasks_impl(
                 }
             }
         }
+        if task_id_pairs.is_empty() {
+            return Err("No tasks could be submitted".to_string());
+        }
+        #[cfg(target_os = "windows")]
+        if let Some(lease) = new_cloud_run {
+            instance.cloud_run = Some(lease);
+        }
+        instance.agent_clients.append(&mut new_agents.clients);
+        instance.agent_children.append(&mut new_agents.children);
         let task_ids: Vec<i64> = task_id_pairs.iter().map(|(id, _)| *id).collect();
         task_ids_ret = task_ids.clone();
         debug!(
@@ -884,9 +920,16 @@ pub fn stop_agent_impl(maa_state: &Arc<MaaState>, instance_id: &str) -> Result<(
         )
     };
 
+    stop_agents(clients, children);
+    Ok(())
+}
+
+// Callers detach a completed run's agents while holding the instance lock.
+// Cleanup therefore cannot take agents belonging to a subsequent run.
+pub(super) fn stop_agents(clients: Vec<AgentClient>, children: Vec<std::process::Child>) {
     if clients.is_empty() && children.is_empty() {
         debug!("[stop_agent] No agents to stop");
-        return Ok(());
+        return;
     }
 
     info!(
@@ -936,8 +979,6 @@ pub fn stop_agent_impl(maa_state: &Arc<MaaState>, instance_id: &str) -> Result<(
             }
         }
     });
-
-    Ok(())
 }
 
 /// 停止所有 Agent 并断开连接 — Tauri invoke 入口，委托给 stop_agent_impl

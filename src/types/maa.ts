@@ -47,6 +47,12 @@ export interface Win32ControllerConfig {
   display_short_side?: number;
 }
 
+export interface CloudWebControllerConfig {
+  type: 'CloudWeb';
+  handle: number;
+  display_short_side?: number;
+}
+
 /** macOS 原生窗口控制器配置 */
 export interface MacOSControllerConfig {
   type: 'MacOS';
@@ -99,6 +105,7 @@ export interface GamepadControllerConfig {
 export type ControllerConfig =
   | AdbControllerConfig
   | Win32ControllerConfig
+  | CloudWebControllerConfig
   | MacOSControllerConfig
   | WlRootsControllerConfig
   | LinuxControllerConfig

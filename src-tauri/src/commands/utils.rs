@@ -79,6 +79,7 @@ pub fn handle_task_callback(
         None => return,
     };
 
+    let mut completed_agents = None;
     let all_done = {
         let mut instances = match maa_state.instances.lock() {
             Ok(g) => g,
@@ -88,6 +89,10 @@ pub fn handle_task_callback(
             Some(i) => i,
             None => return,
         };
+        // Ignore callbacks from an older queue and repeated terminal events.
+        if !instance.pending_tasks.contains(task_id) {
+            return;
+        }
         let state = &mut instance.task_run_state;
 
         if is_started {
@@ -107,20 +112,23 @@ pub fn handle_task_callback(
             }
 
             // 检查所有已入队任务是否均已完成
-            let all_completed = state.pending_task_ids.iter().all(|id| {
-                state
-                    .mappings
-                    .get(id)
-                    .and_then(|sel_id| state.statuses.get(sel_id))
-                    .map(|s| s == "succeeded" || s == "failed")
-                    .unwrap_or(false)
-            });
+            let all_completed = instance.pending_tasks.complete(task_id, is_succeeded);
 
             if all_completed {
-                let has_failed = state.statuses.values().any(|s| s == "failed");
+                instance.task_ids.clear();
+                completed_agents = Some((
+                    std::mem::take(&mut instance.agent_clients),
+                    std::mem::take(&mut instance.agent_children),
+                ));
+                let has_failed = instance.pending_tasks.failed();
                 state.overall_status =
                     Some(if has_failed { "Failed" } else { "Succeeded" }.to_string());
-                instance.task_ids.clear();
+                #[cfg(target_os = "windows")]
+                if let Some(lease) = instance.cloud_run.take() {
+                    // Serialize run completion with the next run's acquisition.
+                    // The host checks the lease token before closing.
+                    lease.finish();
+                }
             }
 
             all_completed
@@ -142,12 +150,8 @@ pub fn handle_task_callback(
     if all_done {
         emit_state_changed(app, instance_id, "tasks-completed");
 
-        // 实例内全部任务结束后清理旧 agent，避免 agent 进程跨轮累积
-        if let Err(e) = super::maa_agent::stop_agent_impl(maa_state, instance_id) {
-            log::warn!(
-                "[handle_task_callback] Failed to stop agents after tasks completed: {}",
-                e
-            );
+        if let Some((clients, children)) = completed_agents {
+            super::maa_agent::stop_agents(clients, children);
         }
     }
 }
