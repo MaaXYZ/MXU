@@ -9,7 +9,6 @@ use super::types::WebView2DirInfo;
 use super::utils::get_maafw_dir;
 use clap::Parser;
 use log::info;
-#[cfg(windows)]
 use log::warn;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
