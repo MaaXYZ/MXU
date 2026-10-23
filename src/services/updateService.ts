@@ -1015,6 +1015,8 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
 
     // 生成临时解压目录
     const extractDir = joinPath(await dirname(zipPath), 'update_extract');
+    // 增量更新失败时 Rust 端已还原为原版本
+    let incremental = false;
 
     try {
       // 先清理上次可能残留的解压目录，避免历史文件混入本次更新
@@ -1036,6 +1038,7 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
       const changesJson = await invoke<ChangesJson | null>('check_changes_json', {
         extractDir,
       });
+      incremental = changesJson !== null;
 
       if (changesJson) {
         // 增量更新
@@ -1083,6 +1086,12 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
       return true;
     } catch (error) {
       log.error('更新安装失败:', error);
+
+      if (incremental) {
+        // 安装目录已还原；增量包只含变动的文件，解压到兜底文件夹也无法运行
+        await invoke('cleanup_extract_dir', { extractDir }).catch(() => {});
+        throw error;
+      }
 
       // 兜底逻辑：尝试将新文件解压到 v版本号 文件夹
       try {

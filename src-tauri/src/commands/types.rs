@@ -453,6 +453,10 @@ pub struct ChangesJson {
     pub deleted: Vec<String>,
     #[serde(default)]
     pub modified: Vec<String>,
+    /// 可选：modified 中每个文件在旧版本里的 SHA-256（相对路径 → 小写十六进制）。
+    /// 有它时，本地文件与旧版本不一致就不应用增量包。
+    #[serde(default)]
+    pub base: HashMap<String, String>,
 }
 
 /// 下载进度事件数据
