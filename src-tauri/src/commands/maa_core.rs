@@ -10,7 +10,6 @@ use std::time::{Duration, Instant};
 use tauri::State;
 
 use maa_framework::controller::{AdbControllerBuilder, Controller};
-#[cfg(target_os = "windows")]
 use maa_framework::resource::Resource;
 use maa_framework::tasker::Tasker;
 #[cfg(target_os = "macos")]
