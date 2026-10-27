@@ -14,7 +14,9 @@ use objc2::{
     runtime::{Bool, ProtocolObject},
     sel, AnyThread,
 };
-use objc2_foundation::{NSArray, NSBundle, NSError, NSObject, NSObjectProtocol, NSString, NSUUID};
+use objc2_foundation::{
+    NSArray, NSBundle, NSDate, NSError, NSObject, NSObjectProtocol, NSString, NSUUID,
+};
 use objc2_user_notifications::{
     UNAuthorizationOptions, UNAuthorizationStatus, UNMutableNotificationContent, UNNotification,
     UNNotificationPresentationOptions, UNNotificationRequest, UNNotificationResponse,
@@ -22,11 +24,11 @@ use objc2_user_notifications::{
     UNUserNotificationCenterDelegate,
 };
 
-use super::badge::{BadgeState, ReadAction};
+use super::badge::{BadgeState, DeliveredNotification, ReadAction};
 
 enum BadgeCommand {
     Refresh,
-    ReadAll,
+    ReadThrough(f64),
     ReadOne(String),
     Stop,
 }
@@ -42,7 +44,9 @@ fn badge_command(command: BadgeCommand) {
 }
 
 pub(super) fn mark_all_read() {
-    badge_command(BadgeCommand::ReadAll);
+    badge_command(BadgeCommand::ReadThrough(
+        NSDate::timeIntervalSinceReferenceDate_class(),
+    ));
 }
 
 pub(super) fn stop_badge_monitor() {
@@ -53,20 +57,20 @@ pub(super) fn stop_badge_monitor() {
     }
 }
 
-fn delivered_identifiers() -> Result<Vec<String>, String> {
+fn delivered_notifications() -> Result<Vec<DeliveredNotification>, String> {
     let (tx, rx) = mpsc::channel();
     UNUserNotificationCenter::currentNotificationCenter()
         .getDeliveredNotificationsWithCompletionHandler(&RcBlock::new(
             move |notifications: NonNull<NSArray<UNNotification>>| {
-                // SAFETY: 系统在此回调期间保证数组有效，只复制通知标识。
+                // SAFETY: 系统在此回调期间保证数组有效，只复制标识和实际送达时间。
                 let notifications = unsafe { notifications.as_ref() };
                 let identifiers = (0..notifications.count())
                     .map(|index| {
-                        notifications
-                            .objectAtIndex(index)
-                            .request()
-                            .identifier()
-                            .to_string()
+                        let notification = notifications.objectAtIndex(index);
+                        DeliveredNotification {
+                            id: notification.request().identifier().to_string(),
+                            delivered_at: notification.date().timeIntervalSinceReferenceDate(),
+                        }
                     })
                     .collect();
                 let _ = tx.send(identifiers);
@@ -137,13 +141,13 @@ pub(super) fn start_badge_monitor(
         loop {
             let action = match command {
                 BadgeCommand::Refresh => ReadAction::None,
-                BadgeCommand::ReadAll => ReadAction::All,
+                BadgeCommand::ReadThrough(cutoff) => ReadAction::Through(cutoff),
                 BadgeCommand::ReadOne(id) => ReadAction::One(id),
                 BadgeCommand::Stop => break,
             };
             // 查询和写入串行完成，避免旧的异步结果把刚清除的角标重新写回。
             let result = autoreleasepool(|_| -> Result<(), String> {
-                let unread = state.synchronize(delivered_identifiers()?, action);
+                let unread = state.synchronize(delivered_notifications()?, action);
                 let allowed = badge_allowed()?;
                 let count = if allowed { unread } else { 0 };
                 if last_badge != Some((count, allowed)) {

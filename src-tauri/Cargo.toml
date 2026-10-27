@@ -75,6 +75,7 @@ debug = true
 [target.'cfg(windows)'.dependencies]
 dunce = "1"
 image = { version = "0.25", default-features = false, features = ["png", "ico"] }
+tempfile = "3"
 winsafe = { version = "0.0.28", features = [
     "advapi",
     "kernel",
@@ -97,5 +98,5 @@ windows = { version = "0.61.3", features = [
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSBundle", "NSError", "NSValue", "NSObject", "NSString", "NSUUID"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSBundle", "NSDate", "NSError", "NSValue", "NSObject", "NSString", "NSUUID"] }
 objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "block2", "UNNotification", "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotificationSettings", "UNNotificationSound", "UNNotificationTrigger", "UNUserNotificationCenter"] }
