@@ -24,3 +24,21 @@ Release 程序默认自提权，因此验证 Release 时请使用管理员 Power
 最后一个用例需要包含已构建前端的 Release 程序。
 
 脚本只操作自己启动的测试 PID。失败时保留日志、结果 JSON 和超时转储；转储可能包含内存中的敏感信息，请勿直接公开上传。
+
+## 系统通知回归验证
+
+在 Windows 交互式桌面的项目根目录执行，可分别在普通权限和管理员 PowerShell 中验证：
+
+```powershell
+cargo test --manifest-path src-tauri/Cargo.toml --lib commands::notification::windows::tests --locked -- --include-ignored --nocapture
+```
+
+测试覆盖中文与 XML 特殊字符、空正文，以及未安装的独立程序首次发送通知。最后一项会实际发送系统通知，并核对 Windows 通知历史中的标题和正文，以及来源名称和图标的注册类型；使用本次测试独有的应用标识，结束后清理测试通知、图标缓存与注册信息。它默认被忽略，普通 `cargo test` 不会弹通知。
+
+项目名称、国际化图标路径、ICO 转 PNG 和无效图标回退的测试：
+
+```powershell
+cargo test --manifest-path src-tauri/Cargo.toml --lib commands::notification::branding --locked
+```
+
+设置环境变量 `MXU_NOTIFICATION_PREVIEW=1` 后运行通知测试，会保留测试通知 15 秒供目视检查。弹窗左上角应显示 MXU 彩色图标和来源名 `MXU notification test`，而非 `com.misteo.mxu...`。实际应用的来源名称和图标来自 `interface.json` 的 `name` / `icon`；未配置时回退为 `mxu` 和 MXU 内置图标。

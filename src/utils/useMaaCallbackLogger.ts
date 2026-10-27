@@ -52,8 +52,7 @@ function htmlToPlainText(html: string): string {
 
 /**
  * v2.3.0: notification 渠道使用系统通知，toast 使用应用内轻提示。
- * Tauri 桌面端经 Rust 侧 notify-rust 发送（WebView2 的 Web Notification API
- * 权限恒为 denied 且无权限弹窗，直接调用会静默失效）；
+ * Tauri 桌面端通过统一的 Rust 通知入口发送，并将富文本转换为纯文本；
  * Web 端保留浏览器 Notification API。
  */
 async function dispatchFocusNotification(message: string) {
@@ -63,6 +62,7 @@ async function dispatchFocusNotification(message: string) {
       await invoke('send_system_notification', { title: 'MXU', body: htmlToPlainText(message) });
       return;
     }
+
     if (!('Notification' in window)) return;
     if (Notification.permission === 'granted') {
       new Notification('MXU', { body: htmlToPlainText(message) });
