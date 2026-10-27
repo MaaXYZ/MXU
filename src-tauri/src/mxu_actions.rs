@@ -382,9 +382,9 @@ const MXU_NOTIFY_ACTION: &str = "MXU_NOTIFY_ACTION";
 fn mxu_notify_action_fn(
     _ctx: &maa_framework::context::Context,
     args: &maa_framework::custom::ActionArgs,
+    app_handle: &AppHandle,
 ) -> bool {
     let param_str = args.param;
-    info!("[MXU_NOTIFY] Received param: {}", param_str);
 
     let json: serde_json::Value = match serde_json::from_str(param_str) {
         Ok(v) => v,
@@ -406,25 +406,7 @@ fn mxu_notify_action_fn(
         .unwrap_or("")
         .to_string();
 
-    info!(
-        "[MXU_NOTIFY] Sending notification: title={}, body={}",
-        title, body
-    );
-
-    match notify_rust::Notification::new()
-        .summary(&title)
-        .body(&body)
-        .show()
-    {
-        Ok(_) => {
-            info!("[MXU_NOTIFY] Notification sent successfully");
-            true
-        }
-        Err(e) => {
-            log::error!("[MXU_NOTIFY] Failed to send notification: {}", e);
-            false
-        }
-    }
+    crate::commands::notification::send_notification(app_handle, &title, &body).is_ok()
 }
 
 // ============================================================================
@@ -1084,7 +1066,12 @@ pub fn register_all_mxu_actions(
     reg_action!(MXU_WAITUNTIL_ACTION, mxu_waituntil_action_fn);
     reg_action!(MXU_LAUNCH_ACTION, mxu_launch_action_fn);
     reg_action!(MXU_WEBHOOK_ACTION, mxu_webhook_action_fn);
-    reg_action!(MXU_NOTIFY_ACTION, mxu_notify_action_fn);
+    let notify_app_handle = app_handle.clone();
+    let notify_action = move |ctx: &maa_framework::context::Context,
+                              args: &maa_framework::custom::ActionArgs| {
+        mxu_notify_action_fn(ctx, args, &notify_app_handle)
+    };
+    reg_action!(MXU_NOTIFY_ACTION, notify_action);
     reg_action!(MXU_POWER_ACTION, mxu_power_action_fn);
 
     let killproc_app_handle = app_handle.clone();
