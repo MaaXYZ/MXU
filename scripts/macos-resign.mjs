@@ -2,10 +2,14 @@
 // Run after quitting the app. This is local ad-hoc signing, not distribution signing.
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
-import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { applyBundleLayout, planBundleLayout } from './macos-bundle-layout.mjs';
+import {
+  acquireBundleLock,
+  beginBundleRepair,
+  recoverBundleRepair,
+} from './macos-bundle-state.mjs';
 
 const CODESIGN = '/usr/bin/codesign';
 const PLIST_BUDDY = '/usr/libexec/PlistBuddy';
@@ -16,6 +20,7 @@ export function repairMacosBundle(
     platform = process.platform,
     run = spawnSync,
     repairLayout = false,
+    entitlements,
     fileSystem = fs,
     onProgress = () => {},
   } = {},
@@ -26,9 +31,35 @@ export function repairMacosBundle(
   if (!bundle.endsWith('.app') || !statSync(bundle).isDirectory()) {
     throw new Error('Specify an existing .app bundle.');
   }
+  const release = acquireBundleLock(bundle, fileSystem);
+  try {
+    recoverBundleRepair(bundle, fileSystem, onProgress);
+    return repairLockedBundle(bundle, {
+      run,
+      repairLayout,
+      entitlements,
+      fileSystem,
+      onProgress,
+      lockFd: release.fd,
+    });
+  } finally {
+    release();
+  }
+}
+
+function repairLockedBundle(
+  bundle,
+  { run, repairLayout, entitlements, fileSystem, onProgress, lockFd },
+) {
+  const { realpathSync, statSync } = fileSystem;
 
   const invoke = (program, args, allowFailure = false) => {
-    const result = run(program, args, { encoding: 'utf8', shell: false });
+    // 子进程也持有锁：即使父进程被终止，尚未结束的 codesign 仍排斥另一轮修复。
+    const result = run(program, args, {
+      encoding: 'utf8',
+      shell: false,
+      stdio: ['pipe', 'pipe', 'pipe', lockFd],
+    });
     if (result.error) throw result.error;
     if (result.signal) throw new Error(`${program} was interrupted by ${result.signal}.`);
     if (!allowFailure && result.status !== 0) {
@@ -66,9 +97,7 @@ export function repairMacosBundle(
     return identifier;
   };
 
-  if (verify().status === 0 && signedIdentifier() === bundleId) {
-    return { bundle, bundleId, resigned: false };
-  }
+  const alreadyValid = verify().status === 0 && signedIdentifier() === bundleId;
 
   const isCode = (path) => {
     const fd = fileSystem.openSync(path, 'r');
@@ -93,6 +122,7 @@ export function repairMacosBundle(
   };
   onProgress('Inspecting the app bundle layout...');
   const plan = planBundleLayout(bundle, executableName, isCode, fileSystem);
+  if (alreadyValid && !entitlements) return { bundle, bundleId, resigned: false };
   if (plan.moves.length && !repairLayout) {
     throw new Error(
       `Data files are stored in Contents/MacOS (${plan.moves
@@ -114,6 +144,21 @@ export function repairMacosBundle(
     }
   }
 
+  // 替换可执行文件后旧宿主权限已无法推断；允许调用方明确提供保存的权限文件。
+  let entitlementBytes;
+  if (entitlements) {
+    const path = realpathSync(entitlements);
+    invoke('/usr/bin/plutil', ['-lint', path]);
+    entitlementBytes = fileSystem.readFileSync(path);
+  } else {
+    const current = invoke(CODESIGN, ['--display', '--entitlements', ':-', executable], true);
+    if (current.status !== 0 || /<key(?:\s|>)/.test(current.stdout || '')) {
+      throw new Error(
+        'Cannot preserve host entitlements implicitly. Supply the original host entitlements with --entitlements /path/to/entitlements.plist before re-signing.',
+      );
+    }
+  }
+
   const signature = join(bundle, 'Contents', '_CodeSignature');
   let signatureStat;
   try {
@@ -124,23 +169,24 @@ export function repairMacosBundle(
   if (signatureStat && (!signatureStat.isDirectory() || signatureStat.isSymbolicLink())) {
     throw new Error('The bundle signature location must be a real directory.');
   }
-  const backup = fileSystem.mkdtempSync(join(tmpdir(), 'mxu-bundle-signing-'));
-  let transaction;
-  let signingStarted = false;
-  let keepBackup = false;
+  const transaction = beginBundleRepair(bundle, executable, !!signatureStat, plan, fileSystem);
   try {
-    fileSystem.copyFileSync(executable, join(backup, 'executable'));
-    if (signatureStat) fileSystem.cpSync(signature, join(backup, 'signature'), { recursive: true });
-    onProgress(`Recovery copy: ${backup}`);
+    onProgress(`Recovery copy: ${transaction.directory}`);
     for (const move of plan.moves) {
       onProgress(
         `Relocate ${relative(bundle, move.source)} -> ${relative(bundle, move.destination)}`,
       );
     }
-    transaction = applyBundleLayout(plan, fileSystem);
+    applyBundleLayout(plan, fileSystem, transaction.save);
     // Signing only the outer app seals resources and binds Info.plist; no --deep re-signing of agents.
-    signingStarted = true;
-    invoke(CODESIGN, ['--force', '--sign', '-', '--identifier', bundleId, bundle]);
+    const signingArgs = ['--force', '--sign', '-', '--identifier', bundleId];
+    if (entitlementBytes) {
+      const path = join(transaction.directory, 'entitlements.plist');
+      fileSystem.writeFileSync(path, entitlementBytes);
+      signingArgs.push('--entitlements', path);
+    }
+    transaction.markSigning();
+    invoke(CODESIGN, [...signingArgs, bundle]);
     const verification = verify();
     if (verification.status !== 0) {
       throw new Error(
@@ -150,48 +196,42 @@ export function repairMacosBundle(
     if (signedIdentifier() !== bundleId) {
       throw new Error('The signing identifier still does not match CFBundleIdentifier.');
     }
+    transaction.commit();
     return { bundle, bundleId, resigned: true, relocated: plan.moves.length };
   } catch (error) {
-    const recoveryErrors = [];
-    if (signingStarted) {
-      try {
-        fileSystem.copyFileSync(join(backup, 'executable'), executable);
-        fileSystem.rmSync(signature, { recursive: true, force: true });
-        if (signatureStat)
-          fileSystem.cpSync(join(backup, 'signature'), signature, { recursive: true });
-      } catch (restoreError) {
-        recoveryErrors.push(restoreError);
-      }
-    }
     try {
-      transaction?.rollback();
+      transaction.rollback();
     } catch (restoreError) {
-      recoveryErrors.push(restoreError);
-    }
-    if (recoveryErrors.length || (error instanceof AggregateError && !transaction)) {
-      keepBackup = true;
       throw new AggregateError(
-        [error, ...recoveryErrors],
-        `Repair failed; recovery copy retained at ${backup}`,
+        [error, restoreError],
+        `Repair failed; recovery copy retained at ${transaction.directory}. Re-run the same repair command to recover before signing.`,
       );
     }
     throw error;
-  } finally {
-    if (!keepBackup) fileSystem.rmSync(backup, { recursive: true, force: true });
   }
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
   try {
     const args = process.argv.slice(2);
-    const repairLayout = args[0] === '--repair-layout';
-    if (repairLayout) args.shift();
+    let repairLayout = false;
+    let entitlements;
+    while (args[0]?.startsWith('--')) {
+      const option = args.shift();
+      if (option === '--repair-layout') repairLayout = true;
+      else if (option === '--entitlements' && args[0]) entitlements = args.shift();
+      else throw new Error(`Unknown or incomplete option: ${option}`);
+    }
     if (args.length !== 1) {
       throw new Error(
-        'Usage: node scripts/macos-resign.mjs [--repair-layout] /path/to/YourApp.app (quit the app first)',
+        'Usage: node scripts/macos-resign.mjs [--repair-layout] [--entitlements /path/to/entitlements.plist] /path/to/YourApp.app (quit the app first)',
       );
     }
-    const result = repairMacosBundle(args[0], { repairLayout, onProgress: console.log });
+    const result = repairMacosBundle(args[0], {
+      repairLayout,
+      entitlements,
+      onProgress: console.log,
+    });
     console.log(
       `${result.resigned ? 'Re-signed and verified' : 'Signature already valid'}: ${result.bundle}`,
     );

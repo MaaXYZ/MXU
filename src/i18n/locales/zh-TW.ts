@@ -710,6 +710,8 @@ export default {
     installing: '正在安裝更新...',
     installComplete: '安裝完成',
     installFailed: '安裝失敗',
+    signedAppUpdateUnsupported:
+      '無法在應用程式內覆寫更新 macOS 應用程式套件。請結束應用程式並安裝完整的新版本；手動替換檔案後需重新簽署。已下載的更新套件會保留。',
     installNow: '立即安裝',
     installUpdate: '安裝更新',
     installStages: {

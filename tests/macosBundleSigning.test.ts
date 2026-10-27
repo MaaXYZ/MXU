@@ -3,9 +3,39 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { repairMacosBundle } from '../scripts/macos-resign.mjs';
+import { repairMacosBundle as repairBundle } from '../scripts/macos-resign.mjs';
+import { applyBundleLayout, planBundleLayout } from '../scripts/macos-bundle-layout.mjs';
+import { beginBundleRepair } from '../scripts/macos-bundle-state.mjs';
+import { acquireBundleLock } from '../scripts/macos-bundle-state.mjs';
+import { spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 import * as fs from 'node:fs';
 import { dirname, resolve } from 'node:path';
+
+const heldLocks = new Set<string>();
+function repairMacosBundle(bundlePath: string, options: Parameters<typeof repairBundle>[1] = {}) {
+  if (process.platform === 'darwin') return repairBundle(bundlePath, options);
+  const base = options.fileSystem ?? fs;
+  const descriptors = new Map<number, string>();
+  const fileSystem = {
+    ...base,
+    openSync(path: string, flags: string | number, mode?: number) {
+      if (!String(path).endsWith('.mxu-repair.lock')) return base.openSync(path, flags, mode);
+      if (heldLocks.has(path)) throw Object.assign(new Error('busy'), { code: 'EAGAIN' });
+      const fd = fs.openSync(path, 'a+', mode);
+      heldLocks.add(path);
+      descriptors.set(fd, path);
+      return fd;
+    },
+    closeSync(fd: number) {
+      base.closeSync(fd);
+      const path = descriptors.get(fd);
+      if (path) heldLocks.delete(path);
+      descriptors.delete(fd);
+    },
+  };
+  return repairBundle(bundlePath, { ...options, fileSystem });
+}
 
 function fixture(t: { after: (fn: () => void) => void }) {
   const root = mkdtempSync(join(tmpdir(), 'mxu-signing-test-'));
@@ -26,6 +56,7 @@ function codesignStub(
     signStatus?: number;
     executableName?: string;
     displayStatus?: number;
+    entitlementsBefore?: string;
   } = {},
 ) {
   let signed = false;
@@ -46,6 +77,7 @@ function codesignStub(
     if (program === '/usr/bin/file') {
       return { status: 0, stdout: 'Mach-O 64-bit executable arm64', stderr: '' };
     }
+    if (program === '/usr/bin/plutil') return { status: 0, stdout: 'OK', stderr: '' };
     assert.equal(program, '/usr/bin/codesign');
     if (args[0] === '--verify') {
       if (!args.at(-1)?.endsWith('.app')) return { status: 0, stdout: '', stderr: '' };
@@ -57,6 +89,9 @@ function codesignStub(
       };
     }
     if (args[0] === '--display') {
+      if (args.includes('--entitlements')) {
+        return { status: 0, stdout: options.entitlementsBefore ?? '', stderr: '' };
+      }
       const identifier = signed
         ? (options.identifierAfter ?? 'com.maaend.app')
         : (options.identifierBefore ?? 'mxu-1c20cadb94bd224c');
@@ -127,15 +162,15 @@ function layoutFs() {
 function portableLayout(bundle: string) {
   const macos = join(bundle, 'Contents', 'MacOS');
   const resources = join(bundle, 'Contents', 'Resources');
-  mkdirSync(join(macos, 'config'));
-  writeFileSync(join(macos, 'config', 'maa_option.json'), '{"saved":true}');
+  mkdirSync(join(macos, 'locales'));
+  writeFileSync(join(macos, 'locales', 'zh_cn.json'), '{"saved":true}');
   mkdirSync(join(macos, 'resource'));
   writeFileSync(join(macos, 'resource', 'model.onnx'), 'model bytes');
   writeFileSync(join(macos, 'interface.json'), '{"name":"MaaEnd"}');
   mkdirSync(join(macos, 'agent'));
   const native = Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 1, 2, 3, 4]);
   writeFileSync(join(macos, 'agent', 'go-service'), native);
-  writeFileSync(join(macos, 'agent', 'config.json'), '{"agent":true}');
+  writeFileSync(join(macos, 'agent', 'schema.json'), '{"agent":true}');
   mkdirSync(resources);
   writeFileSync(join(resources, 'maaend.icns'), 'original icon');
   return { macos, resources, native };
@@ -153,9 +188,9 @@ test('portable data is moved out of MacOS while native agent paths and resource 
     fileSystem,
   });
   assert.equal(result.relocated, 4);
-  assert.equal(fs.readFileSync(join(macos, 'config', 'maa_option.json'), 'utf8'), '{"saved":true}');
+  assert.equal(fs.readFileSync(join(macos, 'locales', 'zh_cn.json'), 'utf8'), '{"saved":true}');
   assert.equal(
-    fs.readFileSync(join(resources, 'MXU-portable', 'config', 'maa_option.json'), 'utf8'),
+    fs.readFileSync(join(resources, 'MXU-portable', 'locales', 'zh_cn.json'), 'utf8'),
     '{"saved":true}',
   );
   assert.equal(fs.readFileSync(join(macos, 'interface.json'), 'utf8'), '{"name":"MaaEnd"}');
@@ -165,7 +200,7 @@ test('portable data is moved out of MacOS while native agent paths and resource 
   );
   assert.deepEqual(fs.readFileSync(join(macos, 'agent', 'go-service')), native);
   assert.equal(fileSystem.lstatSync(join(macos, 'agent', 'go-service')).isSymbolicLink(), false);
-  assert.equal(fs.readFileSync(join(macos, 'agent', 'config.json'), 'utf8'), '{"agent":true}');
+  assert.equal(fs.readFileSync(join(macos, 'agent', 'schema.json'), 'utf8'), '{"agent":true}');
   assert.equal(fs.readFileSync(join(resources, 'maaend.icns'), 'utf8'), 'original icon');
   assert.ok(
     tools.calls
@@ -193,7 +228,7 @@ test('portable layouts require an explicit repair option before any signing muta
     tools.calls.some(({ args }) => args[0] === '--force'),
     false,
   );
-  assert.equal(fs.readFileSync(join(macos, 'config', 'maa_option.json'), 'utf8'), '{"saved":true}');
+  assert.equal(fs.readFileSync(join(macos, 'locales', 'zh_cn.json'), 'utf8'), '{"saved":true}');
 });
 
 test('unsigned nested code is reported before resources are relocated', (t) => {
@@ -217,7 +252,7 @@ test('unsigned nested code is reported before resources are relocated', (t) => {
     /Nested code must have a valid signature/,
   );
   assert.equal(fs.existsSync(join(resources, 'MXU-portable')), false);
-  assert.equal(fs.readFileSync(join(macos, 'config', 'maa_option.json'), 'utf8'), '{"saved":true}');
+  assert.equal(fs.readFileSync(join(macos, 'locales', 'zh_cn.json'), 'utf8'), '{"saved":true}');
 });
 
 test('CAFEBABE data is not mistaken for a universal Mach-O executable', (t) => {
@@ -235,15 +270,15 @@ test('CAFEBABE data is not mistaken for a universal Mach-O executable', (t) => {
   };
   const fileSystem = layoutFs();
   repairMacosBundle(bundle, { platform: 'darwin', run, repairLayout: true, fileSystem });
-  assert.equal(fileSystem.lstatSync(join(macos, 'resource')).isSymbolicLink(), true);
+  assert.equal(fileSystem.lstatSync(join(macos, 'resource', 'model.onnx')).isSymbolicLink(), true);
   assert.deepEqual(fs.readFileSync(javaClass), bytes);
 });
 
 test('layout conflicts are detected before moving any resource', (t) => {
   const bundle = fixture(t);
   const { macos, resources } = portableLayout(bundle);
-  mkdirSync(join(resources, 'MXU-portable', 'config'), { recursive: true });
-  writeFileSync(join(resources, 'MXU-portable', 'config', 'keep.txt'), 'do not overwrite');
+  mkdirSync(join(resources, 'MXU-portable', 'locales'), { recursive: true });
+  writeFileSync(join(resources, 'MXU-portable', 'locales', 'zh_cn.json'), 'do not overwrite');
   assert.throws(
     () =>
       repairMacosBundle(bundle, {
@@ -254,9 +289,9 @@ test('layout conflicts are detected before moving any resource', (t) => {
       }),
     /overwrite existing resource/,
   );
-  assert.equal(fs.readFileSync(join(macos, 'agent', 'config.json'), 'utf8'), '{"agent":true}');
+  assert.equal(fs.readFileSync(join(macos, 'agent', 'schema.json'), 'utf8'), '{"agent":true}');
   assert.equal(
-    fs.readFileSync(join(resources, 'MXU-portable', 'config', 'keep.txt'), 'utf8'),
+    fs.readFileSync(join(resources, 'MXU-portable', 'locales', 'zh_cn.json'), 'utf8'),
     'do not overwrite',
   );
 });
@@ -281,8 +316,8 @@ test('a failed link creation restores all moved resources', (t) => {
       }),
     /injected link failure/,
   );
-  assert.equal(fileSystem.lstatSync(join(macos, 'config')).isSymbolicLink(), false);
-  assert.equal(fs.readFileSync(join(macos, 'agent', 'config.json'), 'utf8'), '{"agent":true}');
+  assert.equal(fileSystem.lstatSync(join(macos, 'locales')).isSymbolicLink(), false);
+  assert.equal(fs.readFileSync(join(macos, 'agent', 'schema.json'), 'utf8'), '{"agent":true}');
   assert.equal(fs.existsSync(join(resources, 'MXU-portable')), false);
 });
 
@@ -308,8 +343,8 @@ test('a failed codesign restores the executable, signature files and original re
   );
   assert.equal(fs.readFileSync(join(macos, 'MaaEnd'), 'utf8'), 'test executable');
   assert.equal(fs.readFileSync(join(signature, 'CodeResources'), 'utf8'), 'old seal');
-  assert.equal(fs.readFileSync(join(macos, 'config', 'maa_option.json'), 'utf8'), '{"saved":true}');
-  assert.equal(fileSystem.lstatSync(join(macos, 'config')).isSymbolicLink(), false);
+  assert.equal(fs.readFileSync(join(macos, 'locales', 'zh_cn.json'), 'utf8'), '{"saved":true}');
+  assert.equal(fileSystem.lstatSync(join(macos, 'locales')).isSymbolicLink(), false);
   assert.equal(fs.existsSync(join(resources, 'MXU-portable')), false);
 });
 
@@ -404,3 +439,217 @@ test('does not re-sign when a valid signature cannot be inspected', (t) => {
     false,
   );
 });
+
+test('refuses known mutable data before sealing resources, including previously migrated data', (t) => {
+  for (const path of ['config', 'data', 'debug', 'cache', 'logs', 'resource/state.sqlite']) {
+    const bundle = fixture(t);
+    const mutable = join(bundle, 'Contents', 'MacOS', path);
+    mkdirSync(dirname(mutable), { recursive: true });
+    writeFileSync(mutable, 'runtime data');
+    const tools = codesignStub();
+    assert.throws(
+      () => repairMacosBundle(bundle, { platform: 'darwin', run: tools.run, repairLayout: true }),
+      /Mutable data/,
+    );
+    assert.equal(fs.readFileSync(mutable, 'utf8'), 'runtime data');
+    assert.equal(
+      tools.calls.some(({ args }) => args[0] === '--force'),
+      false,
+    );
+  }
+  const bundle = fixture(t);
+  const mutable = join(bundle, 'Contents', 'Resources', 'MXU-portable', 'config');
+  mkdirSync(mutable, { recursive: true });
+  writeFileSync(join(mutable, 'maa_option.json'), '{}');
+  assert.throws(
+    () =>
+      repairMacosBundle(bundle, {
+        platform: 'darwin',
+        run: codesignStub().run,
+        repairLayout: true,
+      }),
+    /Mutable data/,
+  );
+});
+
+test('host entitlements require an explicit file and are passed unchanged to signing', (t) => {
+  const bundle = fixture(t);
+  const entitlements =
+    '<plist><dict><key>com.apple.security.cs.allow-jit</key><true/></dict></plist>';
+  const tools = codesignStub({ entitlementsBefore: entitlements });
+  assert.throws(
+    () => repairMacosBundle(bundle, { platform: 'darwin', run: tools.run }),
+    /--entitlements/,
+  );
+  assert.equal(
+    tools.calls.some(({ args }) => args[0] === '--force'),
+    false,
+  );
+  const path = join(dirname(bundle), 'host entitlements.plist');
+  writeFileSync(path, entitlements);
+  const signing = codesignStub();
+  let applied = false;
+  const run = (...args: Parameters<typeof signing.run>) => {
+    if (args[1][0] === '--force') {
+      const index = args[1].indexOf('--entitlements');
+      assert.ok(index > 0);
+      assert.equal(fs.readFileSync(args[1][index + 1], 'utf8'), entitlements);
+      applied = true;
+    }
+    return signing.run(...args);
+  };
+  repairMacosBundle(bundle, { platform: 'darwin', run, entitlements: path });
+  assert.equal(applied, true);
+});
+
+test('an overlapping repair is rejected before it can snapshot or overwrite a successful signature', (t) => {
+  const bundle = fixture(t);
+  const tools = codesignStub();
+  const competitor = codesignStub();
+  const executable = join(bundle, 'Contents', 'MacOS', 'MaaEnd');
+  const run = (...args: Parameters<typeof tools.run>) => {
+    if (args[1][0] === '--force') {
+      writeFileSync(executable, 'new valid signature');
+      assert.throws(
+        () => repairMacosBundle(bundle, { platform: 'darwin', run: competitor.run }),
+        /Another repair/,
+      );
+      assert.equal(competitor.calls.length, 0);
+    }
+    return tools.run(...args);
+  };
+  repairMacosBundle(bundle, { platform: 'darwin', run });
+  assert.equal(fs.readFileSync(executable, 'utf8'), 'new valid signature');
+});
+
+test('a resource created between planning and linking is never overwritten or removed', (t) => {
+  const bundle = fixture(t);
+  const { macos, resources } = portableLayout(bundle);
+  const destination = join(resources, 'MXU-portable', 'interface.json');
+  const fileSystem = layoutFs();
+  const link = fileSystem.linkSync;
+  fileSystem.linkSync = ((source: string, target: string) => {
+    if (target === destination) writeFileSync(destination, 'concurrent resource', { flag: 'wx' });
+    link(source, target);
+  }) as typeof fs.linkSync;
+  assert.throws(
+    () =>
+      repairMacosBundle(bundle, {
+        platform: 'darwin',
+        run: codesignStub().run,
+        repairLayout: true,
+        fileSystem,
+      }),
+    /EEXIST/,
+  );
+  assert.equal(fs.readFileSync(destination, 'utf8'), 'concurrent resource');
+  assert.equal(fs.readFileSync(join(macos, 'interface.json'), 'utf8'), '{"name":"MaaEnd"}');
+  assert.equal(fileSystem.lstatSync(join(macos, 'agent', 'schema.json')).isSymbolicLink(), false);
+});
+
+for (const gap of ['before-unlink', 'before-symlink'] as const) {
+  test(`a later repair recovers an interrupted migration ${gap} before inspecting signatures`, (t) => {
+    const bundle = fs.realpathSync(fixture(t));
+    const macos = join(bundle, 'Contents', 'MacOS');
+    const source = join(macos, 'interface.json');
+    writeFileSync(source, '{"original":true}');
+    const fileSystem = layoutFs();
+    const plan = planBundleLayout(bundle, 'MaaEnd', () => false, fileSystem);
+    const transaction = beginBundleRepair(bundle, join(macos, 'MaaEnd'), false, plan, fileSystem);
+    const interruptedFs = {
+      ...fileSystem,
+      unlinkSync(path: string) {
+        if (gap === 'before-unlink' && path === source) throw new Error('simulated process death');
+        fileSystem.unlinkSync(path);
+      },
+      symlinkSync(target: string, path: string, type: 'file' | 'dir') {
+        if (gap === 'before-symlink') throw new Error('simulated process death');
+        fileSystem.symlinkSync(target, path, type);
+      },
+    };
+    assert.throws(
+      () => applyBundleLayout(plan, interruptedFs, transaction.save),
+      /simulated process death/,
+    );
+    // Simulate a new process: no in-memory rollback, use only the persisted journal.
+    const tools = codesignStub();
+    let inspected = false;
+    const run = (...args: Parameters<typeof tools.run>) => {
+      if (!inspected) {
+        assert.equal(fs.readFileSync(source, 'utf8'), '{"original":true}');
+        assert.equal(fileSystem.lstatSync(source).isSymbolicLink(), false);
+        inspected = true;
+      }
+      return tools.run(...args);
+    };
+    repairMacosBundle(bundle, { platform: 'darwin', run, repairLayout: true, fileSystem });
+    assert.equal(fileSystem.lstatSync(source).isSymbolicLink(), true);
+    assert.equal(fs.existsSync(transaction.directory), false);
+  });
+}
+
+test('an interrupted signing attempt restores the executable and seal before retrying', (t) => {
+  const bundle = fs.realpathSync(fixture(t));
+  const executable = join(bundle, 'Contents', 'MacOS', 'MaaEnd');
+  const signature = join(bundle, 'Contents', '_CodeSignature');
+  mkdirSync(signature);
+  writeFileSync(join(signature, 'CodeResources'), 'original seal');
+  const plan = planBundleLayout(bundle, 'MaaEnd', () => false);
+  const transaction = beginBundleRepair(bundle, executable, true, plan);
+  transaction.markSigning();
+  writeFileSync(executable, 'partial signing');
+  writeFileSync(join(signature, 'CodeResources'), 'partial seal');
+  const tools = codesignStub();
+  let inspected = false;
+  const run = (...args: Parameters<typeof tools.run>) => {
+    if (!inspected) {
+      assert.equal(fs.readFileSync(executable, 'utf8'), 'test executable');
+      assert.equal(fs.readFileSync(join(signature, 'CodeResources'), 'utf8'), 'original seal');
+      inspected = true;
+    }
+    return tools.run(...args);
+  };
+  repairMacosBundle(bundle, { platform: 'darwin', run });
+  assert.equal(fs.existsSync(transaction.directory), false);
+});
+
+test(
+  'macOS kernel lock excludes other processes and is released after SIGKILL',
+  { skip: process.platform !== 'darwin', timeout: 10000 },
+  async (t) => {
+    const bundle = fs.realpathSync(fixture(t));
+    const moduleUrl = new URL('../scripts/macos-bundle-state.mjs', import.meta.url).href;
+    const probe = `const { acquireBundleLock } = await import(process.argv[1]); try { const release = acquireBundleLock(process.argv[2]); release(); } catch { process.exit(7); }`;
+    const release = acquireBundleLock(bundle);
+    try {
+      assert.equal(
+        spawnSync(process.execPath, ['--input-type=module', '-e', probe, moduleUrl, bundle]).status,
+        7,
+      );
+    } finally {
+      release();
+    }
+    const holder = `const { acquireBundleLock } = await import(process.argv[1]); acquireBundleLock(process.argv[2]); console.log('ready'); setInterval(() => {}, 1000);`;
+    const child = spawn(
+      process.execPath,
+      ['--input-type=module', '-e', holder, moduleUrl, bundle],
+      { stdio: ['ignore', 'pipe', 'inherit'] },
+    );
+    t.after(() => {
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    });
+    const exited = once(child, 'exit');
+    await Promise.race([
+      once(child.stdout!, 'data'),
+      exited.then(() => {
+        throw new Error('Lock holder exited before acquiring the lock');
+      }),
+    ]);
+    child.kill('SIGKILL');
+    await exited;
+    assert.equal(
+      spawnSync(process.execPath, ['--input-type=module', '-e', probe, moduleUrl, bundle]).status,
+      0,
+    );
+  },
+);

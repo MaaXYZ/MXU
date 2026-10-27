@@ -12,6 +12,7 @@ import { exists } from '@tauri-apps/plugin-fs';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { openPath, openUrl } from '@tauri-apps/plugin-opener';
 import * as semver from 'semver';
+import i18n from 'i18next';
 
 import { backupConfigBeforeUpdate } from './configService';
 import { downloadWithProxy } from './proxyService';
@@ -992,6 +993,17 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
   log.info(`开始安装更新: ${zipPath} -> ${targetDir}`);
 
   try {
+    // 在备份、解压和兜底逻辑之前拒绝改写应用包；DMG 等完整安装程序仍可打开。
+    if (!isExecutableInstaller(zipPath)) {
+      try {
+        await invoke('validate_update_target', { targetDir });
+      } catch (error) {
+        if (String(error).includes('SIGNED_APP_UPDATE_UNSUPPORTED')) {
+          throw new Error(i18n.t('mirrorChyan.signedAppUpdateUnsupported'));
+        }
+        throw error;
+      }
+    }
     await backupConfigBeforeUpdate(targetDir, projectName);
 
     // 对于 exe/dmg 文件，直接打开而不是解压

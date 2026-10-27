@@ -714,6 +714,8 @@ export default {
     installing: '正在安装更新...',
     installComplete: '安装完成',
     installFailed: '安装失败',
+    signedAppUpdateUnsupported:
+      '无法在应用内覆盖更新 macOS 应用包。请退出应用并安装完整的新版本；手动替换文件后需重新签名。已下载的更新包会保留。',
     installNow: '立即安装',
     installUpdate: '安装更新',
     installStages: {
