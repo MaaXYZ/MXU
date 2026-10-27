@@ -12,6 +12,41 @@ use serde::Serialize;
 use super::file_ops::get_exe_dir;
 use super::types::ChangesJson;
 
+/// 包内覆盖更新会破坏资源封印和宿主通知身份，必须使用完整应用包安装流程。
+#[tauri::command]
+pub fn validate_update_target(target_dir: String) -> Result<(), String> {
+    ensure_update_path(std::path::Path::new(&target_dir))
+}
+
+fn ensure_update_path(path: &std::path::Path) -> Result<(), String> {
+    #[cfg(any(target_os = "macos", test))]
+    {
+        // 同时检查词法路径和最近的已存在父目录，覆盖新目录与资源符号链接。
+        let in_bundle = |candidate: &std::path::Path| {
+            candidate.ancestors().any(|ancestor| {
+                ancestor
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("app"))
+                    && ancestor.join("Contents/Info.plist").is_file()
+            })
+        };
+        if in_bundle(path) {
+            return Err("SIGNED_APP_UPDATE_UNSUPPORTED".into());
+        }
+        for ancestor in path.ancestors() {
+            if let Ok(resolved) = ancestor.canonicalize() {
+                if in_bundle(&resolved) {
+                    return Err("SIGNED_APP_UPDATE_UNSUPPORTED".into());
+                }
+                break;
+            }
+        }
+    }
+    #[cfg(not(any(target_os = "macos", test)))]
+    let _ = path;
+    Ok(())
+}
+
 /// cache/old 目录锁：全量更新期间旧文件作为回滚备份放在 cache/old，
 /// 启动时的异步清理必须与之互斥，避免备份在回滚前被删掉
 pub static OLD_DIR_LOCK: Mutex<()> = Mutex::new(());
@@ -75,6 +110,7 @@ fn zip_read_error(message: String, e: &zip::result::ZipError) -> ExtractError {
 /// 解压压缩文件到指定目录，支持 zip 和 tar.gz/tgz 格式
 #[tauri::command]
 pub fn extract_zip(zip_path: String, dest_dir: String) -> Result<(), ExtractError> {
+    ensure_update_path(std::path::Path::new(&dest_dir)).map_err(ExtractError::other)?;
     info!("extract_zip called: {} -> {}", zip_path, dest_dir);
 
     let path_lower = zip_path.to_lowercase();
@@ -253,6 +289,7 @@ pub fn move_to_old_folder(source: &std::path::Path) -> Result<(), String> {
 
 /// 将文件或目录移动到 cache/old，返回移动后的路径（源不存在时返回 None）
 fn move_to_old_folder_dest(source: &Path) -> Result<Option<PathBuf>, String> {
+    ensure_update_path(source)?;
     // 只有确认不存在才跳过；其他错误（如权限不足）不能当作不存在，否则回滚时无从还原
     match source.symlink_metadata() {
         Ok(_) => {}
@@ -354,6 +391,7 @@ pub fn apply_incremental_update(
     target_dir: String,
     deleted_files: Vec<String>,
 ) -> Result<(), String> {
+    ensure_update_path(std::path::Path::new(&target_dir))?;
     info!("apply_incremental_update called");
     info!("extract_dir: {}, target_dir: {}", extract_dir, target_dir);
     info!("deleted_files: {:?}", deleted_files);
@@ -405,6 +443,10 @@ pub fn apply_incremental_update(
 /// 保证安装目录要么全部是新版本，要么保持更新前的状态
 #[tauri::command]
 pub fn apply_full_update(extract_dir: String, target_dir: String) -> Result<(), ApplyUpdateError> {
+    ensure_update_path(std::path::Path::new(&target_dir)).map_err(|message| ApplyUpdateError {
+        message,
+        rolled_back: false,
+    })?;
     info!("apply_full_update called");
     info!("extract_dir: {}, target_dir: {}", extract_dir, target_dir);
 
@@ -675,6 +717,8 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<()
 /// 2. 删除 cache_dir 下所有 *.downloading 临时文件
 #[tauri::command]
 pub fn cleanup_update_artifacts(target_dir: String, cache_dir: String) -> Result<(), String> {
+    ensure_update_path(std::path::Path::new(&target_dir))?;
+    ensure_update_path(std::path::Path::new(&cache_dir))?;
     // 删除 target_dir/changes.json
     let changes_path = std::path::Path::new(&target_dir).join("changes.json");
     if changes_path.exists() {
@@ -709,6 +753,7 @@ pub fn cleanup_update_artifacts(target_dir: String, cache_dir: String) -> Result
 /// 清理临时解压目录
 #[tauri::command]
 pub fn cleanup_extract_dir(extract_dir: String) -> Result<(), String> {
+    ensure_update_path(std::path::Path::new(&extract_dir))?;
     info!("cleanup_extract_dir: {}", extract_dir);
 
     let path = std::path::Path::new(&extract_dir);
@@ -728,6 +773,7 @@ pub fn fallback_update(
     target_dir: String,
     new_version: String,
 ) -> Result<String, String> {
+    ensure_update_path(std::path::Path::new(&target_dir))?;
     info!(
         "fallback_update called: extract_dir={}, target_dir={}, new_version={}",
         extract_dir, target_dir, new_version
@@ -809,5 +855,104 @@ pub fn current_exe_exists() -> bool {
         }
         // 无法获取路径时不阻止重启，交给原有流程处理
         Err(_) => true,
+    }
+}
+
+#[cfg(test)]
+mod bundle_update_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    struct Fixture(PathBuf);
+    impl Fixture {
+        fn new() -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "mxu-update-policy-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn app_bundle_update_entry_points_refuse_before_mutating_files() {
+        let temp = Fixture::new();
+        let bundle = temp.0.join("Host.app");
+        let target = bundle.join("Contents/MacOS");
+        let resources = bundle.join("Contents/Resources/MXU-portable");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::create_dir_all(&resources).unwrap();
+        std::fs::write(bundle.join("Contents/Info.plist"), b"original identity").unwrap();
+        std::fs::write(target.join("interface.json"), b"original resource").unwrap();
+        let target_string = target.to_string_lossy().into_owned();
+        let missing_archive = temp.0.join("missing.zip").to_string_lossy().into_owned();
+        for result in [
+            validate_update_target(target_string.clone()),
+            validate_update_target(resources.join("new/version").to_string_lossy().into_owned()),
+            extract_zip(missing_archive.clone(), target_string.clone()),
+            apply_incremental_update(
+                missing_archive.clone(),
+                target_string.clone(),
+                vec!["interface.json".into()],
+            ),
+            apply_full_update(missing_archive.clone(), target_string.clone()),
+            fallback_update(missing_archive, target_string.clone(), "2".into()).map(|_| ()),
+            cleanup_extract_dir(target_string.clone()),
+            cleanup_update_artifacts(target_string.clone(), target_string),
+            move_to_old_folder(&target.join("interface.json")),
+        ] {
+            assert_eq!(result.unwrap_err(), "SIGNED_APP_UPDATE_UNSUPPORTED");
+        }
+        assert_eq!(
+            std::fs::read(target.join("interface.json")).unwrap(),
+            b"original resource"
+        );
+        assert_eq!(
+            std::fs::read(bundle.join("Contents/Info.plist")).unwrap(),
+            b"original identity"
+        );
+        assert_eq!(std::fs::read_dir(&target).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn external_portable_directory_updates_still_work() {
+        let temp = Fixture::new();
+        let source = temp.0.join("extracted");
+        let target = temp.0.join("portable");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(source.join("resource.json"), b"new resource").unwrap();
+        validate_update_target(target.to_string_lossy().into_owned()).unwrap();
+        apply_full_update(
+            source.to_string_lossy().into_owned(),
+            target.to_string_lossy().into_owned(),
+        )
+        .unwrap();
+        assert_eq!(
+            std::fs::read(target.join("resource.json")).unwrap(),
+            b"new resource"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn aliases_into_an_app_bundle_are_also_protected() {
+        let temp = Fixture::new();
+        let bundle = temp.0.join("Host.app");
+        std::fs::create_dir_all(bundle.join("Contents/Resources")).unwrap();
+        std::fs::write(bundle.join("Contents/Info.plist"), b"identity").unwrap();
+        let alias = temp.0.join("alias");
+        std::os::unix::fs::symlink(bundle.join("Contents/Resources"), &alias).unwrap();
+        assert!(validate_update_target(alias.join("new").to_string_lossy().into_owned()).is_err());
     }
 }
