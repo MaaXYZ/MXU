@@ -143,7 +143,12 @@ pub fn update_tray_icon(icon_path: &str) -> Result<(), String> {
         .canonicalize()
         .map_err(|e| format!("Failed to resolve exe directory: {}", e))?;
 
-    if !canonical_path.starts_with(&canonical_exe_dir) {
+    let allowed = canonical_path.starts_with(&canonical_exe_dir);
+    #[cfg(target_os = "macos")]
+    let allowed = allowed
+        || crate::commands::utils::get_macos_bundle_resource_dir(&exe_dir)
+            .is_some_and(|resources| canonical_path.starts_with(resources));
+    if !allowed {
         return Err("Invalid icon path: must be within application directory".to_string());
     }
 
