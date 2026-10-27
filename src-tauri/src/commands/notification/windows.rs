@@ -43,6 +43,8 @@ fn register_application(app_id: &str, display_name: &str, icon: &Path) -> Result
 }
 
 fn notification_xml(title: &str, body: &str) -> windows::core::Result<XmlDocument> {
+    // windows-core 0.61 的工厂激活会在 CO_E_NOTINITIALIZED 时通过
+    // CoIncrementMTAUsage 初始化隐式 MTA；无需改变调用线程已有的 apartment。
     let xml = XmlDocument::new()?;
     xml.LoadXml(&HSTRING::from(
         r#"<toast><visual><binding template="ToastGeneric"><text/><text/></binding></visual></toast>"#,
@@ -102,6 +104,23 @@ pub(super) fn show(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn winrt_activation_works_on_fresh_workers_and_with_cached_factories() {
+        // 不在测试中预先初始化 COM，覆盖 spawn_blocking / Maa 回调线程的实际入口。
+        for _ in 0..2 {
+            std::thread::spawn(|| {
+                let xml = notification_xml("worker", "notification").unwrap();
+                let _toast = ToastNotification::CreateToastNotification(&xml).unwrap();
+                let _notifier = ToastNotificationManager::CreateToastNotifierWithId(
+                    &HSTRING::from("com.misteo.mxu.worker-test"),
+                )
+                .unwrap();
+            })
+            .join()
+            .unwrap();
+        }
+    }
 
     #[test]
     fn notification_text_preserves_unicode_and_xml_characters() {

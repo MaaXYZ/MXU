@@ -42,3 +42,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib commands::notification::br
 ```
 
 设置环境变量 `MXU_NOTIFICATION_PREVIEW=1` 后运行通知测试，会保留测试通知 15 秒供目视检查。弹窗左上角应显示 MXU 彩色图标和来源名 `MXU notification test`，而非 `com.misteo.mxu...`。实际应用的来源名称和图标来自 `interface.json` 的 `name` / `icon`；未配置时回退为 `mxu` 和 MXU 内置图标。
+
+Windows 通知来源图标的格式约定：`icon`（含国际化解析结果）必须是项目目录内的本地 PNG 或 ICO。URL、SVG 及其他格式仍可用于前端界面，但通知来源图标会回退为 MXU 图标并记录格式提示；需要统一显示时请在项目中提供 PNG/ICO。缓存会验证实际 PNG 内容，并原子替换损坏条目。通知身份按项目所在目录区分，同名项目不会覆盖彼此的名称和图标；移动项目目录会生成新的通知身份。
+
+锁定的 `windows-core 0.61.2` 在工厂激活遇到 `CO_E_NOTINITIALIZED` 时会调用 `CoIncrementMTAUsage` 后重试。工作线程回归测试不预先初始化 COM，分别覆盖首次激活和缓存工厂，避免通过测试准备掩盖真实入口问题。WinSafe 0.0.28 未封装 `GetUserDefaultUILanguage` / `LCIDToLocaleName`，这两项保留现有的 `windows` 调用。
