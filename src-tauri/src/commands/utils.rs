@@ -234,8 +234,8 @@ pub fn emit_config_changed(app: &AppHandle, client_id: &str, revision: &str) {
 
 /// 获取应用数据目录
 /// - macOS: ~/Library/Application Support/MXU/
-/// - Linux: $XDG_DATA_HOME/{项目名}，默认 ~/.local/share/{项目名}
-/// - Windows: exe 所在目录（保持便携式部署）
+/// - Linux（`xdg-data-dir` feature）: $XDG_DATA_HOME/{项目名}，默认 ~/.local/share/{项目名}
+/// - 其他: exe 所在目录（保持便携式部署）
 pub fn get_app_data_dir() -> Result<PathBuf, String> {
     #[cfg(target_os = "macos")]
     {
@@ -247,7 +247,7 @@ pub fn get_app_data_dir() -> Result<PathBuf, String> {
         Ok(path)
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", feature = "xdg-data-dir"))]
     {
         let interface_path = get_exe_directory()?.join("interface.json");
         let content = match std::fs::read_to_string(&interface_path) {
@@ -257,16 +257,23 @@ pub fn get_app_data_dir() -> Result<PathBuf, String> {
         };
         let xdg_data_home = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from);
         let home = std::env::var_os("HOME").map(PathBuf::from);
-        linux_data_dir(content.as_deref(), xdg_data_home.as_deref(), home.as_deref())
+        linux_data_dir(
+            content.as_deref(),
+            xdg_data_home.as_deref(),
+            home.as_deref(),
+        )
     }
 
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(not(any(
+        target_os = "macos",
+        all(target_os = "linux", feature = "xdg-data-dir")
+    )))]
     {
         get_exe_directory()
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "xdg-data-dir"))]
 fn linux_data_dir(
     interface_content: Option<&str>,
     xdg_data_home: Option<&std::path::Path>,
@@ -518,7 +525,7 @@ pub fn build_launch_command(
     cmd
 }
 
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, target_os = "linux", feature = "xdg-data-dir"))]
 mod linux_data_dir_tests {
     use super::linux_data_dir;
     use std::path::{Path, PathBuf};
