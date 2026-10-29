@@ -727,6 +727,8 @@ export default {
     installing: '업데이트 설치 중...',
     installComplete: '설치 완료',
     installFailed: '설치 실패',
+    signedAppUpdateUnsupported:
+      'macOS 앱 번들 내부를 덮어쓰는 업데이트는 지원하지 않습니다. 앱을 종료하고 새 버전 전체를 설치하세요. 파일을 수동으로 교체한 경우 다시 서명해야 합니다. 다운로드한 업데이트 파일은 유지됩니다.',
     installNow: '지금 설치',
     installUpdate: '업데이트 설치',
     installStages: {

@@ -739,6 +739,8 @@ export default {
     installing: 'アップデートをインストール中...',
     installComplete: 'インストール完了',
     installFailed: 'インストールに失敗しました',
+    signedAppUpdateUnsupported:
+      'macOS アプリ内の上書き更新はできません。アプリを終了して新しいバージョン全体をインストールしてください。手動でファイルを置き換えた場合は再署名が必要です。ダウンロード済みの更新ファイルは保持されます。',
     installNow: '今すぐインストール',
     installUpdate: 'アップデートをインストール',
     installStages: {

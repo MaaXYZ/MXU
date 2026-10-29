@@ -738,6 +738,8 @@ export default {
     installing: 'Installing update...',
     installComplete: 'Installation Complete',
     installFailed: 'Installation Failed',
+    signedAppUpdateUnsupported:
+      'In-place updates inside a macOS app bundle are unavailable. Quit the app and install the complete new version; manually replaced files require re-signing. The downloaded update is kept.',
     installNow: 'Install Now',
     installUpdate: 'Install Update',
     installStages: {
