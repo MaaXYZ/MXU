@@ -218,6 +218,28 @@ fn remove_path(path: &std::path::Path) -> std::io::Result<()> {
     }
 }
 
+/// changes.json 中留在安装目录内的相对路径；含 `..`、盘符或根路径时返回 None。
+/// `..` 会让 join 跳出目录，盘符（`C:\…`、`C:…`）或根路径会直接取代 target_dir；
+/// 两种分隔符都要拆，`..\` 在任何平台都能被拦下。
+fn safe_relative_path(raw: &str) -> Option<&str> {
+    let s = normalize_relative_path(raw);
+    if s.is_empty()
+        || s.split(['/', '\\'])
+            .any(|part| part == ".." || part.contains(':'))
+    {
+        return None;
+    }
+    std::path::Path::new(s)
+        .components()
+        .all(|c| {
+            matches!(
+                c,
+                std::path::Component::Normal(_) | std::path::Component::CurDir
+            )
+        })
+        .then_some(s)
+}
+
 /// 规范化增量包中的相对路径，移除常见前缀（./ .\ / \）
 fn normalize_relative_path(raw: &str) -> &str {
     let mut s = raw.trim();
@@ -237,8 +259,9 @@ fn normalize_relative_path(raw: &str) -> &str {
     s
 }
 
-/// 应用增量更新：将 deleted 中的文件移动到 old 文件夹，然后复制新文件
-/// 即使移动旧文件失败，也会继续复制新文件，确保程序可用
+/// 应用增量更新：要删除或覆盖的文件先移到 cache/incremental-backup/<时间戳>，再复制新文件。
+/// 任何一步失败都会把改动过的文件全部还原，安装目录保持旧版本，不会变成新旧混合。
+/// changes.json 带 base（旧版本文件的 SHA-256）时，先确认本地文件与旧版本一致，否则不做任何改动。
 #[tauri::command]
 pub fn apply_incremental_update(
     extract_dir: String,
@@ -249,45 +272,207 @@ pub fn apply_incremental_update(
     info!("extract_dir: {}, target_dir: {}", extract_dir, target_dir);
     info!("deleted_files: {:?}", deleted_files);
 
-    let target_path = std::path::Path::new(&target_dir);
-    let mut move_errors: Vec<String> = Vec::new();
+    // 不放在 cache/old：move_to_old_folder 会清空它（包括更新进行中时）
+    let backup_root = std::path::Path::new(&get_exe_dir()?)
+        .join("cache")
+        .join("incremental-backup");
+    if backup_root.exists() && std::fs::remove_dir_all(&backup_root).is_err() {
+        warn!("无法清理上次的增量备份: {}", backup_root.display());
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or_default();
+    apply_incremental(
+        std::path::Path::new(&extract_dir),
+        std::path::Path::new(&target_dir),
+        &deleted_files,
+        &backup_root.join(stamp.to_string()),
+    )?;
+    info!("apply_incremental_update success");
+    Ok(())
+}
 
-    // 1. 尝试将 deleted 中列出的文件移动到 old 文件夹（失败时兜底直接删除）
-    for file in &deleted_files {
-        // 规范化 changes.json 里的相对路径，避免前导分隔符导致 join 偏离 target_dir
-        let normalized = normalize_relative_path(file);
-        let file_path = target_path.join(normalized);
-        if file_path.exists() {
-            if let Err(e) = move_to_old_folder(&file_path) {
-                warn!("移动旧文件失败（将继续更新）: {}", e);
-                move_errors.push(e);
-                // 兜底：即使无法备份到 old，也要确保 deleted 文件被删除
-                let remove_result = remove_path(&file_path);
-                if let Err(remove_err) = remove_result {
-                    warn!(
-                        "兜底删除失败（可能残留旧文件）: {} -> {}",
-                        file_path.display(),
-                        remove_err
-                    );
-                } else {
-                    info!("已兜底删除 deleted 文件: {}", file_path.display());
-                }
+/// 增量更新改动过的文件，用于失败时还原
+struct UpdateJournal {
+    backup: std::path::PathBuf,
+    /// (安装目录中的路径, 备份目录中的旧文件)
+    set_aside: Vec<(std::path::PathBuf, std::path::PathBuf)>,
+    /// 更新新增的文件（原本不存在）
+    created: Vec<std::path::PathBuf>,
+}
+
+impl UpdateJournal {
+    /// 将 path（文件或文件夹）移到备份目录下的 rel；无法移动的文件改为复制一份
+    fn set_aside(&mut self, rel: &std::path::Path, path: &std::path::Path) -> Result<(), String> {
+        let dest = self.backup.join(rel);
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("无法创建备份目录 [{}]: {}", parent.display(), e))?;
+        }
+        if let Err(e) = std::fs::rename(path, &dest) {
+            if !path.is_file() {
+                return Err(format!("无法备份 [{}]: {}", path.display(), e));
+            }
+            std::fs::copy(path, &dest)
+                .map_err(|e| format!("无法备份 [{}]: {}", path.display(), e))?;
+        }
+        self.set_aside.push((path.to_path_buf(), dest));
+        Ok(())
+    }
+
+    fn rollback(&self) {
+        for path in self.created.iter().rev() {
+            if let Err(e) = remove_path(path) {
+                warn!("还原：无法删除新增的 [{}]: {}", path.display(), e);
+            }
+        }
+        for (path, saved) in self.set_aside.iter().rev() {
+            if path.exists() {
+                let _ = remove_path(path);
+            }
+            let restored = std::fs::rename(saved, path).is_ok()
+                || (saved.is_file() && std::fs::copy(saved, path).is_ok());
+            if !restored {
+                warn!("还原失败: [{}] <- [{}]", path.display(), saved.display());
             }
         }
     }
+}
 
-    // 2. 复制新包内容到目标目录（覆盖）- 这一步必须执行
-    copy_dir_contents(&extract_dir, &target_dir, Some(&["changes.json"]))?;
-
-    if !move_errors.is_empty() {
-        info!(
-            "apply_incremental_update completed with {} move warnings",
-            move_errors.len()
-        );
-    } else {
-        info!("apply_incremental_update success");
+/// dir 下的所有文件（相对路径，已排序）
+fn relative_files(dir: &std::path::Path) -> Result<Vec<std::path::PathBuf>, String> {
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let entries =
+            std::fs::read_dir(&d).map_err(|e| format!("无法读取目录 [{}]: {}", d.display(), e))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("无法读取目录条目: {}", e))?;
+            let path = entry.path();
+            // file_type 不跟随符号链接：链接可能指向解压目录之外
+            let kind = entry
+                .file_type()
+                .map_err(|e| format!("无法读取 [{}]: {}", path.display(), e))?;
+            if kind.is_symlink() {
+                return Err(format!("更新包中不应有符号链接: {}", path.display()));
+            } else if kind.is_dir() {
+                stack.push(path);
+            } else if let Ok(rel) = path.strip_prefix(dir) {
+                out.push(rel.to_path_buf());
+            }
+        }
     }
-    Ok(())
+    out.sort();
+    Ok(out)
+}
+
+/// 文件的 SHA-256（小写十六进制）
+fn sha256_file(path: &std::path::Path) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    let mut file = std::fs::File::open(path).map_err(|e| format!("{}: {}", path.display(), e))?;
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut file, &mut hasher).map_err(|e| format!("{}: {}", path.display(), e))?;
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// target 中与旧版本不一致的文件（base：相对路径 → 旧版本 SHA-256）；缺失或无法读取也算不一致
+fn files_not_at_base(
+    target: &std::path::Path,
+    base: &std::collections::HashMap<String, String>,
+) -> Vec<String> {
+    let mut differ: Vec<String> = base
+        .iter()
+        .filter(|(rel, sha)| match safe_relative_path(rel) {
+            Some(rel) => sha256_file(&target.join(rel))
+                .map_or(true, |actual| !actual.eq_ignore_ascii_case(sha)),
+            None => true,
+        })
+        .map(|(rel, _)| rel.clone())
+        .collect();
+    differ.sort();
+    differ
+}
+
+fn apply_incremental(
+    extract: &std::path::Path,
+    target: &std::path::Path,
+    deleted_files: &[String],
+    backup: &std::path::Path,
+) -> Result<(), String> {
+    // 用户改过的文件、上次没更新完的文件：在其上应用增量包只会得到新旧混合的安装
+    let changes = std::fs::read_to_string(extract.join("changes.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str::<ChangesJson>(&s).ok());
+    let mut differ = Vec::new();
+    if let Some(c) = changes.filter(|c| !c.base.is_empty()) {
+        differ = files_not_at_base(target, &c.base);
+        // 给了 base 就要涵盖全部 modified，缺的那个无从确认
+        differ.extend(
+            c.modified
+                .iter()
+                .filter(|m| !c.base.contains_key(*m))
+                .cloned(),
+        );
+    }
+    if !differ.is_empty() {
+        return Err(format!(
+            "本地文件与更新前的版本不一致，无法应用增量更新，请下载完整包: {}",
+            differ.join(", ")
+        ));
+    }
+
+    let mut journal = UpdateJournal {
+        backup: backup.to_path_buf(),
+        set_aside: Vec::new(),
+        created: Vec::new(),
+    };
+    let mut run = || -> Result<(), String> {
+        for file in deleted_files {
+            let Some(rel) = safe_relative_path(file) else {
+                return Err(format!("changes.json 中的路径不在安装目录内: {:?}", file));
+            };
+            let path = target.join(rel);
+            if path.exists() {
+                journal.set_aside(std::path::Path::new(rel), &path)?;
+                if path.exists() {
+                    // set_aside 改为复制时，原文件还在
+                    remove_path(&path)
+                        .map_err(|e| format!("无法删除旧文件 [{}]: {}", path.display(), e))?;
+                }
+            }
+        }
+        for rel in relative_files(extract)? {
+            if rel.as_os_str() == "changes.json" {
+                continue;
+            }
+            let src = extract.join(&rel);
+            let dst = target.join(&rel);
+            let existed = dst.exists();
+            if existed {
+                journal.set_aside(&rel, &dst)?;
+            }
+            if let Some(parent) = dst.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| format!("无法创建目录 [{}]: {}", parent.display(), e))?;
+            }
+            if !existed {
+                journal.created.push(dst.clone());
+            }
+            std::fs::copy(&src, &dst)
+                .map_err(|e| format!("无法复制文件 [{}]: {}", dst.display(), e))?;
+            if sha256_file(&dst)? != sha256_file(&src)? {
+                return Err(format!("复制后内容不一致 [{}]", dst.display()));
+            }
+        }
+        Ok(())
+    };
+    let result = run();
+    if let Err(e) = &result {
+        warn!("增量更新失败，已还原为原版本: {}", e);
+        journal.rollback();
+    }
+    result
 }
 
 /// 应用全量更新：将与新包根目录同名的文件夹/文件移动到 old 文件夹，然后复制新文件
@@ -536,4 +721,186 @@ pub fn fallback_update(
     info!("fallback_update success: {}", result_path);
 
     Ok(result_path)
+}
+
+#[cfg(test)]
+mod incremental_update_tests {
+    use super::*;
+
+    fn tree(root: &std::path::Path) -> Vec<(std::path::PathBuf, String)> {
+        relative_files(root)
+            .unwrap()
+            .into_iter()
+            .map(|r| {
+                let text = std::fs::read_to_string(root.join(&r)).unwrap();
+                (r, text)
+            })
+            .collect()
+    }
+
+    fn setup(name: &str) -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
+        let root = std::env::temp_dir().join(format!("mxu-incr-{}-{}", name, std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (target, extract) = (root.join("install"), root.join("extract"));
+        std::fs::create_dir_all(target.join("sub")).unwrap();
+        std::fs::create_dir_all(extract.join("sub")).unwrap();
+        std::fs::write(target.join("a.txt"), "old a").unwrap();
+        std::fs::write(target.join("gone.txt"), "old gone").unwrap();
+        std::fs::write(target.join("sub/b.txt"), "old b").unwrap();
+        std::fs::write(extract.join("a.txt"), "new a").unwrap();
+        std::fs::write(extract.join("sub/b.txt"), "new b").unwrap();
+        std::fs::write(extract.join("sub/c.txt"), "new c").unwrap();
+        std::fs::write(extract.join("changes.json"), "{}").unwrap();
+        (root.clone(), target, extract)
+    }
+
+    fn sha_of(root: &std::path::Path, text: &str) -> String {
+        std::fs::write(root.join("probe"), text).unwrap();
+        sha256_file(&root.join("probe")).unwrap()
+    }
+
+    #[test]
+    fn applies_the_patch() {
+        let (root, target, extract) = setup("ok");
+        apply_incremental(
+            &extract,
+            &target,
+            &["gone.txt".into()],
+            &root.join("backup"),
+        )
+        .unwrap();
+        let p = |s: &str| std::path::PathBuf::from_iter(s.split('/'));
+        assert_eq!(
+            tree(&target),
+            vec![
+                (p("a.txt"), "new a".to_string()),
+                (p("sub/b.txt"), "new b".to_string()),
+                (p("sub/c.txt"), "new c".to_string()),
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn failing_midway_puts_everything_back() {
+        let (root, target, extract) = setup("fail");
+        // 安装目录里 z 是文件、增量包里是文件夹：写 z/x.txt 失败时，
+        // gone.txt 已移走，a.txt、sub/b.txt、sub/c.txt 已写入
+        std::fs::write(target.join("z"), "old z").unwrap();
+        std::fs::create_dir_all(extract.join("z")).unwrap();
+        std::fs::write(extract.join("z").join("x.txt"), "new x").unwrap();
+        let before = tree(&target);
+
+        let r = apply_incremental(
+            &extract,
+            &target,
+            &["gone.txt".into()],
+            &root.join("backup"),
+        );
+        assert!(r.is_err());
+        assert_eq!(tree(&target), before);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn paths_leaving_the_install_folder_are_refused() {
+        for p in [
+            "",
+            "..",
+            "../x",
+            r"..\x",
+            "a/../../x",
+            r"C:\Windows\x",
+            "C:x",
+            r"\\?\C:\x",
+        ] {
+            assert_eq!(safe_relative_path(p), None, "{p:?}");
+        }
+        assert_eq!(safe_relative_path("./sub/a.txt"), Some("sub/a.txt"));
+
+        let (root, target, extract) = setup("escape");
+        let outside = root.join("outside.txt");
+        std::fs::write(&outside, "keep").unwrap();
+        let before = tree(&target);
+        let r = apply_incremental(
+            &extract,
+            &target,
+            &["../outside.txt".into()],
+            &root.join("backup"),
+        );
+        assert!(r.is_err());
+        assert!(outside.exists());
+        assert_eq!(tree(&target), before);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_modified_file_without_base_hash_is_refused() {
+        let (root, target, extract) = setup("nobase");
+        std::fs::write(
+            extract.join("changes.json"),
+            serde_json::json!({
+                "modified": ["a.txt", "sub/b.txt"],
+                "base": { "a.txt": sha_of(&root, "old a") },
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let err = apply_incremental(&extract, &target, &[], &root.join("backup")).unwrap_err();
+        assert!(err.contains("sub/b.txt"), "{err}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_changed_base_file_stops_the_patch_before_anything_is_touched() {
+        let (root, target, extract) = setup("base");
+        let base = serde_json::json!({
+            "a.txt": sha_of(&root, "old a"),
+            "sub/b.txt": sha_of(&root, "old b"),
+        });
+        std::fs::write(
+            extract.join("changes.json"),
+            serde_json::json!({ "modified": ["a.txt", "sub/b.txt"], "base": base }).to_string(),
+        )
+        .unwrap();
+
+        // 用户改过 sub/b.txt：不做任何改动，错误信息列出该文件
+        std::fs::write(target.join("sub/b.txt"), "edited b").unwrap();
+        let before = tree(&target);
+        let err = apply_incremental(
+            &extract,
+            &target,
+            &["gone.txt".into()],
+            &root.join("backup"),
+        )
+        .unwrap_err();
+        assert!(err.contains("sub/b.txt"), "{err}");
+        assert_eq!(tree(&target), before);
+
+        // 改回旧版本内容后可以正常应用
+        std::fs::write(target.join("sub/b.txt"), "old b").unwrap();
+        apply_incremental(
+            &extract,
+            &target,
+            &["gone.txt".into()],
+            &root.join("backup2"),
+        )
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(target.join("sub/b.txt")).unwrap(),
+            "new b"
+        );
+
+        // 缺失的文件也算不一致
+        std::fs::remove_file(target.join("a.txt")).unwrap();
+        let only_a: std::collections::HashMap<_, _> =
+            [("a.txt".to_string(), sha_of(&root, "old a"))]
+                .into_iter()
+                .collect();
+        assert_eq!(
+            files_not_at_base(&target, &only_a),
+            vec!["a.txt".to_string()]
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
