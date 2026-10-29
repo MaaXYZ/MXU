@@ -223,6 +223,9 @@ export default {
     stopTasks: 'Stop Tasks',
     startingTasks: 'Starting...',
     stoppingTasks: 'Stopping...',
+    taskSkippedByWeeklySchedule:
+      '"{{taskName}}" will not run today: its weekly schedule does not include today',
+    allTasksSkippedByWeeklySchedule: 'No tasks started: no selected tasks are scheduled for today',
     tasksSkippedDueToIncompatibility: '{{count}} incompatible task(s) skipped',
     taskSkippedController: 'Task "{{taskName}}" does not support current controller',
     taskSkippedResource: 'Task "{{taskName}}" does not support current resource',
@@ -281,6 +284,11 @@ export default {
     rename: 'Rename',
     clickToToggle: 'Click to toggle',
     runOnceHint: 'Run once: included in the next start only',
+    weeklyScheduleTitle: 'Weekly schedule',
+    weeklyScheduleSkippedToday: 'Not included today',
+    weeklyScheduleSkippedTodayHint:
+      'Still selected, but today is outside its weekly schedule, so a normal start will not add it to the execution queue. Run it individually or select Run Once to include it.',
+    weeklyScheduleToday: 'Today',
     renameTask: 'Rename Task',
     customName: 'Custom Name',
     originalName: 'Original Name',
@@ -522,7 +530,7 @@ export default {
       taskFailed: 'Task failed: {{name}}',
       stopTask: 'Stop Task',
       // Schedule messages
-      scheduleStarting: 'Scheduled execution started [{{policy}}] {{time}}',
+      scheduleStarting: 'Schedule triggered [{{policy}}] {{time}}; checking tasks to run',
       // Agent messages
       agentStarting: 'Agent starting...',
       agentStarted: 'Agent started',
@@ -871,6 +879,7 @@ export default {
     runSingleTask: 'Run This Task Only',
     runOnceTask: 'Run Once',
     clearRunOnceTask: 'Clear Run Once',
+    enableWeeklySchedule: 'Enable Weekly Schedule',
 
     // Screenshot panel context menu
     reconnect: 'Reconnect',

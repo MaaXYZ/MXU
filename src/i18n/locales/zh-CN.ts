@@ -214,6 +214,8 @@ export default {
     stopTasks: '停止任务',
     startingTasks: '启动中...',
     stoppingTasks: '停止中...',
+    taskSkippedByWeeklySchedule: '任务「{{taskName}}」今日不参与：周计划未安排今天',
+    allTasksSkippedByWeeklySchedule: '未启动任务：今天没有符合周计划的已选任务',
     tasksSkippedDueToIncompatibility: '已跳过 {{count}} 个不兼容的任务',
     taskSkippedController: '任务 "{{taskName}}" 不支持当前控制器',
     taskSkippedResource: '任务 "{{taskName}}" 不支持当前资源',
@@ -270,6 +272,11 @@ export default {
     rename: '重命名',
     clickToToggle: '单击选中/取消',
     runOnceHint: '单次运行：下次启动时执行一次',
+    weeklyScheduleTitle: '周计划',
+    weeklyScheduleSkippedToday: '今日不参与',
+    weeklyScheduleSkippedTodayHint:
+      '已保持勾选，但今天不在周计划内，常规开始时不会加入执行队列；可单独运行或设为单次运行',
+    weeklyScheduleToday: '今天',
     renameTask: '重命名任务',
     customName: '自定义名称',
     originalName: '原始名称',
@@ -505,7 +512,7 @@ export default {
       taskFailed: '任务失败: {{name}}',
       stopTask: '停止任务',
       // 定时任务消息
-      scheduleStarting: '定时执行开始 [{{policy}}] {{time}}',
+      scheduleStarting: '定时策略已触发 [{{policy}}] {{time}}，正在检查待执行任务',
       // Agent 消息
       agentStarting: 'Agent 正在启动...',
       agentStarted: 'Agent 已启动',
@@ -858,6 +865,7 @@ export default {
     runSingleTask: '单独运行',
     runOnceTask: '单次运行',
     clearRunOnceTask: '取消单次运行',
+    enableWeeklySchedule: '启用周计划',
 
     // 截图面板右键菜单
     reconnect: '重新连接',

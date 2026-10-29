@@ -346,6 +346,12 @@ export interface SelectedTask {
   enabled: boolean;
   /** 单次运行：下次启动时包含该任务，运行结束后自动清除 */
   runOnce?: boolean;
+  /**
+   * 周计划：仅在选中的星期几参与运行（0-6，0=周日）。
+   * 缺省或空数组表示未启用周计划，即每天都会参与。
+   * 显式操作（单次运行 / 从此处运行的锚点）不受周计划约束。
+   */
+  weeklySchedule?: number[];
   /** 各控制器独立的勾选状态；enabled 始终表示当前控制器的状态 */
   enabledByController?: Record<string, boolean>;
   optionValues: Record<string, OptionValue>;

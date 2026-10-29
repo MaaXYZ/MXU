@@ -20,6 +20,11 @@ export interface SavedTask {
   taskName: string; // 对应 interface 中的 task.name
   customName?: string; // 用户自定义名称
   enabled: boolean;
+  /**
+   * 周计划：仅在选中的星期几参与运行（0-6，0=周日）。
+   * 缺省或空数组表示未启用周计划。旧配置中不存在，向后兼容。
+   */
+  weeklySchedule?: number[];
   /** 各控制器独立的勾选状态（旧配置中不存在时按 enabled 初始化） */
   enabledByController?: Record<string, boolean>;
   optionValues: Record<string, OptionValue>;
