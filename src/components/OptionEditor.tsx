@@ -26,7 +26,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { getInterfaceLangKey } from '@/i18n';
-import { findSwitchCase } from '@/utils/optionHelpers';
+import { getSelectedCasesWithOptions } from '@/utils/optionHelpers';
 import { getCheckboxMaxCount, getCheckboxMinCount } from '@/utils/checkboxOptionValidation';
 import { stripInlineRichText } from '@/utils/richText';
 import { SwitchButton, TextInput, FileInput, TimeInput, HotkeyInput } from './FormControls';
@@ -38,6 +38,13 @@ export function switchHasNestedOptions(optionDef: OptionDefinition): boolean {
   if (optionDef.type !== 'switch') return false;
   // SwitchOption 的 cases 是 [CaseItem, CaseItem]，始终有两个元素
   return optionDef.cases.some((c: CaseItem) => c.option && c.option.length > 0);
+}
+
+/** 嵌套子选项分组：checkbox 多选时，不同 case 的子项需要分开渲染才能区分归属 */
+interface NestedOptionGroup {
+  caseName: string;
+  label: string;
+  optionKeys: string[];
 }
 
 /** 子选项折叠箭头：复用任务标题的 ChevronRight 样式，位于开关/下拉框左侧 */
@@ -476,24 +483,18 @@ export function OptionEditor({
         : undefined;
   const effectiveDisabled = disabled || isOptionIncompatible;
 
-  // 获取当前选中的 case（用于渲染嵌套选项）
-  const getSelectedCase = (): CaseItem | undefined => {
-    if (optionDef.type === 'switch') {
-      const isChecked = effectiveValue?.type === 'switch' ? effectiveValue.value : false;
-      return findSwitchCase(optionDef.cases, isChecked);
-    }
-    if (optionDef.type === 'select' || !optionDef.type) {
-      const caseName =
-        effectiveValue?.type === 'select'
-          ? effectiveValue.caseName
-          : optionDef.default_case || optionDef.cases?.[0]?.name;
-      return optionDef.cases?.find((c) => c.name === caseName);
-    }
-    return undefined;
-  };
+  // 嵌套子选项分组：switch/select 单选取当前 case；checkbox 为多选，
+  // 协议允许任意 case 挂 option，故按被选中的 case 逐组汇总（每组保留标签用于区分来源）
+  const toNestedGroup = (caseItem: CaseItem): NestedOptionGroup => ({
+    caseName: caseItem.name,
+    label: isMxuOption
+      ? t(caseItem.label || caseItem.name)
+      : resolveI18nText(caseItem.label, langKey) || caseItem.name,
+    optionKeys: caseItem.option ?? [],
+  });
 
-  const selectedCase = getSelectedCase();
-  const nestedOptionKeys = selectedCase?.option || [];
+  const nestedGroups = getSelectedCasesWithOptions(optionDef, effectiveValue).map(toNestedGroup);
+  const nestedOptionKeys = nestedGroups.flatMap((g) => g.optionKeys);
 
   // 当前选项的子选项是否处于折叠状态（缺省展开）
   const isCollapsed = globalScope ? localCollapsed : !!collapsedOptions?.[optionKey];
@@ -628,17 +629,28 @@ export function OptionEditor({
           isOptionIncompatible && 'opacity-60',
         )}
       >
-        <OptionLabelWithIncompatible
-          label={optionLabel}
-          icon={optionDef.icon}
-          basePath={basePath}
-          incompatibleReason={incompatibleReason}
-        />
-        <OptionDescription
-          description={optionDescription}
-          basePath={basePath}
-          translations={translations}
-        />
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1 max-w-[60%]">
+            <OptionLabelWithIncompatible
+              label={optionLabel}
+              icon={optionDef.icon}
+              basePath={basePath}
+              incompatibleReason={incompatibleReason}
+            />
+            <OptionDescription
+              description={optionDescription}
+              basePath={basePath}
+              translations={translations}
+            />
+          </div>
+          {nestedOptionKeys.length > 0 && (
+            <OptionCollapseArrow
+              collapsed={isCollapsed}
+              onToggle={handleToggleCollapsed}
+              disabled={effectiveDisabled}
+            />
+          )}
+        </div>
         <div className="grid grid-cols-4 gap-1">
           {optionDef.cases.map((caseItem) => {
             const caseLabel = isMxuOption
@@ -708,6 +720,44 @@ export function OptionEditor({
                     constraint: countConstraint,
                   })}
             </span>
+          </div>
+        )}
+        {/* 渲染嵌套选项（可折叠，复用任务标题的 grid 展开动画）。
+            checkbox 多选时同一层可能挂多组子项，按 case 分组并标注归属，避免来源混淆 */}
+        {nestedOptionKeys.length > 0 && (
+          <div
+            className="grid transition-[grid-template-rows] duration-150 ease-out"
+            style={{ gridTemplateRows: isCollapsed ? '0fr' : '1fr' }}
+          >
+            <div className={clsx('min-h-0', isCollapsed ? 'overflow-hidden' : 'overflow-visible')}>
+              <div className="space-y-3">
+                {nestedGroups.map((group) => (
+                  <div key={group.caseName} className="space-y-3">
+                    {nestedGroups.length > 1 && (
+                      <div className="text-xs text-text-muted">
+                        <span className="inline-block max-w-full truncate rounded bg-bg-hover px-1.5 py-0.5">
+                          <RichLabel text={group.label} />
+                        </span>
+                      </div>
+                    )}
+                    {group.optionKeys.map((nestedKey) => (
+                      <OptionEditor
+                        key={`${group.caseName}:${nestedKey}`}
+                        instanceId={instanceId}
+                        taskId={taskId}
+                        optionKey={nestedKey}
+                        value={allOptionValues[nestedKey]}
+                        depth={depth + 1}
+                        disabled={effectiveDisabled}
+                        globalScope={globalScope}
+                        controllerIncompatible={isOptionIncompatible}
+                        parentIncompatibilityReason={incompatibleReasonType}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>
