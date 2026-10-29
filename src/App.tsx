@@ -1964,6 +1964,12 @@ function App() {
             className={`flex-1 min-h-0 ${isDashboardExiting ? 'page-slide-top-exit' : 'page-slide-top-enter'}`}
           >
             <Suspense fallback={null}>
+              <div className="hidden">
+                <Toolbar
+                  showAddPanel={showAddTaskPanel}
+                  onToggleAddPanel={() => setShowAddTaskPanel(!showAddTaskPanel)}
+                />
+              </div>
               <LazyDashboardView onClose={closeDashboardWithAnimation} />
             </Suspense>
           </div>

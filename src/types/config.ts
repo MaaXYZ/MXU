@@ -17,6 +17,7 @@ export interface SchedulePolicy {
 // 保存的任务配置
 export interface SavedTask {
   id: string;
+  startupOrder?: number;
   taskName: string; // 对应 interface 中的 task.name
   customName?: string; // 用户自定义名称
   enabled: boolean;
