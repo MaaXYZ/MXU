@@ -929,8 +929,8 @@ export async function checkAndPrepareDownload(
 
 /**
  * 获取更新包保存路径
- * 使用应用数据目录（Linux: $XDG_DATA_HOME/{项目名}，
- * macOS: ~/Library/Application Support/MXU/，Windows: exe 目录）。
+ * 使用应用数据目录（macOS: ~/Library/Application Support/MXU/，
+ * Linux 启用 xdg-data-dir feature: $XDG_DATA_HOME/{项目名}，否则为 exe 目录）。
  * @param filename 文件名（可选）。如果不提供，使用默认名称。
  *                 注意：实际保存路径可能由 Rust 下载时从 302 重定向或
  * Content-Disposition 检测后覆盖

@@ -14,6 +14,11 @@ edition = "2021"
 name = "mxu_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# Linux: 数据目录遵循 XDG 规范（$XDG_DATA_HOME/{项目名}，默认 ~/.local/share/{项目名}）
+# 默认关闭以保持 exe 目录的便携式部署；开启后与旧版本数据目录不兼容。
+xdg-data-dir = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
