@@ -4,6 +4,7 @@ import {
   flushConfig,
   flushSaveConfig,
   type DownloadProgress,
+  type UpdateInfo,
 } from '@/stores/appStore';
 import {
   TitleBar,
@@ -89,7 +90,12 @@ import { WebUIBetaBanner } from './components/app/WebUIBetaBanner';
 import { startGlobalCallbackListener } from './components/connection/callbackCache';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { ScrollText } from 'lucide-react';
-import { defaultConfig, defaultWindowSize, isValidMxuConfig } from '@/types/config';
+import {
+  defaultConfig,
+  defaultScheduledUpdateCheckTime,
+  defaultWindowSize,
+  isValidMxuConfig,
+} from '@/types/config';
 
 const log = loggers.app;
 
@@ -208,6 +214,8 @@ function App() {
     onboardingCompleted,
     backgroundImage,
     backgroundOpacity,
+    scheduledUpdateCheckEnabled,
+    scheduledUpdateCheckTime,
   } = useAppStore(
     useShallow((state) => ({
       setProjectInterface: state.setProjectInterface,
@@ -250,6 +258,8 @@ function App() {
       onboardingCompleted: state.onboardingCompleted,
       backgroundImage: state.backgroundImage,
       backgroundOpacity: state.backgroundOpacity,
+      scheduledUpdateCheckEnabled: state.scheduledUpdateCheckEnabled,
+      scheduledUpdateCheckTime: state.scheduledUpdateCheckTime,
     })),
   );
 
@@ -509,6 +519,120 @@ function App() {
     [setDownloadStatus, setDownloadProgress, setDownloadSavePath, tryAutoInstallUpdate],
   );
 
+  // 启动检查和定时检查共用更新结果处理
+  const handleAutoUpdateCheckResult = useCallback(
+    (updateResult: UpdateInfo) => {
+      setUpdateInfo(updateResult);
+      if (updateResult.hasUpdate) {
+        log.info(`发现新版本: ${updateResult.versionName}`);
+        useAppStore.getState().setShowUpdateDialog(true);
+        if (updateResult.downloadUrl) {
+          startAutoDownload(updateResult);
+        }
+      } else if (updateResult.errorCode) {
+        log.warn(`更新检查返回错误: code=${updateResult.errorCode}`);
+        useAppStore.getState().setShowUpdateDialog(true);
+      }
+    },
+    [setUpdateInfo, startAutoDownload],
+  );
+
+  // 仅桌面端负责定时更新，避免多个 WebUI 页面重复触发
+  useEffect(() => {
+    if (
+      !scheduledUpdateCheckEnabled ||
+      loadingState !== 'success' ||
+      !isTauri() ||
+      import.meta.env.DEV
+    ) {
+      return;
+    }
+    if (
+      !projectInterface?.mirrorchyan_rid ||
+      !projectInterface.version ||
+      isDebugVersion(projectInterface.version)
+    ) {
+      return;
+    }
+
+    const { mirrorchyan_rid: resourceId, version: currentVersion, github, name } = projectInterface;
+    let cancelled = false;
+    const isUpdateBusy = () => {
+      const state = useAppStore.getState();
+      return (
+        state.downloadStatus === 'downloading' ||
+        state.downloadStatus === 'completed' ||
+        state.installStatus !== 'idle'
+      );
+    };
+
+    const checkForScheduledUpdate = async () => {
+      const state = useAppStore.getState();
+      if (state.updateCheckLoading || isUpdateBusy()) return;
+      state.setUpdateCheckLoading(true);
+      const { mirrorChyanSettings, proxySettings } = state;
+      try {
+        log.info('定时检查更新');
+        const updateResult = await checkAndPrepareDownload({
+          resourceId,
+          currentVersion,
+          cdk: mirrorChyanSettings.cdk || undefined,
+          channel: mirrorChyanSettings.channel,
+          userAgent: 'MXU',
+          githubUrl: github,
+          githubPat: mirrorChyanSettings.githubPat || undefined,
+          proxyUrl: proxySettings?.url,
+          projectName: name,
+        });
+        const current = useAppStore.getState();
+        // 只在检查参数或更新状态变化时丢弃结果，不比较配置对象引用
+        if (
+          cancelled ||
+          isUpdateBusy() ||
+          current.mirrorChyanSettings.cdk !== mirrorChyanSettings.cdk ||
+          current.mirrorChyanSettings.channel !== mirrorChyanSettings.channel ||
+          current.mirrorChyanSettings.githubPat !== mirrorChyanSettings.githubPat ||
+          current.proxySettings?.url !== proxySettings?.url
+        ) {
+          return;
+        }
+        if (updateResult) handleAutoUpdateCheckResult(updateResult);
+      } catch (err) {
+        log.warn('定时检查更新失败:', err);
+      } finally {
+        state.setUpdateCheckLoading(false);
+      }
+    };
+
+    const [hour, minute] = scheduledUpdateCheckTime.split(':').map(Number);
+    let timer: ReturnType<typeof setTimeout>;
+    const scheduleNextCheck = () => {
+      const now = new Date();
+      const nextCheck = new Date(now);
+      nextCheck.setHours(hour, minute, 0, 0);
+      if (nextCheck.getTime() <= now.getTime()) {
+        nextCheck.setDate(nextCheck.getDate() + 1);
+      }
+
+      timer = setTimeout(() => {
+        void checkForScheduledUpdate();
+        scheduleNextCheck();
+      }, nextCheck.getTime() - now.getTime());
+    };
+
+    scheduleNextCheck();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    loadingState,
+    projectInterface,
+    scheduledUpdateCheckEnabled,
+    scheduledUpdateCheckTime,
+    handleAutoUpdateCheckResult,
+  ]);
+
   // 设置窗口标题（根据 ProjectInterface V2 协议）
   useEffect(() => {
     if (!projectInterface) return;
@@ -648,6 +772,13 @@ function App() {
       // 应用配置
       if (config.instances.length > 0) {
         importConfig(config);
+      } else {
+        // 无实例时单独恢复定时检查偏好
+        const state = useAppStore.getState();
+        state.setScheduledUpdateCheckEnabled(config.settings.scheduledUpdateCheckEnabled === true);
+        state.setScheduledUpdateCheckTime(
+          config.settings.scheduledUpdateCheckTime ?? defaultScheduledUpdateCheckTime,
+        );
       }
 
       // 初始化匿名遥测（仅当 interface 声明了 telemetry.sentry.dsn 且非调试 / 开发版本）
@@ -1075,17 +1206,7 @@ function App() {
               projectName: result.interface.name,
             });
             if (updateResult) {
-              setUpdateInfo(updateResult);
-              if (updateResult.hasUpdate) {
-                log.info(`发现新版本: ${updateResult.versionName}`);
-                useAppStore.getState().setShowUpdateDialog(true);
-                if (updateResult.downloadUrl) {
-                  startAutoDownload(updateResult);
-                }
-              } else if (updateResult.errorCode) {
-                log.warn(`更新检查返回错误: code=${updateResult.errorCode}`);
-                useAppStore.getState().setShowUpdateDialog(true);
-              }
+              handleAutoUpdateCheckResult(updateResult);
             }
           } catch (err) {
             log.warn('自动检查更新失败:', err);

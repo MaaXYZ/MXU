@@ -144,6 +144,8 @@ export interface AppSettings {
   /** 每个实例最多保留的日志条数（超出自动丢弃最旧的） */
   maxLogsPerInstance?: number;
   autoClearLogsOnLaunch?: boolean;
+  scheduledUpdateCheckEnabled?: boolean; // 是否每天定时检查更新，默认关闭
+  scheduledUpdateCheckTime?: string; // 每天检查更新的本地时间（HH:mm），默认 08:00
   windowSize?: WindowSize;
   windowPosition?: WindowPosition; // 窗口位置
   mirrorChyan?: MirrorChyanSettings;
@@ -198,6 +200,14 @@ export const defaultWindowSize: WindowSize = {
   height: 618,
 };
 
+export const defaultScheduledUpdateCheckTime = '08:00';
+
+export function normalizeScheduledUpdateCheckTime(value: unknown): string {
+  return typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value)
+    ? value
+    : defaultScheduledUpdateCheckTime;
+}
+
 // 默认 MirrorChyan 设置
 export const defaultMirrorChyanSettings: MirrorChyanSettings = {
   cdk: '',
@@ -244,6 +254,8 @@ export const defaultConfig: MxuConfig = {
     confirmBeforeDelete: false,
     maxLogsPerInstance: DEFAULT_MAX_LOGS_PER_INSTANCE,
     autoClearLogsOnLaunch: false,
+    scheduledUpdateCheckEnabled: false,
+    scheduledUpdateCheckTime: defaultScheduledUpdateCheckTime,
     windowSize: defaultWindowSize,
     mirrorChyan: defaultMirrorChyanSettings,
     helpImproveSoftware: true,

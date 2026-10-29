@@ -22,9 +22,11 @@ import {
   DEFAULT_MAX_LOGS_PER_INSTANCE,
   defaultAddTaskPanelHeight,
   defaultMirrorChyanSettings,
+  defaultScheduledUpdateCheckTime,
   defaultScreenshotFrameRate,
   defaultWindowSize,
   normalizeAddTaskPanelHeight,
+  normalizeScheduledUpdateCheckTime,
 } from '@/types/config';
 import type {
   ActionConfig,
@@ -1493,6 +1495,10 @@ export const useAppStore = create<AppState>()(
         confirmBeforeDelete: config.settings.confirmBeforeDelete ?? false,
         maxLogsPerInstance: config.settings.maxLogsPerInstance ?? DEFAULT_MAX_LOGS_PER_INSTANCE,
         autoClearLogsOnLaunch: config.settings.autoClearLogsOnLaunch ?? false,
+        scheduledUpdateCheckEnabled: config.settings.scheduledUpdateCheckEnabled === true,
+        scheduledUpdateCheckTime: normalizeScheduledUpdateCheckTime(
+          config.settings.scheduledUpdateCheckTime,
+        ),
         // 默认开启；调试 / 开发版本强制关闭
         helpImproveSoftware: isTelemetryBlockedByBuild(get().projectInterface)
           ? false
@@ -2013,6 +2019,13 @@ export const useAppStore = create<AppState>()(
         mirrorChyanSettings: { ...state.mirrorChyanSettings, channel },
       })),
 
+    // 定时检查更新
+    scheduledUpdateCheckEnabled: false,
+    scheduledUpdateCheckTime: defaultScheduledUpdateCheckTime,
+    setScheduledUpdateCheckEnabled: (enabled) => set({ scheduledUpdateCheckEnabled: enabled }),
+    setScheduledUpdateCheckTime: (time) =>
+      set({ scheduledUpdateCheckTime: normalizeScheduledUpdateCheckTime(time) }),
+
     // 代理设置
     proxySettings: undefined,
     setProxySettings: (settings) => set({ proxySettings: settings }),
@@ -2482,6 +2495,8 @@ function generateConfig(): MxuConfig {
           confirmBeforeDelete: state.confirmBeforeDelete,
           maxLogsPerInstance: state.maxLogsPerInstance,
           autoClearLogsOnLaunch: state.autoClearLogsOnLaunch,
+          scheduledUpdateCheckEnabled: state.scheduledUpdateCheckEnabled,
+          scheduledUpdateCheckTime: state.scheduledUpdateCheckTime,
           helpImproveSoftware: state.helpImproveSoftware,
           windowSize: bl?.windowSize ?? state.windowSize,
           windowPosition: bl?.windowPosition ?? state.windowPosition,
@@ -2577,6 +2592,8 @@ useAppStore.subscribe(
     autoClearLogsOnLaunch: state.autoClearLogsOnLaunch,
     helpImproveSoftware: state.helpImproveSoftware,
     mirrorChyanSettings: state.mirrorChyanSettings,
+    scheduledUpdateCheckEnabled: state.scheduledUpdateCheckEnabled,
+    scheduledUpdateCheckTime: state.scheduledUpdateCheckTime,
     proxySettings: state.proxySettings,
     welcomeShownHash: state.welcomeShownHash,
     devMode: state.devMode,
