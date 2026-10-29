@@ -594,6 +594,11 @@ export default {
     tcpCompatMode: '통신 호환 모드',
     tcpCompatModeHint:
       '작업 시작 후 앱이 즉시 충돌하면 활성화해 보세요. 이 경우에만 사용하세요, 성능에 영향을 줄 수 있습니다',
+    inferenceDevice: '추론 장치',
+    inferenceDeviceHint:
+      'OCR 및 신경망 인식에 사용할 장치입니다. GPU 추론에 문제가 있으면 CPU 전용으로 변경하세요 (재시작 필요)',
+    inferenceDeviceAuto: '자동',
+    inferenceDeviceCpu: 'CPU 전용',
   },
 
   webserver: {

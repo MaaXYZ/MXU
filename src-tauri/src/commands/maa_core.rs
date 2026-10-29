@@ -1170,12 +1170,13 @@ pub fn load_resource_impl(
     state: &MaaState,
     instance_id: &str,
     paths: &[String],
+    inference_device: &str,
     on_event: Arc<dyn Fn(&str, &str) + Send + Sync + 'static>,
     app: Option<&tauri::AppHandle>,
 ) -> Result<Vec<i64>, String> {
     info!(
-        "load_resource_impl called, instance: {}, paths: {:?}",
-        instance_id, paths
+        "load_resource_impl called, instance: {}, paths: {:?}, inference_device: {}",
+        instance_id, paths, inference_device
     );
 
     let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
@@ -1205,6 +1206,16 @@ pub fn load_resource_impl(
     }
 
     let resource = instance.resource.as_ref().unwrap();
+
+    // 推理设备需在 post_bundle 前设置，MaaFW 在加载资源时才应用
+    let inference_result = match inference_device {
+        "cpu" => resource.use_cpu(),
+        _ => resource.use_auto_ep(),
+    };
+    if let Err(e) = inference_result {
+        warn!("Failed to set inference device {}: {}", inference_device, e);
+    }
+
     let mut res_ids = Vec::new();
 
     for path in paths {
@@ -1231,11 +1242,13 @@ pub fn maa_load_resource(
     state: State<Arc<MaaState>>,
     instance_id: String,
     paths: Vec<String>,
+    inference_device: String,
 ) -> Result<Vec<i64>, String> {
     let res_ids = load_resource_impl(
         &state,
         &instance_id,
         &paths,
+        &inference_device,
         Arc::new({
             let app = app.clone();
             move |msg, detail| emit_callback_event(&app, msg, detail)

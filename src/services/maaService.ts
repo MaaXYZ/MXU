@@ -21,6 +21,7 @@ import { isTauri } from '@/utils/paths';
 import i18n from '@/i18n';
 import { apiDelete, apiGet, apiPost, apiPut, getApiBase } from '@/utils/backendApi';
 import * as wsService from '@/services/wsService';
+import { useAppStore } from '@/stores/appStore';
 
 const log = loggers.maa;
 
@@ -362,20 +363,32 @@ export const maaService = {
    * @returns 资源加载请求 ID 列表，通过监听 maa-callback 事件获取完成状态
    */
   async loadResource(instanceId: string, paths: string[]): Promise<number[]> {
-    log.info('加载资源, 实例:', instanceId, ', 路径数:', paths.length);
+    const { inferenceDevice } = useAppStore.getState();
+    log.info(
+      '加载资源, 实例:',
+      instanceId,
+      ', 路径数:',
+      paths.length,
+      ', 推理设备:',
+      inferenceDevice,
+    );
     paths.forEach((path, i) => {
       log.debug(`  路径[${i}]: ${path}`);
     });
     if (!isTauri()) {
       const result = await apiPost<{ resIds: number[] }>(
         `/maa/instances/${instanceId}/resource/load`,
-        { paths },
+        { paths, inferenceDevice },
       );
       const resIds = result.resIds ?? [];
       log.info('资源加载请求已发送 (HTTP), resIds:', resIds);
       return resIds;
     }
-    const resIds = await invoke<number[]>('maa_load_resource', { instanceId, paths });
+    const resIds = await invoke<number[]>('maa_load_resource', {
+      instanceId,
+      paths,
+      inferenceDevice,
+    });
     log.info('资源加载请求已发送, resIds:', resIds);
     return resIds;
   },

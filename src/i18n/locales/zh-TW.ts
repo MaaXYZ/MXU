@@ -580,6 +580,11 @@ export default {
     saveDrawHint: '儲存識別和操作的除錯圖像到日誌目錄（重啟軟體後自動關閉）',
     tcpCompatMode: '通訊相容模式',
     tcpCompatModeHint: '若啟動任務後軟體立即閃退，可嘗試開啟。僅限此情況使用，否則會影響運行效率',
+    inferenceDevice: '推理裝置',
+    inferenceDeviceHint:
+      'OCR 與神經網路識別使用的裝置。若 GPU 推理出現異常可改為僅 CPU（重啟生效）',
+    inferenceDeviceAuto: '自動',
+    inferenceDeviceCpu: '僅 CPU',
   },
 
   webserver: {

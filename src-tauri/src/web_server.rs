@@ -837,7 +837,7 @@ async fn handle_connect_controller(
 
 /// POST /api/maa/instances/:id/resource/load
 /// 加载资源（异步，通过 WebSocket 回调通知完成状态）
-/// Body: `{ "paths": ["/path/to/resource"] }`
+/// Body: `{ "paths": ["/path/to/resource"], "inferenceDevice": "auto" | "cpu" }`
 async fn handle_load_resource(
     State(state): State<WebState>,
     axum::extract::Path(instance_id): axum::extract::Path<String>,
@@ -859,6 +859,11 @@ async fn handle_load_resource(
         }
     };
 
+    let inference_device = body
+        .get("inferenceDevice")
+        .and_then(|v| v.as_str())
+        .unwrap_or("auto");
+
     let app_handle = state.app_handle.clone();
     let on_event: Arc<dyn Fn(&str, &str) + Send + Sync + 'static> =
         Arc::new(move |msg: &str, detail: &str| {
@@ -869,6 +874,7 @@ async fn handle_load_resource(
         &state.maa_state,
         &instance_id,
         &paths,
+        inference_device,
         on_event,
         Some(&state.app_handle),
     ) {

@@ -1536,6 +1536,7 @@ export const useAppStore = create<AppState>()(
         welcomeShownHash: config.settings.welcomeShownHash ?? '',
         devMode: config.settings.devMode ?? false,
         tcpCompatMode: config.settings.tcpCompatMode ?? false,
+        inferenceDevice: config.settings.inferenceDevice ?? 'auto',
         allowLanAccess: config.settings.allowLanAccess ?? false,
         webServerEnabled: config.settings.webServerEnabled ?? true,
         webServerPort: config.settings.webServerPort ?? 12701,
@@ -2043,6 +2044,10 @@ export const useAppStore = create<AppState>()(
     tcpCompatMode: false,
     setTcpCompatMode: (enabled) => set({ tcpCompatMode: enabled }),
 
+    // 推理设备（重启生效）
+    inferenceDevice: 'auto',
+    setInferenceDevice: (device) => set({ inferenceDevice: device }),
+
     // 局域网访问（Web UI 绑定 0.0.0.0，需重启生效）
     allowLanAccess: false,
     setAllowLanAccess: (enabled) => set({ allowLanAccess: enabled }),
@@ -2502,6 +2507,7 @@ function generateConfig(): MxuConfig {
           welcomeShownHash: state.welcomeShownHash,
           devMode: state.devMode,
           tcpCompatMode: state.tcpCompatMode,
+          inferenceDevice: state.inferenceDevice,
           allowLanAccess: state.allowLanAccess,
           webServerEnabled: state.webServerEnabled,
           webServerPort: state.webServerPort,
@@ -2581,6 +2587,7 @@ useAppStore.subscribe(
     welcomeShownHash: state.welcomeShownHash,
     devMode: state.devMode,
     tcpCompatMode: state.tcpCompatMode,
+    inferenceDevice: state.inferenceDevice,
     allowLanAccess: state.allowLanAccess,
     webServerEnabled: state.webServerEnabled,
     webServerPort: state.webServerPort,

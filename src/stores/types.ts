@@ -15,6 +15,7 @@ import type {
   RecentlyClosedInstance,
   ScreenshotFrameRate,
   HotkeySettings,
+  InferenceDevice,
 } from '@/types/config';
 import type {
   ConnectionStatus,
@@ -405,6 +406,10 @@ export interface AppState {
   // 通信兼容模式
   tcpCompatMode: boolean;
   setTcpCompatMode: (enabled: boolean) => void;
+
+  /** 推理设备（重启生效） */
+  inferenceDevice: InferenceDevice;
+  setInferenceDevice: (device: InferenceDevice) => void;
 
   /** Web 服务器是否启用（默认 true，重启生效） */
   webServerEnabled: boolean;

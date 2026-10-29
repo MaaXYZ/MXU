@@ -603,6 +603,11 @@ export default {
     tcpCompatMode: '通信互換モード',
     tcpCompatModeHint:
       'タスク開始後にアプリがすぐにクラッシュする場合は有効にしてください。この場合のみ使用し、それ以外は性能に影響します',
+    inferenceDevice: '推論デバイス',
+    inferenceDeviceHint:
+      'OCR とニューラルネットワーク認識に使用するデバイス。GPU 推論で問題が起きる場合は CPU のみに切り替えてください（再起動後に反映）',
+    inferenceDeviceAuto: '自動',
+    inferenceDeviceCpu: 'CPU のみ',
   },
 
   webserver: {

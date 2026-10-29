@@ -1,6 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bug, RefreshCw, FolderOpen, ScrollText, Network, Archive } from 'lucide-react';
+import clsx from 'clsx';
+import {
+  Bug,
+  RefreshCw,
+  FolderOpen,
+  ScrollText,
+  Network,
+  Archive,
+  Cpu,
+  ChevronDown,
+  Check,
+} from 'lucide-react';
 
 import { useAppStore } from '@/stores/appStore';
 import { maaService } from '@/services/maaService';
@@ -8,7 +19,13 @@ import { loggers } from '@/utils/logger';
 import { isTauri, getDebugDir, getConfigDir, openDirectory } from '@/utils/paths';
 import { useExportLogs } from '@/utils/useExportLogs';
 import { SwitchButton } from '@/components/FormControls';
+import type { InferenceDevice } from '@/types/config';
 import { ExportLogsModal } from './ExportLogsModal';
+
+const INFERENCE_DEVICE_OPTIONS: { value: InferenceDevice; labelKey: string }[] = [
+  { value: 'auto', labelKey: 'debug.inferenceDeviceAuto' },
+  { value: 'cpu', labelKey: 'debug.inferenceDeviceCpu' },
+];
 
 export function DebugSection() {
   const { t } = useTranslation();
@@ -21,6 +38,8 @@ export function DebugSection() {
     setSaveDraw,
     tcpCompatMode,
     setTcpCompatMode,
+    inferenceDevice,
+    setInferenceDevice,
     backendOS,
     backendArch,
   } = useAppStore();
@@ -38,6 +57,24 @@ export function DebugSection() {
   } | null>(null);
 
   const { exportModal, handleExportLogs, closeExportModal, openExportedFile } = useExportLogs();
+
+  const [inferenceDropdownOpen, setInferenceDropdownOpen] = useState(false);
+  const inferenceDropdownRef = useRef<HTMLDivElement>(null);
+
+  // 点击外部关闭推理设备下拉框
+  useEffect(() => {
+    if (!inferenceDropdownOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        inferenceDropdownRef.current &&
+        !inferenceDropdownRef.current.contains(e.target as Node)
+      ) {
+        setInferenceDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [inferenceDropdownOpen]);
 
   const version = projectInterface?.version || '0.1.0';
 
@@ -282,6 +319,80 @@ export function DebugSection() {
             </div>
           </div>
           <SwitchButton value={tcpCompatMode} onChange={(v) => setTcpCompatMode(v)} />
+        </div>
+
+        {/* 推理设备 */}
+        <div className="flex items-center justify-between pt-4 border-t border-border">
+          <div className="flex items-center gap-3">
+            <Cpu className="w-5 h-5 text-accent" />
+            <div>
+              <span className="font-medium text-text-primary">{t('debug.inferenceDevice')}</span>
+              <p className="text-xs text-text-muted mt-0.5">{t('debug.inferenceDeviceHint')}</p>
+            </div>
+          </div>
+          {/* 自定义下拉框 */}
+          <div className="relative shrink-0" ref={inferenceDropdownRef}>
+            <button
+              type="button"
+              onClick={() => setInferenceDropdownOpen((prev) => !prev)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setInferenceDropdownOpen(false);
+              }}
+              className="min-w-[160px] px-3 py-1.5 text-sm rounded-lg border flex items-center justify-between gap-2 bg-bg-tertiary border-border text-text-primary hover:bg-bg-hover transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50"
+              aria-haspopup="listbox"
+              aria-expanded={inferenceDropdownOpen}
+            >
+              <span className="truncate">
+                {t(
+                  INFERENCE_DEVICE_OPTIONS.find((opt) => opt.value === inferenceDevice)?.labelKey ??
+                    INFERENCE_DEVICE_OPTIONS[0].labelKey,
+                )}
+              </span>
+              <ChevronDown
+                className={clsx(
+                  'w-4 h-4 text-text-muted shrink-0 transition-transform',
+                  inferenceDropdownOpen && 'rotate-180',
+                )}
+              />
+            </button>
+
+            {inferenceDropdownOpen && (
+              <div
+                className="mxu-overlay-surface absolute right-0 z-20 mt-1 w-full max-h-60 overflow-y-auto rounded-lg border border-border bg-bg-primary shadow-lg"
+                role="listbox"
+              >
+                {INFERENCE_DEVICE_OPTIONS.map((opt) => {
+                  const isSelected = opt.value === inferenceDevice;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected}
+                      className={clsx(
+                        'w-full px-3 py-2 text-sm text-left flex items-center gap-2 transition-colors',
+                        isSelected
+                          ? 'bg-accent/10 text-accent font-medium'
+                          : 'text-text-primary hover:bg-bg-hover',
+                      )}
+                      onClick={() => {
+                        setInferenceDevice(opt.value);
+                        setInferenceDropdownOpen(false);
+                      }}
+                    >
+                      <Check
+                        className={clsx(
+                          'w-4 h-4 shrink-0',
+                          isSelected ? 'opacity-100' : 'opacity-0',
+                        )}
+                      />
+                      <span className="truncate">{t(opt.labelKey)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

@@ -109,6 +109,9 @@ export type UpdateChannel = 'stable' | 'beta';
 // 截图帧率类型
 export type ScreenshotFrameRate = 'unlimited' | '5' | '1' | '0.2' | '0.033';
 
+// 推理设备（对应 MaaFW 的推理执行后端）
+export type InferenceDevice = 'auto' | 'cpu';
+
 // MirrorChyan 设置
 export interface MirrorChyanSettings {
   cdk: string; // MirrorChyan CDK（内存中为明文，仅用于运行时）
@@ -161,6 +164,7 @@ export interface AppSettings {
   onboardingCompleted?: boolean; // 新用户引导是否已完成
   hotkeys?: HotkeySettings; // 快捷键设置
   tcpCompatMode?: boolean; // 通信兼容模式，强制使用 TCP 而非 IPC
+  inferenceDevice?: InferenceDevice; // 推理设备（默认 auto，重启生效）
   webServerEnabled?: boolean; // Web 服务器是否启用（默认 true，重启生效）
   allowLanAccess?: boolean; // Web UI 允许局域网访问（绑定 0.0.0.0，重启生效）
   webServerPort?: number; // Web 服务器监听端口（默认 12701，重启生效）

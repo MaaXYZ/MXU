@@ -604,6 +604,11 @@ export default {
     tcpCompatMode: 'Communication Compat Mode',
     tcpCompatModeHint:
       'Try enabling this if the app crashes immediately after starting tasks. Only use in this case, as it may reduce performance',
+    inferenceDevice: 'Inference Device',
+    inferenceDeviceHint:
+      'Device used for OCR and neural network recognition. Switch to CPU only if GPU inference misbehaves (restart required)',
+    inferenceDeviceAuto: 'Auto',
+    inferenceDeviceCpu: 'CPU Only',
   },
 
   webserver: {
