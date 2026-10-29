@@ -105,16 +105,16 @@ export default {
     minimizeToTray: 'Minimize to tray on close',
     minimizeToTrayHint: 'Hide to system tray instead of exiting when clicking close button',
     autoStart: 'Launch at startup',
-    autoStartHint: 'Automatically start this application when the system boots',
-    autoStartInstance: 'Auto-execute on startup',
+    autoStartHint: 'If checked, "{{projectName}} --autostart" will be added to startup items so it launches automatically after login. If unchecked, it will be removed. Visit https://github.com/MistEO/MXU/blob/main/docs/run-on-start-up.md to learn more.',
+    autoStartInstance: 'Default execution for Auto Mode',
     autoStartInstanceHint:
-      'Select a configuration to activate and run tasks automatically after startup. Scheduled tasks for other configurations will still run normally',
+      'The default configuration executed in Auto Mode (launch method "{{projectName}} --autostart"). Unselected configurations will still execute at their scheduled times if a task is set. Automatic mode will still perform auto-updates (no pop-ups), and execution will continue regardless of whether the update succeeds or fails.',
     autoStartInstanceNone: 'Do not auto-execute',
     autoStartInstanceRemoved:
       'Previously selected configuration "{{name}}" has been deleted. Auto-execute has been disabled',
-    autoRunOnLaunch: 'Also auto-execute on manual launch',
+    autoRunOnLaunch: 'Treat manual launch as automatic',
     autoRunOnLaunchHint:
-      'Automatically execute the selected configuration when manually opening the app (if disabled, only triggers on system startup)',
+      'In Manual Mode (launch method "{{projectName}}" or double-clicking the icon), if checked, it will execute following the logic of Auto Mode.',
     confirmBeforeDelete: 'Confirm delete actions',
     confirmBeforeDeleteHint:
       'Show a confirmation dialog before delete/clear list and other dangerous actions.',

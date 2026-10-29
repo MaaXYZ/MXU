@@ -104,16 +104,16 @@ export default {
     minimizeToTray: '닫을 때 트레이로 최소화',
     minimizeToTrayHint: '닫기 버튼을 클릭하면 종료하지 않고 시스템 트레이에 숨깁니다',
     autoStart: '시작 시 자동 실행',
-    autoStartHint: '시스템 부팅 시 이 애플리케이션을 자동으로 시작합니다',
-    autoStartInstance: '시작 후 자동 실행',
+    autoStartHint: '체크하면 "{{projectName}} --autostart"를 시작 항목에 추가하여 로그인 시 자동으로 시작합니다. 체크를 해제하면 제거됩니다. 자세한 내용은 https://github.com/MistEO/MXU/blob/main/docs/run-on-start-up.md 를 확인하세요.',
+    autoStartInstance: '자동 모드의 기본 실행',
     autoStartInstanceHint:
-      '시작 후 자동으로 활성화하고 작업을 실행할 구성을 선택합니다. 다른 구성의 예약 작업은 정상적으로 실행됩니다',
+      '자동 모드(실행 방식 "{{projectName}} --autostart")에서 실행되는 기본 구성입니다. 선택되지 않은 구성이라도 예약 작업이 설정되어 있으면 정해진 시간에 실행됩니다. 자동 모드에서도 자동 업데이트가 실행됩니다(팝업 없음). 업데이트 성공 여부와 상관없이 계속 진행됩니다.',
     autoStartInstanceNone: '자동 실행 안 함',
     autoStartInstanceRemoved:
       '이전에 선택한 구성 "{{name}}"이(가) 삭제되었습니다. 자동 실행이 비활성화되었습니다',
-    autoRunOnLaunch: '수동 실행 시에도 자동 실행',
+    autoRunOnLaunch: '수동 시작을 자동으로 간주',
     autoRunOnLaunchHint:
-      '앱을 수동으로 열 때도 위에서 선택한 구성을 자동 실행합니다 (비활성화 시 시스템 시작 시에만 실행)',
+      '수동 모드(실행 방식 "{{projectName}}" 또는 아이콘 더블 클릭)에서 체크하면, 자동 모드의 로직에 따라 실행됩니다.',
     confirmBeforeDelete: '삭제 작업 확인',
     confirmBeforeDeleteHint: '삭제/목록 비우기 등 위험한 작업 전에 확인 대화 상자를 표시합니다',
     helpImproveSoftware: '소프트웨어 개선에 참여',
