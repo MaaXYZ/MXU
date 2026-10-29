@@ -663,12 +663,27 @@ pub async fn start_tasks_impl(
 
     // 启动所有 Agent（如果配置了）
     debug!("[start_tasks] Checking agent configs...");
-    let pi_envs = Arc::new(pi_envs.unwrap_or_default());
     if let Some(configs) = agent_configs {
         if configs.is_empty() {
             debug!("[start_tasks] Agent configs list is empty, skipping agent setup");
         } else {
             info!("[start_tasks] Starting {} agent(s)...", configs.len());
+
+            // PI v2.11.0: 使用后端实际数据目录，不随资源目录或客户端传值变化。
+            let data_dir = super::utils::get_app_data_dir()?;
+            let data_dir = if data_dir.is_absolute() {
+                data_dir
+            } else {
+                std::env::current_dir()
+                    .map_err(|e| e.to_string())?
+                    .join(data_dir)
+            };
+            let mut pi_envs = pi_envs.unwrap_or_default();
+            pi_envs.insert(
+                "PI_USER_DATA_DIR".to_string(),
+                data_dir.to_string_lossy().to_string(),
+            );
+            let pi_envs = Arc::new(pi_envs);
 
             // 用于收集所有成功启动的 agent，失败时需要回滚清理
             let mut new_clients = Vec::new();
