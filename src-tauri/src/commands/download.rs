@@ -59,6 +59,28 @@ static DOWNLOAD_CANCELLED: AtomicBool = AtomicBool::new(false);
 /// 当前下载的 session ID，用于区分不同的下载任务
 static CURRENT_DOWNLOAD_SESSION: AtomicU64 = AtomicU64::new(0);
 
+fn apply_proxy(
+    mut client_builder: reqwest::ClientBuilder,
+    proxy_url: Option<&str>,
+    log_prefix: &str,
+    target_url: &str,
+) -> Result<reqwest::ClientBuilder, String> {
+    if let Some(proxy) = proxy_url.filter(|proxy| !proxy.is_empty()) {
+        info!("[{}] 使用代理: {}", log_prefix, proxy);
+        info!("[{}] 目标: {}", log_prefix, target_url);
+        let reqwest_proxy = reqwest::Proxy::all(proxy).map_err(|e| {
+            error!("代理配置失败: {} (代理地址: {})", e, proxy);
+            format!(
+                "代理配置失败: {}。请检查代理格式是否正确（支持 http:// 或 socks5://）",
+                e
+            )
+        })?;
+        client_builder = client_builder.proxy(reqwest_proxy);
+    }
+
+    Ok(client_builder)
+}
+
 /// 根据版本号获取 GitHub Release URL
 ///
 /// 使用 GitHub API 获取指定版本的 Release 信息，支持使用 GitHub PAT 和代理
@@ -79,21 +101,7 @@ pub async fn get_github_release_by_version(
         .timeout(std::time::Duration::from_secs(10))
         .connect_timeout(std::time::Duration::from_secs(3));
 
-    // 添加代理配置（如果提供）
-    if let Some(ref proxy) = proxy_url {
-        if !proxy.is_empty() {
-            info!("[检查更新] 使用代理: {}", proxy);
-            info!("[检查更新] 目标: {}", url);
-            let reqwest_proxy = reqwest::Proxy::all(proxy).map_err(|e| {
-                error!("代理配置失败: {} (代理地址: {})", e, proxy);
-                format!(
-                    "代理配置失败: {}。请检查代理格式是否正确（支持 http:// 或 socks5://）",
-                    e
-                )
-            })?;
-            client_builder = client_builder.proxy(reqwest_proxy);
-        }
-    }
+    client_builder = apply_proxy(client_builder, proxy_url.as_deref(), "检查更新", &url)?;
 
     let client = client_builder
         .build()
@@ -142,6 +150,32 @@ pub async fn get_github_release_by_version(
     }
     warn!("未找到匹配的 Release: target_version={}", target_version);
     Ok(None)
+}
+
+/// 检查下载链接的 HTTP 状态码，支持使用代理
+#[tauri::command]
+pub async fn probe_download_url(url: String, proxy_url: Option<String>) -> Result<u16, String> {
+    let client_builder = reqwest::Client::builder()
+        .user_agent(build_user_agent())
+        .timeout(std::time::Duration::from_secs(10))
+        .connect_timeout(std::time::Duration::from_secs(3));
+    let client_builder = apply_proxy(
+        client_builder,
+        proxy_url.as_deref(),
+        "检查直接下载链接",
+        &url,
+    )?;
+    let client = client_builder
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+
+    let response = client
+        .head(&url)
+        .send()
+        .await
+        .map_err(|e| format!("请求失败: {}", e))?;
+
+    Ok(response.status().as_u16())
 }
 
 /// 流式下载文件，支持进度回调和取消
@@ -578,4 +612,55 @@ fn parse_content_disposition(header: &str) -> Option<String> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::probe_download_url;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    #[test]
+    fn probe_download_url_uses_explicit_proxy() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test proxy");
+        let proxy_address = listener.local_addr().expect("get test proxy address");
+        let proxy = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept proxied request");
+            let mut request = Vec::new();
+            loop {
+                let mut chunk = [0_u8; 2048];
+                let bytes_read = stream.read(&mut chunk).expect("read proxied request");
+                assert!(bytes_read > 0, "proxy closed before request headers");
+                request.extend_from_slice(&chunk[..bytes_read]);
+                if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+                assert!(
+                    request.len() <= 64 * 1024,
+                    "proxy request headers too large"
+                );
+            }
+            let request = String::from_utf8_lossy(&request);
+            assert!(request.starts_with("HEAD http://example.invalid/update.zip HTTP/1.1"));
+            stream
+                .write_all(
+                    b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                )
+                .expect("write proxy response");
+        });
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("build Tokio runtime");
+        let status = runtime
+            .block_on(probe_download_url(
+                "http://example.invalid/update.zip".to_string(),
+                Some(format!("http://{}", proxy_address)),
+            ))
+            .expect("probe through proxy");
+
+        assert_eq!(status, 204);
+        proxy.join().expect("join test proxy");
+    }
 }

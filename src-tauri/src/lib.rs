@@ -295,6 +295,7 @@ pub fn run() {
             commands::update::cleanup_update_artifacts,
             // 下载命令
             commands::download::get_github_release_by_version,
+            commands::download::probe_download_url,
             commands::download::download_file,
             commands::download::cancel_download,
             // 系统相关命令
