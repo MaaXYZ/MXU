@@ -1223,7 +1223,7 @@ export function consumeUpdateCompleteInfo(): UpdateCompleteInfo | null {
 }
 
 /**
- * 保存待安装更新信息到本地存储（下载完成后调用）
+ * 保存待安装更新信息到本地存储（下载完成后调用）。失败时抛出，由下载入口处理。
  */
 export function savePendingUpdateInfo(info: PendingUpdateInfo): void {
   try {
@@ -1231,6 +1231,7 @@ export function savePendingUpdateInfo(info: PendingUpdateInfo): void {
     log.info('已保存待安装更新信息:', info.versionName);
   } catch (error) {
     log.warn('保存待安装更新信息失败:', error);
+    throw error;
   }
 }
 

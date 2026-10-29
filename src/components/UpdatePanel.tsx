@@ -80,7 +80,6 @@ export function UpdatePanel({ onClose, anchorRef }: UpdatePanelProps) {
       if (result.success) {
         // 使用实际保存路径（可能与请求路径不同，如果从 302 重定向检测到正确文件名）
         setDownloadSavePath(result.actualSavePath);
-        setDownloadStatus('completed');
         // 保存待安装更新信息，以便下次启动时自动安装
         savePendingUpdateInfo({
           versionName: updateInfo.versionName,
@@ -92,6 +91,7 @@ export function UpdatePanel({ onClose, anchorRef }: UpdatePanelProps) {
           downloadSource: updateInfo.downloadSource,
           timestamp: Date.now(),
         });
+        setDownloadStatus('completed');
       } else {
         setDownloadStatus('failed');
       }

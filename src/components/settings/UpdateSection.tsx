@@ -25,6 +25,7 @@ import {
   cancelDownload,
   MIRRORCHYAN_ERROR_CODES,
   isDebugVersion,
+  savePendingUpdateInfo,
 } from '@/services/updateService';
 import { createProxySettings, proxySettingsForUpdateDownload } from '@/services/proxyService';
 import { resolveI18nText } from '@/services/contentResolver';
@@ -152,6 +153,16 @@ export function UpdateSection() {
         if (result.success) {
           // 使用实际保存路径（可能与请求路径不同，如果从 302 重定向检测到正确文件名）
           setDownloadSavePath(result.actualSavePath);
+          savePendingUpdateInfo({
+            versionName: info.versionName,
+            releaseNote: info.releaseNote,
+            channel: info.channel,
+            downloadSavePath: result.actualSavePath,
+            fileSize: info.fileSize,
+            updateType: info.updateType,
+            downloadSource: info.downloadSource,
+            timestamp: Date.now(),
+          });
           setDownloadStatus('completed');
         } else {
           setDownloadStatus('failed');

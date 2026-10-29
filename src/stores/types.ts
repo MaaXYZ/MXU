@@ -470,6 +470,9 @@ export interface AppState {
   resetDownloadState: () => void;
 
   // 安装状态
+  /** 本次启动是否实际启用 -q 自动任务；null 表示尚未确定，此时不自动安装。仅运行时使用。 */
+  quitAfterRun: boolean | null;
+  setQuitAfterRun: (quit: boolean) => void;
   showInstallConfirmModal: boolean;
   installStatus: InstallStatus;
   installError: string | null;

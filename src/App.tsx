@@ -196,6 +196,7 @@ function App() {
     setJustUpdatedInfo,
     setShowInstallConfirmModal,
     showInstallConfirmModal,
+    quitAfterRun,
     updateInfo,
     downloadStatus,
     setShowUpdateDialog,
@@ -238,6 +239,7 @@ function App() {
       setJustUpdatedInfo: state.setJustUpdatedInfo,
       setShowInstallConfirmModal: state.setShowInstallConfirmModal,
       showInstallConfirmModal: state.showInstallConfirmModal,
+      quitAfterRun: state.quitAfterRun,
       updateInfo: state.updateInfo,
       downloadStatus: state.downloadStatus,
       setShowUpdateDialog: state.setShowUpdateDialog,
@@ -414,6 +416,9 @@ function App() {
   // 尝试自动安装更新（无任务运行中时触发）
   const tryAutoInstallUpdate = useCallback(() => {
     const state = useAppStore.getState();
+    // 本次启动实际启用 -q 自动任务时优先退出，更新留给下次普通启动安装。
+    // 启动策略尚未确定时也不安装，避免初始化期间抢先触发。
+    if (state.quitAfterRun !== false) return;
     if (state.downloadStatus !== 'completed') return;
     if (state.installStatus !== 'idle') return;
     if (state.autoInstallPending) return;
@@ -476,9 +481,7 @@ function App() {
         if (result.success) {
           // 使用实际保存路径（可能与请求路径不同，如果从 302 重定向检测到正确文件名）
           setDownloadSavePath(result.actualSavePath);
-          setDownloadStatus('completed');
           log.info('更新下载完成');
-
           // 保存待安装更新信息，以便下次启动时自动安装
           savePendingUpdateInfo({
             versionName: updateResult.versionName,
@@ -490,6 +493,9 @@ function App() {
             downloadSource: updateResult.downloadSource,
             timestamp: Date.now(),
           });
+
+          // 先持久化待安装信息，再通知下载完成，避免自动安装先于保存执行。
+          setDownloadStatus('completed');
 
           // 尝试自动安装更新
           tryAutoInstallUpdate();
@@ -592,6 +598,14 @@ function App() {
     setErrorMessage('');
 
     try {
+      let shouldQuit = false;
+      if (isTauri()) {
+        try {
+          shouldQuit = await invoke<boolean>('has_quit_after_run_flag');
+        } catch (err) {
+          log.warn('读取 --quit-after-run 参数失败，按普通启动继续初始化:', err);
+        }
+      }
       log.info('加载 interface.json...');
       const result = await autoLoadInterface();
       setProjectInterface(result.interface);
@@ -876,6 +890,7 @@ function App() {
       // 新版本下载在后台进行，不影响本次任务启动。
       let autoStartTasksPending = false;
       let isAutoRunOnLaunchMode = false;
+      let unsubscribeQuitAfterRun: (() => void) | undefined;
       if (isTauri()) {
         try {
           const isAutoStart = await invoke<boolean>('is_autostart');
@@ -917,16 +932,16 @@ function App() {
               }
               useAppStore.getState().setActiveInstance(targetInstanceId);
 
-              // 检查 -q/--quit-after-run 参数：任务完成后关闭自身
-              const shouldQuit = await invoke<boolean>('has_quit_after_run_flag');
+              // -q/--quit-after-run：任务完成后关闭自身
               if (shouldQuit) {
                 log.info('命令行 --quit-after-run 参数：任务完成后将关闭自身');
-                const unsub = useAppStore.subscribe(
+                unsubscribeQuitAfterRun = useAppStore.subscribe(
                   (state) => state.instances.find((i) => i.id === targetInstanceId)?.isRunning,
                   (isRunning, prevIsRunning) => {
                     if (prevIsRunning && !isRunning) {
                       log.info('自动执行任务完成，关闭自身');
-                      unsub();
+                      unsubscribeQuitAfterRun?.();
+                      unsubscribeQuitAfterRun = undefined;
                       import('@tauri-apps/plugin-process').then(({ exit }) => exit(0));
                     }
                   },
@@ -943,6 +958,10 @@ function App() {
         }
       }
 
+      // -q 仅在本次启动将自动执行有效实例时生效，否则沿用普通更新流程。
+      shouldQuit = shouldQuit && autoStartTasksPending;
+      useAppStore.getState().setQuitAfterRun(shouldQuit);
+
       const dispatchPendingAutoStartTasks = () => {
         if (!autoStartTasksPending) return;
         autoStartTasksPending = false;
@@ -952,8 +971,14 @@ function App() {
             new CustomEvent('mxu-start-tasks', {
               detail: {
                 source: 'autostart',
-                onSettled: () => {
+                onSettled: (started: boolean) => {
                   autoTaskLaunchPendingRef.current = false;
+                  if (!started) {
+                    // 空任务、连接失败等情况不会产生任务结束事件，恢复普通更新流程。
+                    unsubscribeQuitAfterRun?.();
+                    unsubscribeQuitAfterRun = undefined;
+                    useAppStore.getState().setQuitAfterRun(false);
+                  }
                   // 启动失败时任务不会产生 running -> idle 状态变化，需要在这里补一次安装检查；
                   // 启动成功时仍处于运行态，本次检查会直接返回，并在任务结束后再次触发。
                   tryAutoInstallUpdate();
@@ -993,9 +1018,9 @@ function App() {
             normalizeVersion(currentVersionNow) === normalizeVersion(updateCompleteInfo.newVersion)
           ) {
             log.info('版本已更新到目标版本');
-            if (isAutoStartModeNow) {
+            if (isAutoStartModeNow || shouldQuit) {
               // 无人值守：跳过弹窗，继续检查是否有更新版本
-              log.info('自启动模式，跳过更新完成弹窗');
+              log.info('自动执行模式，跳过更新完成弹窗');
             } else {
               showUpdateCompletedUI();
               if (isAutoRunOnLaunchMode) {
@@ -1010,8 +1035,8 @@ function App() {
           // 直接显示更新完成弹窗（zip 等自动安装场景）
           log.info('检测到刚更新完成:', updateCompleteInfo.newVersion);
           clearPendingUpdateInfo();
-          if (isAutoStartModeNow) {
-            log.info('自启动模式，跳过更新完成弹窗');
+          if (isAutoStartModeNow || shouldQuit) {
+            log.info('自动执行模式，跳过更新完成弹窗');
           } else {
             showUpdateCompletedUI();
             if (isAutoRunOnLaunchMode) {
@@ -1039,6 +1064,13 @@ function App() {
             downloadSource: pendingUpdate.downloadSource,
           });
           setDownloadSavePath(pendingUpdate.downloadSavePath);
+          if (shouldQuit) {
+            // 托管运行不安装、不重启；保留待安装包供调用方另开更新会话。
+            setDownloadStatus('completed');
+            log.info('--quit-after-run 模式，保留待安装更新并继续执行任务');
+            dispatchPendingAutoStartTasks();
+            return;
+          }
           // 先设置 installStatus，再设置 downloadStatus，
           // 避免 subscribe 在 installStatus 还是 idle 时触发 tryAutoInstallUpdate 造成双发
           useAppStore.getState().setInstallStatus('installing');
@@ -1378,7 +1410,7 @@ function App() {
   useEffect(() => {
     if (currentPage === 'main') {
       // 下载完成：弹出安装模态框
-      if (downloadStatus === 'completed') {
+      if (downloadStatus === 'completed' && quitAfterRun === false) {
         setShowInstallConfirmModal(true);
       }
       // 有更新、有错误或正在下载：弹出更新气泡
@@ -1391,16 +1423,17 @@ function App() {
     updateInfo?.hasUpdate,
     updateInfo?.errorCode,
     downloadStatus,
+    quitAfterRun,
     setShowUpdateDialog,
     setShowInstallConfirmModal,
   ]);
 
   // 下载完成时，强制弹出安装模态框
   useEffect(() => {
-    if (downloadStatus === 'completed') {
+    if (downloadStatus === 'completed' && quitAfterRun === false) {
       setShowInstallConfirmModal(true);
     }
-  }, [downloadStatus, setShowInstallConfirmModal]);
+  }, [downloadStatus, quitAfterRun, setShowInstallConfirmModal]);
 
   // 下载失败或取消时，如果有挂起的自动任务，立即分发
   useEffect(() => {

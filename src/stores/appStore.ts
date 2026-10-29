@@ -2136,6 +2136,8 @@ export const useAppStore = create<AppState>()(
       }),
 
     // 安装状态
+    quitAfterRun: null,
+    setQuitAfterRun: (quit) => set({ quitAfterRun: quit }),
     showInstallConfirmModal: false,
     installStatus: 'idle',
     installError: null,
