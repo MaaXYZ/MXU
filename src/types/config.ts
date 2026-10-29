@@ -27,6 +27,8 @@ export interface SavedTask {
   expanded?: boolean;
   /** 各选项的子选项折叠状态（optionKey → 是否折叠）；缺省 = 展开，向后兼容 */
   collapsedOptions?: Record<string, boolean>;
+  /** 所属容器任务的 id（被拖入容器时设置） */
+  parentId?: string;
 }
 
 // 保存的设备信息

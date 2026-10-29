@@ -184,6 +184,23 @@ body {
   animation: taskRunningPulse 3s ease-in-out infinite;
 }
 
+/* 容器内「即将执行」指示灯的呼吸动画 */
+@keyframes containerNextPulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 8px 1px var(--color-warning);
+  }
+  50% {
+    opacity: 0.45;
+    box-shadow: 0 0 4px 0 var(--color-warning);
+  }
+}
+
+.container-next-indicator {
+  animation: containerNextPulse 2.4s ease-in-out infinite;
+}
+
 /* Running task card border breathing animation */
 @keyframes taskCardBreathing {
   0%,

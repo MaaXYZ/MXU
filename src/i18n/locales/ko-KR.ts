@@ -809,6 +809,19 @@ export default {
     resourceNotFound: '리소스 팩을 찾을 수 없습니다',
   },
 
+  // 순환 컨테이너
+  container: {
+    emptyHint: '지원되는 작전 임무를 이 카드로 드래그하면 순환에 포함됩니다',
+    childrenCount: '순환 컨테이너: 작전 임무 {{count}}개 포함',
+    releaseChild: '컨테이너에서 제외',
+    childStatus: {
+      pending: '미실행',
+      next: '곧 실행',
+      succeeded: '완료',
+      failed: '실패',
+    },
+  },
+
   // 컨텍스트 메뉴
   contextMenu: {
     // 탭 컨텍스트 메뉴

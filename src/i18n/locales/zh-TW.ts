@@ -792,6 +792,19 @@ export default {
     resourceNotFound: '資源包不存在',
   },
 
+  // 輪換容器
+  container: {
+    emptyHint: '把支援的作戰任務拖到本卡片上，即可納入輪換',
+    childrenCount: '輪換容器：已納入 {{count}} 個作戰任務',
+    releaseChild: '移出容器',
+    childStatus: {
+      pending: '未執行',
+      next: '即將執行',
+      succeeded: '已完成',
+      failed: '執行失敗',
+    },
+  },
+
   // 右鍵選單
   contextMenu: {
     // Tab 右鍵選單

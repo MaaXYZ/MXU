@@ -822,6 +822,19 @@ export default {
     resourceNotFound: 'リソースパックが見つかりません',
   },
 
+  // ローテーションコンテナ
+  container: {
+    emptyHint: '対応する作戦タスクをこのカードにドラッグすると輪番に組み込めます',
+    childrenCount: 'ローテーションコンテナ：作戦タスクを {{count}} 件含みます',
+    releaseChild: 'コンテナから外す',
+    childStatus: {
+      pending: '未実行',
+      next: '次に実行',
+      succeeded: '完了',
+      failed: '失敗',
+    },
+  },
+
   // コンテキストメニュー
   contextMenu: {
     // タブのコンテキストメニュー

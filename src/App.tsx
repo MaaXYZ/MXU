@@ -90,6 +90,7 @@ import { startGlobalCallbackListener } from './components/connection/callbackCac
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { ScrollText } from 'lucide-react';
 import { defaultConfig, defaultWindowSize, isValidMxuConfig } from '@/types/config';
+import { initContainerAutoChain } from '@/services/containerAutoChainService';
 
 const log = loggers.app;
 
@@ -162,6 +163,11 @@ function App() {
   // 启用 MAA 回调日志监听
   useMaaCallbackLogger();
   useMaaAgentLogger();
+
+  // 容器自动接力：槽位达标后的下一次运行由客户端自动启动
+  useEffect(() => {
+    initContainerAutoChain();
+  }, []);
 
   useEffect(() => {
     void startGlobalCallbackListener().catch(() => {});

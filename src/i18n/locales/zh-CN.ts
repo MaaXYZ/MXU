@@ -807,6 +807,19 @@ export default {
     resourceNotFound: '资源包不存在',
   },
 
+  // 轮换容器
+  container: {
+    emptyHint: '把支持的作战任务拖到本卡片上，即可纳入轮换',
+    childrenCount: '轮换容器：已纳入 {{count}} 个作战任务',
+    releaseChild: '移出容器',
+    childStatus: {
+      pending: '未执行',
+      next: '即将执行',
+      succeeded: '已完成',
+      failed: '执行失败',
+    },
+  },
+
   // 右键菜单
   contextMenu: {
     // Tab 右键菜单

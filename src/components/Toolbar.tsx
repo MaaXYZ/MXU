@@ -23,6 +23,8 @@ import {
   requiresUnlockedWorkstation,
 } from '@/utils';
 import { getMxuSpecialTask } from '@/types/specialTasks';
+import { buildContainerAttachOverride, getContainerDefinition } from '@/types/containerTasks';
+import { getContainerCurrentIndex } from '@/services/containerStatusService';
 import {
   isPretaskName,
   getPretaskItem,
@@ -1184,6 +1186,76 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
 
         log.info(`实例 ${targetInstance.name}: 开始执行任务, 数量: ${runnableTasks.length}`);
 
+        // 读取条目自己的「循环作战协议阈值」选项值（读数失败/缺省返回 0，由项目侧使用默认值）。
+        const readCycleThreshold = (
+          child: (typeof targetInstance.selectedTasks)[number],
+          containerDef: NonNullable<ReturnType<typeof getContainerDefinition>>,
+        ): number => {
+          const optionKey = containerDef.thresholdOptions[child.taskName];
+          if (!optionKey) return 0;
+          const value = child.optionValues[optionKey];
+          const optionDef = projectInterface?.option?.[optionKey];
+          const inputName =
+            optionDef && 'inputs' in optionDef ? optionDef.inputs[0]?.name : undefined;
+          if (value?.type === 'input' && inputName) {
+            const parsed = Number.parseInt(value.values[inputName] ?? '', 10);
+            if (Number.isFinite(parsed) && parsed > 0) return parsed;
+          }
+          return 0;
+        };
+
+        // 生成任务下发的 pipeline_override。容器任务（如「循环作战协议」）：写入
+        // 「槽位表 + 逐槽位阈值」的合成覆写，并只合并当前槽位条目的选项覆写（每次
+        // 运行都按当前槽位自身的配置打包）；容器覆写排在最后，保证其循环控制与
+        // 接入点不被条目选项覆盖或截断。
+        const buildPipelineOverride = (
+          selectedTask: (typeof runnableTasks)[number]['selectedTask'],
+        ): string => {
+          const base = generateTaskPipelineOverride(
+            selectedTask,
+            projectInterface,
+            controllerName,
+            resourceName,
+            useAppStore.getState().globalOptionValues,
+          );
+          const containerDef = getContainerDefinition(selectedTask.taskName);
+          if (!containerDef || !projectInterface) return base;
+
+          const children = targetInstance.selectedTasks.filter(
+            (it) => it.parentId === selectedTask.id,
+          );
+          const attachOverride = buildContainerAttachOverride(
+            containerDef,
+            children.map((it) => it.taskName),
+            children.map((it) => readCycleThreshold(it, containerDef)),
+          );
+          const currentIndex = getContainerCurrentIndex(selectedTask.taskName) ?? 0;
+          const currentChild = children[currentIndex] ?? children[0];
+          const childOverrides: unknown[] = [];
+          if (currentChild) {
+            // 被容器接管的选项（如执行周期）在子条目中隐藏，其保存值不再合成，
+            // 避免用条目里残留的计划覆盖容器自己的轮换设置。
+            const hiddenKeys = containerDef.childHiddenOptions[currentChild.taskName] ?? [];
+            childOverrides.push(
+              ...(JSON.parse(
+                generateTaskPipelineOverride(
+                  currentChild,
+                  projectInterface,
+                  controllerName,
+                  resourceName,
+                  useAppStore.getState().globalOptionValues,
+                  hiddenKeys,
+                ),
+              ) as unknown[]),
+            );
+          }
+          return JSON.stringify([
+            attachOverride,
+            ...childOverrides,
+            ...(JSON.parse(base) as unknown[]),
+          ]);
+        };
+
         const taskConfigs: TaskConfig[] = runnableTasks.map(
           ({ selectedTask, taskDef, specialTask }) => {
             const taskDisplayName =
@@ -1196,13 +1268,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
 
             return {
               entry: taskDef.entry,
-              pipeline_override: generateTaskPipelineOverride(
-                selectedTask,
-                projectInterface,
-                controllerName,
-                resourceName,
-                useAppStore.getState().globalOptionValues,
-              ),
+              pipeline_override: buildPipelineOverride(selectedTask),
               selected_task_id: selectedTask.id,
               task_name: taskDef.name,
               options: buildTaskOptionSummary(
@@ -1213,6 +1279,29 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
             };
           },
         );
+
+        // 容器子条目的选项会随容器运行一并下发到 pipeline_override（见
+        // buildPipelineOverride），其密码明文必须一并纳入日志脱敏列表。
+        const secretOwnerTasks: RunnableTask[] = [...runnableTasks];
+        for (const runnable of runnableTasks) {
+          if (!getContainerDefinition(runnable.selectedTask.taskName)) continue;
+          for (const child of targetInstance.selectedTasks.filter(
+            (it) => it.parentId === runnable.selectedTask.id,
+          )) {
+            const childSpecialTask = getMxuSpecialTask(child.taskName);
+            const childTaskDef =
+              childSpecialTask?.taskDef ||
+              projectInterface?.task.find((t) => t.name === child.taskName);
+            if (childTaskDef) {
+              secretOwnerTasks.push({
+                taskName: child.taskName,
+                selectedTask: child,
+                taskDef: childTaskDef,
+                specialTask: childSpecialTask,
+              });
+            }
+          }
+        }
 
         // 准备 Agent 配置（支持单个或多个 Agent）
         const agentConfigs = normalizeAgentConfigs(projectInterface?.agent);
@@ -1256,7 +1345,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
             type: controller.type,
           },
           collectPasswordPlaintextsFromRunnableTasks(
-            runnableTasks,
+            secretOwnerTasks,
             useAppStore.getState().globalOptionValues,
             projectInterface?.option ?? {},
           ),

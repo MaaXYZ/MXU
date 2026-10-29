@@ -352,6 +352,8 @@ export interface SelectedTask {
   expanded: boolean;
   /** 各选项的子选项折叠状态（optionKey → 是否折叠）；缺省 = 展开，向后兼容 */
   collapsedOptions?: Record<string, boolean>;
+  /** 所属容器任务的 id（被拖入容器时设置）；容器子任务不进入主运行队列 */
+  parentId?: string;
 }
 
 export type OptionValue =
