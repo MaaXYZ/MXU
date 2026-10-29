@@ -714,10 +714,67 @@ fn normalize_external_task(value: Option<&serde_json::Value>) -> Vec<serde_json:
     }
 }
 
-/// 解析 JSONC（带注释的 JSON），去除 `//` 和 `/* */` 注释后用 serde_json 解析
+/// 解析 JSONC（带注释和尾逗号的 JSON），去除注释与尾逗号后用 serde_json 解析
 pub fn parse_jsonc(content: &str) -> Result<serde_json::Value, serde_json::Error> {
     let stripped = strip_jsonc_comments(content);
+    let stripped = strip_trailing_commas(&stripped);
     serde_json::from_str(&stripped)
+}
+
+/// 去除字符串外的尾逗号（逗号后仅剩空白和 `}` / `]`）
+fn strip_trailing_commas(content: &str) -> String {
+    let chars: Vec<char> = content.chars().collect();
+    let mut result = String::with_capacity(content.len());
+    let mut in_string = false;
+    let mut escape_next = false;
+    let mut i = 0;
+
+    while i < chars.len() {
+        let ch = chars[i];
+
+        if escape_next {
+            result.push(ch);
+            escape_next = false;
+            i += 1;
+            continue;
+        }
+
+        if in_string {
+            match ch {
+                '\\' => {
+                    result.push(ch);
+                    escape_next = true;
+                }
+                '"' => {
+                    result.push(ch);
+                    in_string = false;
+                }
+                _ => result.push(ch),
+            }
+            i += 1;
+            continue;
+        }
+
+        match ch {
+            '"' => {
+                result.push(ch);
+                in_string = true;
+            }
+            ',' => {
+                let mut next = i + 1;
+                while next < chars.len() && chars[next].is_ascii_whitespace() {
+                    next += 1;
+                }
+                if next >= chars.len() || (chars[next] != '}' && chars[next] != ']') {
+                    result.push(ch);
+                }
+            }
+            _ => result.push(ch),
+        }
+        i += 1;
+    }
+
+    result
 }
 
 /// 去除 JSONC 中的注释，保留字符串内的斜杠字符
@@ -789,6 +846,33 @@ fn strip_jsonc_comments(content: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_jsonc_supports_comments_and_trailing_commas() {
+        let value = parse_jsonc(
+            r#"{
+                // project
+                "name": "MaaEnd", /* project name */
+                "list": [
+                    1,
+                    2, // trailing
+                ],
+                // end
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(value["name"], "MaaEnd");
+        assert_eq!(value["list"], serde_json::json!([1, 2]));
+    }
+
+    #[test]
+    fn parse_jsonc_keeps_commas_and_brackets_inside_strings() {
+        let value = parse_jsonc(r#"{"text": "a,} ] \\ \" b", "ok": true}"#).unwrap();
+
+        assert_eq!(value["text"], "a,} ] \\ \" b");
+        assert_eq!(value["ok"], true);
+    }
 
     fn make_temp_dir(tag: &str) -> PathBuf {
         let dir =

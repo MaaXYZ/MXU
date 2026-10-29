@@ -392,7 +392,7 @@ mod tests {
     fn linux_data_dir_supports_jsonc() {
         assert_eq!(
             linux_data_dir(
-                Some("{ // project\n\"name\": \"MaaEnd\" }"),
+                Some("{ // project\n\"name\": \"MaaEnd\", }"),
                 Some(Path::new("/data")),
                 None,
             )
