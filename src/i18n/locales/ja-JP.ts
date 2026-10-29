@@ -313,7 +313,8 @@ export default {
     program: 'プログラムパス',
     programPlaceholder: 'プログラムパスを入力または参照...',
     args: '追加引数',
-    argsPlaceholder: '追加引数を入力（オプション）',
+    argsPlaceholder: '追加パラメータを入力（オプション、テンプレート変数可）',
+    argsDescription: 'テンプレート変数 {{STATUS}} {{S_BASE64}} {{S_CSV}} {{S_JSON}} {{S_JSON_BASE64}} は、現在のインスタンスの選択されたタスクのリアルタイム状態を表します。詳細は https://github.com/MistEO/MXU/blob/main/src-tauri/src/mxu_actions.rs を参照してください。',
     browse: '参照',
     waitForExit: '終了を待機',
     waitForExitHintPre:

@@ -154,7 +154,8 @@ export default {
       programLabel: 'Program Path',
       programPlaceholder: 'Enter program path or click browse...',
       argsLabel: 'Additional Arguments',
-      argsPlaceholder: 'Enter additional arguments (optional)',
+      argsPlaceholder: 'Enter additional arguments (optional, template variables supported)',
+      argsDescription: 'Template variables {{STATUS}} {{S_BASE64}} {{S_CSV}} {{S_JSON}} {{S_JSON_BASE64}} represent the real-time status of selected tasks of the current instance. See https://github.com/MistEO/MXU/blob/main/src-tauri/src/mxu_actions.rs for details.',
       waitLabel: 'Wait for Exit',
       waitDescription:
         'When disabled, continues immediately after launch; when enabled, waits for the process to exit before continuing, suitable for scripts that need to complete synchronously',

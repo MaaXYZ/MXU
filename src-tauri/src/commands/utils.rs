@@ -4,6 +4,7 @@
 
 use super::types::{MaaCallbackEvent, MaaState, StateChangedEvent};
 use crate::ws_broadcast::{WsBroadcast, WsEvent};
+use log::{error, warn};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
@@ -303,4 +304,180 @@ pub fn build_launch_command(
     }
 
     cmd
+}
+
+/// 获取当前 instance 所有已勾选 task 的状态
+///
+/// - 输出为数组，按照 instance 中 task 的顺序排列。
+/// - 数组的每项是一个包含两个字符串的数组：[任务名称(i18n), 任务状态("idle","pending","running","succeeded","failed")]。
+pub fn get_checked_task_status_of_instance(
+    app_handle: Option<&AppHandle>,
+    instance_id: Option<&str>,
+) -> Vec<Vec<String>> {
+    let app_config_state =
+        match app_handle.and_then(|app| app.try_state::<Arc<crate::commands::AppConfigState>>()) {
+            Some(state) => state,
+            None => {
+                error!("[MXU_STATUS] fail to get resource [app_config_state]");
+                return vec![];
+            }
+        };
+    let translations = match app_config_state.translations.lock() {
+        Ok(guard) => guard,
+        Err(e) => {
+            error!(
+                "[MXU_STATUS] fail to lock resource [app_config_state.translations]: {:?}",
+                e
+            );
+            return vec![];
+        }
+    };
+    let config = match app_config_state.config.lock() {
+        Ok(guard) => guard,
+        Err(e) => {
+            error!(
+                "[MXU_STATUS] fail to lock resource [app_config_state.config]: {:?}",
+                e
+            );
+            return vec![];
+        }
+    };
+
+    // i18n
+    let language = config
+        .get("settings")
+        .and_then(|v| v.get("language"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("system");
+    let i18n = translations
+        .get(match language {
+            // get i18n task name by (i18n["task.<task-name>.label"])
+            "zh-TW" => "zh_tw",
+            "en-US" => "en_us",
+            "ja-JP" => "ja_jp",
+            "ko-KR" => "ko_kr",
+            _ => "zh_cn",
+        })
+        .unwrap_or_default();
+
+    // instance (config)
+    let id = instance_id.unwrap_or("");
+    let instance_config_list = match config.get("instances").and_then(|v| v.as_array()) {
+        Some(list) => list,
+        None => {
+            error!("[MXU_STATUS] config data [configs/mxu-*.json > .instances] should be [array]");
+            return vec![];
+        }
+    };
+    let instance_config = match instance_config_list
+        .iter()
+        .find(|inst| inst.get("id").and_then(|v| v.as_str()) == Some(id))
+    {
+        Some(inst) => inst,
+        None => {
+            error!(
+                "[MXU_STATUS] config data [configs/mxu-*.json > .instances] should contains [object] item whose [.id = {}]",
+                id
+            );
+            return vec![];
+        }
+    };
+
+    // instance (runtime)
+    let maa_state =
+        match app_handle.and_then(|app| app.try_state::<Arc<crate::commands::MaaState>>()) {
+            Some(state) => state,
+            None => {
+                error!("[MXU_STATUS] fail to get resource [maa_state]");
+                return vec![];
+            }
+        };
+
+    let instance_runtime_list = match maa_state.instances.lock() {
+        Ok(guard) => guard,
+        Err(e) => {
+            error!("[MXU_STATUS] fail to lock resource [maa_state]: {:?}", e);
+            return vec![];
+        }
+    };
+
+    let instance_runtime = match instance_runtime_list.get(id) {
+        Some(runtime) => runtime,
+        None => {
+            error!(
+                "[MXU_STATUS] runtime data [maa_state.instances[{}]] should be [object]",
+                id
+            );
+            return vec![];
+        }
+    };
+
+    return instance_runtime
+        .task_run_state
+        .pending_task_ids
+        .iter()
+        .filter_map(|&maa_task_id| {
+            if let Some(selected_task_id) =
+                instance_runtime.task_run_state.mappings.get(&maa_task_id)
+            {
+                if let Some(status) = instance_runtime
+                    .task_run_state
+                    .statuses
+                    .get(selected_task_id)
+                {
+                    let task_config_list = instance_config.get("tasks")?.as_array()?;
+                    let task_config = task_config_list.iter().find(|task| {
+                        task.get("id").and_then(|v| v.as_str()) == Some(selected_task_id.as_str())
+                    })?;
+                    let task_name = task_config
+                        .get("taskName")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                        .unwrap_or("".to_string());
+                    let custom_name = task_config
+                        .get("customName")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let task_name_i18n = i18n
+                        .get(format!("task.{}.label", task_name))
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                        .unwrap_or("".to_string());
+                    // custom name / task name (i18n) / task name
+                    // => task status ("idle","pending","running","succeeded","failed")
+                    let name: String = if !custom_name.is_empty() {
+                        custom_name
+                    } else if !task_name_i18n.is_empty() {
+                        task_name_i18n
+                    } else if !task_name.is_empty(){
+                        task_name
+                    } else {
+                        warn!(
+                            "[MXU_STATUS] config data [configs/mxu-*.json > .instances[.id = {}].tasks[.id = {}].taskName] should be [non-empty string]",
+                            id,
+                            selected_task_id
+                        );
+                        return None
+                    };
+                    return Some(vec![name, status.to_string()])
+                } else {
+                    warn!(
+                        "[MXU_STATUS] status not found in runtime data [maa_state.instances[{}].task_run_state.statuses] for task in config data [configs/mxu-*.json > .instances[.id = {}].tasks[.id = {}]",
+                        id,
+                        id,
+                        selected_task_id
+                    );
+                    return None
+                }
+            } else {
+                warn!(
+                    "[MXU_STATUS] task not found in config data [configs/mxu-*.json > .instances[.id = {}] related to runtime data [maa_state.instances[{}].task_run_state.pending_task_ids]",
+                    id,
+                    id
+                );
+                return None
+            }
+        })
+        .collect();
 }
