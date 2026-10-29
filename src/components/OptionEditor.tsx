@@ -333,6 +333,7 @@ function InputField({
             onChange={onChange}
             placeholder={inputPlaceholder}
             directory={input.input_type === 'directory'}
+            password={input.password === true}
             disabled={disabled}
             className="min-w-[min(12rem,100%)] flex-1 basis-[30%]"
           />

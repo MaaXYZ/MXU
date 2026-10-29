@@ -280,13 +280,7 @@ export function parseLinuxInputMethod(name: string | undefined): number {
 }
 
 /** Agent 配置（用于启动子进程） */
-export interface AgentConfig {
-  child_exec: string;
-  child_args?: string[];
-  identifier?: string;
-  /** 连接超时时间（毫秒），-1 表示无限等待 */
-  timeout?: number;
-}
+export type { AgentConfig } from './interface';
 
 /** 任务配置 */
 export interface TaskConfig {

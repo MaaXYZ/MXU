@@ -25,11 +25,18 @@ test('PI UI ignores private fields while retaining standard options and Linux co
     const { generateTaskPipelineOverride } = await server.ssrLoadModule(
       '/src/utils/pipelineOverride.ts',
     );
+    let inputIconReads = 0;
     const projectInterface = {
       interface_version: 2,
       name: 'test',
       resource: [],
-      controller: [{ name: 'linux', type: 'Linux', linux: { input: 'Wlr', screencap: 'Wlr' } }],
+      controller: [
+        {
+          name: 'linux',
+          type: 'Linux',
+          linux: { input: 'Wlr', screencap: 'Wlr', use_win32_vk_code: false },
+        },
+      ],
       task: [{ name: 'test', entry: 'Entry', option: ['Hotkey'] }],
       option: {
         Input: {
@@ -41,7 +48,10 @@ test('PI UI ignores private fields while retaining standard options and Linux co
               label: '<b>Input</b>',
               input_type: 'time',
               placeholder: 'PRIVATE',
-              icon: 'private.png',
+              get icon() {
+                inputIconReads += 1;
+                return 'private.png';
+              },
             },
             { name: 'secret', password: true },
             { name: 'folder', input_type: 'directory' },
@@ -57,6 +67,15 @@ test('PI UI ignores private fields while retaining standard options and Linux co
           hotkeys: [{ name: 'key', default: 'A', input_type: 'file', placeholder: 'PRIVATE' }],
           pipeline_override: { Entry: { key: '{key}' } },
         },
+        ProtectedPaths: {
+          type: 'input',
+          inputs: [
+            { name: 'file', input_type: 'file', password: true },
+            { name: 'directory', input_type: 'directory', password: true },
+            { name: 'plainFile', input_type: 'file' },
+            { name: 'plainDirectory', input_type: 'directory' },
+          ],
+        },
       },
     };
     // Zustand's server renderer reads the initial snapshot.
@@ -64,19 +83,44 @@ test('PI UI ignores private fields while retaining standard options and Linux co
       projectInterface,
       language: 'en-US',
       instances: [],
-      globalOptionValues: {},
+      globalOptionValues: {
+        ProtectedPaths: {
+          type: 'input',
+          values: {
+            file: 'private-file',
+            directory: 'private-directory',
+            plainFile: 'public-file',
+            plainDirectory: 'public-directory',
+          },
+        },
+      },
     });
     const renderOption = (optionKey: string) =>
       renderToStaticMarkup(createElement(OptionEditor, { optionKey, globalScope: true }));
     const inputHtml = renderOption('Input');
     assert.match(inputHtml, /\*\*Option\*\*/);
     assert.match(inputHtml, /&lt;b&gt;Input&lt;\/b&gt;/);
-    assert.doesNotMatch(inputHtml, /PRIVATE|private\.png|type="time"|<b>/);
+    assert.doesNotMatch(inputHtml, /PRIVATE|type="time"|<b>/);
+    // AsyncIcon renders null on the server; detect metadata reads before any effect runs.
+    assert.equal(inputIconReads, 0, 'PI input icon metadata must not be read');
     assert.match(inputHtml, /type="password"/);
     const casesHtml = renderOption('Cases');
     assert.match(casesHtml, /!\[\]\(icon\.png\) Case/);
     assert.doesNotMatch(casesHtml, /<img/);
     assert.doesNotMatch(renderOption('Hotkey'), /PRIVATE/);
+    const pathInputs = renderOption('ProtectedPaths').match(/<input\b[^>]*>/g) || [];
+    assert.equal(pathInputs.length, 4);
+    for (const value of ['private-file', 'private-directory']) {
+      const input = pathInputs.find((html) => html.includes(`value="${value}"`));
+      assert.ok(input, `Missing protected path input: ${value}`);
+      assert.match(input, /type="password"/);
+      assert.match(input, /autoComplete="off"/);
+    }
+    for (const value of ['public-file', 'public-directory']) {
+      const input = pathInputs.find((html) => html.includes(`value="${value}"`));
+      assert.ok(input, `Missing plain path input: ${value}`);
+      assert.match(input, /type="text"/);
+    }
     assert.match(renderOption('__MXU_WAITUNTIL_OPTION__'), /type="time"/);
     assert.match(renderOption('__MXU_LAUNCH_OPTION__'), /placeholder="[^\"]+"/);
     const gridHtml = renderToStaticMarkup(
