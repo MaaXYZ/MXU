@@ -565,6 +565,13 @@ pub async fn start_tasks_impl(
 ) -> Result<Vec<i64>, String> {
     info!("start_tasks_impl called");
 
+    // 仅新一次运行时清理上一轮残留 agent（reset_state=false 的追加批次
+    // 复用现有 agent，不能断开）。常态下上一轮已由任务结束时的同步
+    // disconnect 清理，此处为幂等兜底：防收尾超时/卡死时的进程残留
+    if reset_state {
+        let _ = stop_agent_impl(maa_state, &instance_id);
+    }
+
     info!("instance_id: {}", instance_id);
     info!("tasks: {:?}", tasks);
     info!("agent_configs: {:?}", agent_configs);
@@ -895,20 +902,16 @@ pub fn stop_agent_impl(maa_state: &Arc<MaaState>, instance_id: &str) -> Result<(
         children.len()
     );
 
-    // 同步断开所有 client：确保 custom 反注册在返回前完成，
-    // 避免旧 agent 的反注册晚于新 agent 的注册，误删新 agent 的同名 custom 条目。
-    for client in &clients {
-        let _ = client.disconnect();
-    }
-    drop(clients); // Drop 同步执行 clear_custom_registration()
-
-    // 子进程收尾放到后台：等待自然退出，超时强杀兜底，避免进程泄漏。
+    // 先启动强杀看门狗，再同步断开：disconnect 等 ShutDownResponse 期间若
+    // agent 收尾卡死（RPC 超时默认不设限），看门狗到期杀进程 → socket 断开 →
+    // 阻塞中的 disconnect 立即报错返回，调用线程不会被永久钉死。
+    // 正常路径 agent 收尾完自行退出，看门狗轮询立即收获、不会触发 kill。
     thread::spawn(move || {
         for (i, mut child) in children.into_iter().enumerate() {
             debug!("Waiting for agent process #{} to exit...", i);
 
             let start = std::time::Instant::now();
-            let timeout = std::time::Duration::from_secs(5);
+            let timeout = std::time::Duration::from_secs(15);
             let mut exited = false;
 
             while start.elapsed() < timeout {
@@ -936,6 +939,15 @@ pub fn stop_agent_impl(maa_state: &Arc<MaaState>, instance_id: &str) -> Result<(
             }
         }
     });
+
+    // 同步断开所有 client：确保 custom 反注册在返回前完成，
+    // 避免旧 agent 的反注册晚于新 agent 的注册，误删新 agent 的同名 custom 条目。
+    // disconnect 由框架保证先排空事件转发再发 ShutDownRequest，并等待
+    // agent 收尾完成（ShutDownResponse）后返回。
+    for client in &clients {
+        let _ = client.disconnect();
+    }
+    drop(clients); // Drop 同步执行 clear_custom_registration()
 
     Ok(())
 }
