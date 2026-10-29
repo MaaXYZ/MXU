@@ -56,13 +56,6 @@ export interface MacOSControllerConfig {
   display_short_side?: number;
 }
 
-/** WlRoots 控制器配置 (Linux) */
-export interface WlRootsControllerConfig {
-  type: 'WlRoots';
-  wlr_socket_path: string;
-  use_win32_vk_code?: boolean;
-}
-
 /** Linux 原生控制器配置（截图：Wlr/PipeWire，输入：Wlr/UInput/Libei） */
 export interface LinuxControllerConfig {
   type: 'Linux';
@@ -100,7 +93,6 @@ export type ControllerConfig =
   | AdbControllerConfig
   | Win32ControllerConfig
   | MacOSControllerConfig
-  | WlRootsControllerConfig
   | LinuxControllerConfig
   | PlayCoverControllerConfig
   | GamepadControllerConfig;

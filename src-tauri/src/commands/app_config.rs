@@ -651,7 +651,7 @@ fn merge_imported(interface: &mut serde_json::Value, imported: &serde_json::Valu
         }
     }
 
-    // MXU 扩展：合并 setting 数组（追加到末尾，保持导入顺序）
+    // PI v2.8.0: 合并 setting 数组（追加到末尾，保持导入顺序）
     if let Some(settings) = imported.get("setting").and_then(|v| v.as_array()) {
         if let Some(arr) = interface.get_mut("setting").and_then(|v| v.as_array_mut()) {
             arr.extend(settings.iter().cloned());

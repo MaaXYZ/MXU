@@ -395,6 +395,7 @@ interface FileInputProps {
   filters?: { name: string; extensions: string[] }[];
   browseTitle?: string;
   className?: string;
+  directory?: boolean;
 }
 
 const defaultFileFilters = [
@@ -410,6 +411,7 @@ export function FileInput({
   filters = defaultFileFilters,
   browseTitle,
   className,
+  directory = false,
 }: FileInputProps) {
   const { t } = useTranslation();
 
@@ -419,7 +421,8 @@ export function FileInput({
     try {
       const selected = await open({
         multiple: false,
-        filters,
+        directory,
+        filters: directory ? undefined : filters,
       });
 
       if (selected && typeof selected === 'string') {

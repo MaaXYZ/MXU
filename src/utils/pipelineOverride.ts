@@ -259,7 +259,7 @@ const HOTKEY_KEY_MAP: Record<string, Record<string, number>> = {
     F11: 141,
     F12: 142,
   },
-  WlRoots: {
+  Linux: {
     BACKSPACE: 14,
     TAB: 15,
     ENTER: 28,
@@ -331,12 +331,9 @@ const HOTKEY_KEY_MAP: Record<string, Record<string, number>> = {
   },
 };
 
-// Linux 控制器复用 WlRoots 的 evdev 键码表（use_win32_vk_code=false 时）
-HOTKEY_KEY_MAP.Linux = HOTKEY_KEY_MAP.WlRoots;
-
 /**
  * 将单个按键名（如 "A"、"F1"、"Ctrl"）转换为指定控制器类型的虚拟键码。
- * 注意：这里按控制器 **类型**（Win32 / MacOS / Adb / WlRoots / Linux）查表，而非控制器 name。
+ * 注意：这里按控制器 **类型**（Win32 / MacOS / Adb / Linux）查表，而非控制器 name。
  * 未知按键返回 null。
  */
 const convertHotkeyKeyName = (keyName: string, controllerType?: string): number | null => {
@@ -471,7 +468,7 @@ const collectOptionOverrides = (
         continue;
       }
 
-      const pipelineType = inputDef.pipeline_type || 'string';
+      const pipelineType = ('pipeline_type' in inputDef && inputDef.pipeline_type) || 'string';
       const placeholder = `{${inputName}}`;
       const escapedPlaceholder = placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const placeholderRegex = new RegExp(escapedPlaceholder, 'g');
@@ -534,14 +531,13 @@ export const generateTaskPipelineOverride = (
 
   if (!projectInterface) return '[]';
 
-  // 热键键码按控制器 **类型**（Win32 / MacOS / Adb / WlRoots）查表，这里先由 name 解析出 type。
-  // WlRoots 可配置接受 Win32 VK 或原始 evdev 键码，热键 override 必须与控制器配置一致。
+  // 热键键码按控制器 **类型**（Win32 / MacOS / Adb / Linux）查表，这里先由 name 解析出 type。
+  // Linux 可配置接受 Win32 VK 或原始 evdev 键码，热键 override 必须与控制器配置一致。
   const controllerDef = controllerName
     ? projectInterface.controller.find((c) => c.name === controllerName)
     : undefined;
   const controllerType =
-    (controllerDef?.type === 'WlRoots' && controllerDef.wlroots?.use_win32_vk_code) ||
-    (controllerDef?.type === 'Linux' && controllerDef.linux?.use_win32_vk_code)
+    controllerDef?.type === 'Linux' && controllerDef.linux?.use_win32_vk_code
       ? 'Win32'
       : controllerDef?.type;
 

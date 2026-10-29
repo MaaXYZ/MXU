@@ -9,7 +9,7 @@ import type {
   InterfaceSettingSection,
   PretaskItem,
 } from '@/types/interface';
-import { normalizePretaskConfigs } from '@/types/interface';
+import { isControllerType, normalizePretaskConfigs } from '@/types/interface';
 import { loggers } from '@/utils/logger';
 import { parseJsonc } from '@/utils/jsonc';
 import { isTauri } from '@/utils/paths';
@@ -29,7 +29,7 @@ interface ImportableInterface {
   preset?: PresetItem[];
   /** v2.4.0: 支持导入 group */
   group?: GroupItem[];
-  /** MXU 扩展：支持导入 setting */
+  /** v2.8.0: 支持导入 setting */
   setting?: InterfaceSettingSection[];
   /** v2.7.0: 支持导入 pretask */
   pretask?: PretaskItem | PretaskItem[];
@@ -256,7 +256,7 @@ function mergeImported(pi: ProjectInterface, imported: ImportableInterface): voi
     log.info(`合并了 ${Object.keys(imported.option).length} 个导入的 option`);
   }
 
-  // MXU 扩展：合并 setting 数组（追加到末尾，保持导入顺序）
+  // v2.8.0: 合并 setting 数组（追加到末尾，保持导入顺序）
   if (imported.setting && imported.setting.length > 0) {
     pi.setting = [...(pi.setting || []), ...imported.setting];
     log.info(`合并了 ${imported.setting.length} 个导入的 setting`);
@@ -373,9 +373,8 @@ function getUnsupportedControllerTypes(os: string): Set<ControllerType> {
     unsupported.add('MacOS');
     unsupported.add('PlayCover');
   }
-  // 非 Linux 系统不支持 WlRoots 和 Linux 控制器
+  // 非 Linux 系统不支持 Linux 控制器
   if (!isLinux) {
-    unsupported.add('WlRoots');
     unsupported.add('Linux');
   }
   return unsupported;
@@ -387,18 +386,10 @@ function getUnsupportedControllerTypes(os: string): Set<ControllerType> {
  * @param os 后端真实 OS；空串时回退到浏览器平台（dev 预览）
  */
 function filterControllersByPlatform(pi: ProjectInterface, os: string): void {
-  // WlRoots 已废弃：仍保留兼容（类型合法），但打印 deprecated 提示
-  for (const c of pi.controller) {
-    if (c.type === 'WlRoots') {
-      log.warn(`[interface] 控制器 "${c.name}" 使用了已废弃的 WlRoots 类型，请迁移到 Linux 控制器`);
-    }
-  }
-
   const unsupported = getUnsupportedControllerTypes(os);
-  if (unsupported.size === 0) return;
 
   const originalCount = pi.controller.length;
-  pi.controller = pi.controller.filter((c) => !unsupported.has(c.type));
+  pi.controller = pi.controller.filter((c) => isControllerType(c.type) && !unsupported.has(c.type));
   const filteredCount = originalCount - pi.controller.length;
 
   if (filteredCount > 0) {

@@ -25,7 +25,7 @@ export interface ProjectInterface {
   /** v2.3.0: 全局选项配置，参与到所有任务的 pipeline override 中 */
   global_option?: string[];
   /**
-   * MXU 扩展：任务设置页的 UI 元数据
+   * v2.8.0: 任务设置页的 UI 元数据
    * 仅描述如何展示设置区域，不定义 option 本身；实际可编辑项仍复用 `option`
    */
   setting?: InterfaceSettingSection[];
@@ -98,7 +98,7 @@ export function normalizePretaskConfigs(
   return Array.isArray(pretask) ? pretask : [pretask];
 }
 
-/** MXU 扩展：任务设置页 section 定义 */
+/** v2.8.0: 任务设置页 section 定义 */
 export interface InterfaceSettingSection {
   name: string;
   label?: string;
@@ -121,8 +121,6 @@ export interface AgentConfig {
   child_exec: string;
   child_args?: string[];
   identifier?: string;
-  /** 连接超时时间（毫秒），-1 表示无限等待 */
-  timeout?: number;
 }
 
 /**
@@ -136,14 +134,13 @@ export function normalizeAgentConfigs(
   return Array.isArray(agent) ? agent : [agent];
 }
 
-export type ControllerType =
-  | 'Adb'
-  | 'Win32'
-  | 'MacOS'
-  | 'WlRoots'
-  | 'Linux'
-  | 'PlayCover'
-  | 'Gamepad';
+export const CONTROLLER_TYPES = ['Adb', 'Win32', 'MacOS', 'Linux', 'PlayCover', 'Gamepad'] as const;
+
+export type ControllerType = (typeof CONTROLLER_TYPES)[number];
+
+export function isControllerType(value: unknown): value is ControllerType {
+  return CONTROLLER_TYPES.some((type) => type === value);
+}
 
 export interface ControllerItem {
   name: string;
@@ -162,7 +159,6 @@ export interface ControllerItem {
   adb?: Record<string, unknown>;
   win32?: Win32Config;
   macos?: MacOSConfig;
-  wlroots?: WlRootsConfig;
   linux?: LinuxConfig;
   playcover?: PlayCoverConfig;
   gamepad?: GamepadConfig;
@@ -180,11 +176,6 @@ export interface MacOSConfig {
   title_regex?: string;
   screencap?: string;
   input?: string;
-}
-
-export interface WlRootsConfig {
-  wlr_socket_path?: string;
-  use_win32_vk_code?: boolean;
 }
 
 export interface LinuxConfig {
@@ -236,7 +227,7 @@ export type OptionType = 'select' | 'checkbox' | 'input' | 'switch' | 'hotkey';
 
 export interface CaseItem {
   name: string;
-  /** 可选。UI 展示名称，支持国际化字符串（以 $ 开头）。MXU 扩展：支持行内 Markdown，渲染见 components/RichLabel.tsx */
+  /** 可选。UI 展示名称，支持国际化字符串（以 $ 开头） */
   label?: string;
   description?: string;
   icon?: string;
@@ -246,27 +237,22 @@ export interface CaseItem {
 
 export interface InputItem {
   name: string;
-  /** 可选。UI 展示名称，支持国际化字符串（以 $ 开头）。MXU 扩展：支持行内 Markdown，渲染见 components/RichLabel.tsx */
+  /** 可选。UI 展示名称，支持国际化字符串（以 $ 开头） */
   label?: string;
   description?: string;
-  icon?: string;
   default?: string;
   pipeline_type?: 'string' | 'int' | 'bool';
   verify?: string;
   pattern_msg?: string;
-  /**
-   * MXU 扩展：输入控件类型，'file' 会渲染文件选择器，'time' 会渲染时间选择器
-   */
-  input_type?: 'text' | 'file' | 'time';
-  /** MXU 扩展：输入框占位提示文本（i18n key） */
-  placeholder?: string;
-  /** MXU 扩展：密码字段；启用后 UI 掩码显示，配置加密存储，日志/遥测脱敏 */
+  /** v2.10.5: 输入控件类型；文件和文件夹选择结果均为路径字符串 */
+  input_type?: 'text' | 'file' | 'directory';
+  /** v2.10.0: 密码字段；启用后 UI 掩码显示，配置加密存储，日志/遥测脱敏 */
   password?: boolean;
 }
 
 export interface SelectOption {
   type?: 'select';
-  /** 可选。UI 展示名称，支持国际化字符串（以 $ 开头）。MXU 扩展：支持行内 Markdown，渲染见 components/RichLabel.tsx */
+  /** 可选。UI 展示名称，支持国际化字符串（以 $ 开头） */
   label?: string;
   description?: string;
   icon?: string;
@@ -280,7 +266,7 @@ export interface SelectOption {
 /** v2.3.0: 多选框类型 */
 export interface CheckboxOption {
   type: 'checkbox';
-  /** 可选。UI 展示名称，支持国际化字符串（以 $ 开头）。MXU 扩展：支持行内 Markdown，渲染见 components/RichLabel.tsx */
+  /** 可选。UI 展示名称，支持国际化字符串（以 $ 开头） */
   label?: string;
   description?: string;
   icon?: string;
@@ -296,7 +282,7 @@ export interface CheckboxOption {
 
 export interface SwitchOption {
   type: 'switch';
-  /** 可选。UI 展示名称，支持国际化字符串（以 $ 开头）。MXU 扩展：支持行内 Markdown，渲染见 components/RichLabel.tsx */
+  /** 可选。UI 展示名称，支持国际化字符串（以 $ 开头） */
   label?: string;
   description?: string;
   icon?: string;
@@ -308,7 +294,7 @@ export interface SwitchOption {
 
 export interface InputOption {
   type: 'input';
-  /** 可选。UI 展示名称，支持国际化字符串（以 $ 开头）。MXU 扩展：支持行内 Markdown，渲染见 components/RichLabel.tsx */
+  /** 可选。UI 展示名称，支持国际化字符串（以 $ 开头） */
   label?: string;
   description?: string;
   icon?: string;
@@ -320,14 +306,14 @@ export interface InputOption {
 
 export interface HotkeyOption {
   type: 'hotkey';
-  /** 可选。UI 展示名称，支持国际化字符串（以 $ 开头）。MXU 扩展：支持行内 Markdown，渲染见 components/RichLabel.tsx */
+  /** 可选。UI 展示名称，支持国际化字符串（以 $ 开头） */
   label?: string;
   description?: string;
   icon?: string;
   controller?: string[];
   resource?: string[];
   /** 热键项，支持单键或组合键捕获 */
-  hotkeys: InputItem[];
+  hotkeys: Pick<InputItem, 'name' | 'label' | 'description' | 'default'>[];
   pipeline_override?: Record<string, unknown>;
 }
 

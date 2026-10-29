@@ -521,9 +521,8 @@ async fn start_single_agent(
             );
         }
 
-        // 设置连接超时
-        let timeout = agent.timeout.unwrap_or(-1);
-        if let Err(e) = client.set_timeout(timeout) {
+        // Agent 连接沿用无限等待，不从 PI 读取额外的超时字段。
+        if let Err(e) = client.set_timeout(-1) {
             warn!("Failed to set timeout for agent #{}: {}", agent_index, e);
         }
 

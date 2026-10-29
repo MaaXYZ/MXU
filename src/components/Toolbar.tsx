@@ -645,13 +645,6 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                     } else {
                       deviceFound = windows.length > 0;
                     }
-                  } else if (controllerType === 'WlRoots') {
-                    const sockets = await maaService.findWlrootsSockets();
-                    if (savedDevice?.wlrSocketPath) {
-                      deviceFound = sockets.includes(savedDevice.wlrSocketPath);
-                    } else {
-                      deviceFound = sockets.length > 0;
-                    }
                   } else {
                     deviceFound = true;
                   }
@@ -699,16 +692,6 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                           type: 'info',
                           message: t('taskList.autoConnect.autoSelectedWindow', {
                             name: windows[0].window_name || windows[0].class_name,
-                          }),
-                        });
-                      }
-                    } else if (controllerType === 'WlRoots') {
-                      const sockets = await maaService.findWlrootsSockets();
-                      if (sockets.length > 0) {
-                        addLog(targetId, {
-                          type: 'info',
-                          message: t('taskList.autoConnect.autoSelectedDevice', {
-                            name: sockets[0],
                           }),
                         });
                       }
@@ -821,20 +804,6 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               config = buildDesktopWindowControllerConfig(controller, matchedWindow.handle);
               deviceName = matchedWindow.window_name || matchedWindow.class_name;
               targetType = 'window';
-            } else if (controllerType === 'WlRoots' && savedDevice.wlrSocketPath) {
-              const sockets = await maaService.findWlrootsSockets();
-              if (!sockets.includes(savedDevice.wlrSocketPath)) {
-                return failStart(
-                  t('taskList.autoConnect.deviceNotFound', { name: savedDevice.wlrSocketPath }),
-                );
-              }
-              config = {
-                type: 'WlRoots',
-                wlr_socket_path: savedDevice.wlrSocketPath,
-                use_win32_vk_code: controller.wlroots?.use_win32_vk_code ?? false,
-              };
-              deviceName = savedDevice.wlrSocketPath;
-              targetType = 'device';
             } else if (controllerType === 'PlayCover' && savedDevice.playcoverAddress) {
               config = buildPlayCoverControllerConfig(
                 savedDevice.playcoverAddress,
@@ -903,26 +872,6 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               config = buildDesktopWindowControllerConfig(controller, firstWindow.handle);
               deviceName = firstWindow.window_name || firstWindow.class_name;
               targetType = 'window';
-            } else if (controllerType === 'WlRoots') {
-              const sockets = await maaService.findWlrootsSockets();
-              if (sockets.length === 0) {
-                return failStart(t('taskList.autoConnect.noDeviceFound'));
-              }
-              const firstSocket = sockets[0];
-              log.info(`实例 ${targetInstance.name}: 自动选择 WlRoots socket: ${firstSocket}`);
-              addLog(targetId, {
-                type: 'info',
-                message: t('taskList.autoConnect.autoSelectedDevice', {
-                  name: firstSocket,
-                }),
-              });
-              config = {
-                type: 'WlRoots',
-                wlr_socket_path: firstSocket,
-                use_win32_vk_code: controller.wlroots?.use_win32_vk_code ?? false,
-              };
-              deviceName = firstSocket;
-              targetType = 'device';
             } else if (controllerType === 'PlayCover') {
               // PlayCover 没有搜索功能，无法自动连接
               return failStart(t('taskList.autoConnect.needConfig'));
