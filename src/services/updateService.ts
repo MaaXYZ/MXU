@@ -1240,7 +1240,7 @@ export function savePendingUpdateInfo(info: PendingUpdateInfo): void {
  * 如果更新包文件丢失，或待安装版本不高于当前安装版本，则自动清除记录
  */
 export async function getPendingUpdateInfo(
-  installedVersion: string,
+  installedVersion: string | undefined,
 ): Promise<PendingUpdateInfo | null> {
   try {
     const data = localStorage.getItem(PENDING_UPDATE_STORAGE_KEY);

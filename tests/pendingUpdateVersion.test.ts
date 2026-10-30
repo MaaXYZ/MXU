@@ -33,6 +33,7 @@ test('unrecognized versions are not cleared by guesswork', () => {
   assert.equal(isPendingUpdateObsolete('v2.34.0', ''), false);
   assert.equal(isPendingUpdateObsolete(1, 'v2.35.0'), false);
   assert.equal(isPendingUpdateObsolete('v2.34.0', null), false);
+  assert.equal(isPendingUpdateObsolete('v2.34.0', undefined), false);
 });
 
 test('normalized V prefixes and build metadata do not cause downgrades', () => {
