@@ -5,6 +5,7 @@ import type { DownloadProgress, UpdateInfo } from '@/stores/appStore';
 import { useAppStore } from '@/stores/appStore';
 import type { ProxySettings, UpdateChannel } from '@/types/config';
 import { loggers } from '@/utils/logger';
+import { isPendingUpdateObsolete } from '@/utils/pendingUpdateVersion';
 import { getCacheDir, joinPath } from '@/utils/paths';
 import { invoke } from '@tauri-apps/api/core';
 import { dirname } from '@tauri-apps/api/path';
@@ -1235,15 +1236,28 @@ export function savePendingUpdateInfo(info: PendingUpdateInfo): void {
 }
 
 /**
- * 读取待安装更新信息（不自动清除，需要手动调用 clearPendingUpdateInfo）
- * 如果更新包文件已被删除，会自动清除待安装信息并返回 null
+ * 读取待安装更新信息；仍有效的记录由安装流程清除
+ * 如果更新包文件丢失，或待安装版本不高于当前安装版本，则自动清除记录
  */
-export async function getPendingUpdateInfo(): Promise<PendingUpdateInfo | null> {
+export async function getPendingUpdateInfo(
+  installedVersion: string,
+): Promise<PendingUpdateInfo | null> {
   try {
     const data = localStorage.getItem(PENDING_UPDATE_STORAGE_KEY);
     if (!data) return null;
 
     const info = JSON.parse(data) as PendingUpdateInfo;
+
+    // 外部安装器可能已升级程序，旧增量更新不能再覆盖当前安装。
+    if (isPendingUpdateObsolete(info.versionName, installedVersion)) {
+      log.info(
+        '待安装更新不高于已安装版本，清除过期记录:',
+        info.versionName,
+        installedVersion,
+      );
+      localStorage.removeItem(PENDING_UPDATE_STORAGE_KEY);
+      return null;
+    }
 
     // 检查更新包文件是否仍然存在
     if (info.downloadSavePath && !(await exists(info.downloadSavePath))) {
