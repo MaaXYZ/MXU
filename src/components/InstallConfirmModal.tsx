@@ -15,6 +15,7 @@ import {
   restartApp,
   saveUpdateCompleteInfo,
   clearPendingUpdateInfo,
+  ensureCurrentExeExists,
   FallbackUpdateError,
   isExecutableInstaller,
 } from '@/services/updateService';
@@ -83,7 +84,7 @@ export function InstallConfirmModal() {
         setInstallError(t('mirrorChyan.installFailed'));
       }
     } catch (error) {
-      loggers.ui.error('安装失败:', error);
+      loggers.ui.error('安装失败:', error instanceof Error ? error.message : error);
       setInstallStatus('failed');
       // 兜底更新成功时显示特殊提示
       if (error instanceof FallbackUpdateError) {
@@ -97,6 +98,7 @@ export function InstallConfirmModal() {
   // 重启应用（直接重启，不再确认）
   const handleRestart = useCallback(async () => {
     try {
+      await ensureCurrentExeExists();
       // 清除待安装更新信息（安装已完成）
       clearPendingUpdateInfo();
       // 保存更新完成信息，供重启后显示
@@ -112,8 +114,10 @@ export function InstallConfirmModal() {
       await restartApp();
     } catch (error) {
       loggers.ui.error('重启失败:', error);
+      setInstallStatus('failed');
+      setInstallError(error instanceof Error ? error.message : String(error));
     }
-  }, [updateInfo, currentVersion]);
+  }, [updateInfo, currentVersion, setInstallStatus, setInstallError]);
 
   // 关闭模态框
   const handleClose = useCallback(() => {
@@ -189,7 +193,7 @@ export function InstallConfirmModal() {
             setInstallError(t('mirrorChyan.installFailed'));
           }
         } catch (error) {
-          loggers.ui.error('安装失败:', error);
+          loggers.ui.error('安装失败:', error instanceof Error ? error.message : error);
           setInstallStatus('failed');
           // 兜底更新成功时显示特殊提示
           if (error instanceof FallbackUpdateError) {

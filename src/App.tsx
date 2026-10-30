@@ -40,6 +40,7 @@ import {
   consumeUpdateCompleteInfo,
   savePendingUpdateInfo,
   getPendingUpdateInfo,
+  hasInstallFailedInSession,
   clearPendingUpdateInfo,
   isDebugVersion,
 } from '@/services/updateService';
@@ -419,6 +420,11 @@ function App() {
     if (state.autoInstallPending) return;
     if (autoTaskLaunchPendingRef.current) return;
     if (state.instances.some((i) => i.isRunning)) return;
+    // 本次运行中安装失败过则不再自动重试，避免反复失败；手动安装和下次启动不受影响
+    if (hasInstallFailedInSession()) {
+      log.info('自动安装更新：本次运行中已安装失败过，跳过自动安装');
+      return;
+    }
 
     log.info('自动安装更新：条件满足，弹出安装');
     state.setAutoInstallPending(true);
