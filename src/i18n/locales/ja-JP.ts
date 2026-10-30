@@ -740,6 +740,17 @@ export default {
     installing: 'アップデートをインストール中...',
     installComplete: 'インストール完了',
     installFailed: 'インストールに失敗しました',
+    installErrors: {
+      packageMissing: '更新パッケージが見つかりません。再度ダウンロードしてください',
+      packageCorrupt: '更新パッケージが破損しています。再度ダウンロードしてください（{{detail}}）',
+      extractFailed:
+        '更新パッケージの展開に失敗しました。セキュリティソフトにブロックされた可能性があります（{{detail}}）',
+      rolledBack: '更新に失敗したため、更新前のバージョンに戻しました（{{detail}}）',
+      updateLocked:
+        '別のウィンドウで更新をインストール中です。他のウィンドウを閉じてから再試行してください',
+      exeMissing:
+        'プログラムファイルが見つかりません。セキュリティソフトに削除または隔離された可能性があります。インストールフォルダをセキュリティソフトの除外リストに追加してから、更新を再度ダウンロードしてください',
+    },
     installNow: '今すぐインストール',
     installUpdate: 'アップデートをインストール',
     installStages: {

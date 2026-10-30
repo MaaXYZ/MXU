@@ -991,8 +991,12 @@ interface ExtractErrorPayload {
 // Rust 端 apply_full_update 失败时返回的错误
 interface ApplyUpdateErrorPayload {
   message: string;
-  /** 是否已回滚到更新前的状态 */
-  rolledBack: boolean;
+  /**
+   * - rolledBack: 已回滚到更新前的状态
+   * - rollbackFailed: 回滚未完成，安装目录可能不完整
+   * - locked: 另一个进程正在更新，未改动任何文件
+   */
+  kind: 'rolledBack' | 'rollbackFailed' | 'locked';
 }
 
 function isExtractError(error: unknown): error is ExtractErrorPayload {
@@ -1000,7 +1004,33 @@ function isExtractError(error: unknown): error is ExtractErrorPayload {
 }
 
 function isApplyUpdateError(error: unknown): error is ApplyUpdateErrorPayload {
-  return typeof error === 'object' && error !== null && 'rolledBack' in error;
+  return typeof error === 'object' && error !== null && 'kind' in error;
+}
+
+/**
+ * 安装更新失败的错误类型，对应 mirrorChyan.installErrors 下的文案
+ */
+export type UpdateInstallErrorCode =
+  | 'packageMissing'
+  | 'packageCorrupt'
+  | 'extractFailed'
+  | 'rolledBack'
+  | 'updateLocked'
+  | 'exeMissing';
+
+/**
+ * 安装更新失败的错误，由界面根据 code 显示本地化文案
+ */
+export class UpdateInstallError extends Error {
+  public readonly code: UpdateInstallErrorCode;
+  public readonly detail: string;
+
+  constructor(code: UpdateInstallErrorCode, detail = '') {
+    super(detail ? `${code}: ${detail}` : code);
+    this.name = 'UpdateInstallError';
+    this.code = code;
+    this.detail = detail;
+  }
 }
 
 function getErrorMessage(error: unknown): string {
@@ -1065,7 +1095,7 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
     if (!(await exists(zipPath))) {
       log.warn(`更新包不存在，放弃本次安装: ${zipPath}`);
       discardPendingPackage();
-      throw new Error('更新包不存在，请重新下载');
+      throw new UpdateInstallError('packageMissing');
     }
 
     // 生成临时解压目录
@@ -1091,9 +1121,9 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
         // 包已损坏，移走并放弃，避免每次都拿同一个坏包重试
         await moveToOldFolder(zipPath);
         discardPendingPackage();
-        throw new Error(`更新包已损坏，请重新下载（${error.message}）`);
+        throw new UpdateInstallError('packageCorrupt', error.message);
       }
-      throw new Error(`解压更新包失败，可能被安全软件拦截（${getErrorMessage(error)}）`);
+      throw new UpdateInstallError('extractFailed', getErrorMessage(error));
     }
 
     // 解压成功后再备份配置，避免每次失败的尝试都轮换掉旧备份
@@ -1158,10 +1188,13 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
     } catch (error) {
       log.error('更新安装失败:', error);
 
-      // 已回滚到更新前的状态：程序仍可正常使用，保留更新包，不走兜底
-      if (isApplyUpdateError(error) && error.rolledBack) {
+      // 已回滚或未改动任何文件：程序仍可正常使用，保留更新包，不走兜底
+      if (isApplyUpdateError(error) && error.kind !== 'rollbackFailed') {
         await invoke('cleanup_extract_dir', { extractDir }).catch(() => {});
-        throw new Error(`更新失败，已恢复到更新前的版本（${error.message}）`);
+        if (error.kind === 'locked') {
+          throw new UpdateInstallError('updateLocked');
+        }
+        throw new UpdateInstallError('rolledBack', error.message);
       }
 
       // 兜底逻辑：尝试将新文件解压到 v版本号 文件夹
@@ -1363,9 +1396,7 @@ export function clearPendingUpdateInfo(): void {
 export async function ensureCurrentExeExists(): Promise<void> {
   const exeExists = await invoke<boolean>('current_exe_exists').catch(() => true);
   if (!exeExists) {
-    throw new Error(
-      '程序文件已丢失，可能被安全软件删除或隔离。请将安装目录加入安全软件白名单后重新下载更新',
-    );
+    throw new UpdateInstallError('exeMissing');
   }
 }
 
