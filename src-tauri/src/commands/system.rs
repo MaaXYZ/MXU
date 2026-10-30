@@ -855,9 +855,12 @@ pub fn migrate_legacy_autostart(project_name: Option<&str>) {
     // 旧版计划任务 "MXU" 迁移到 "MXU-{项目名}"，避免两个任务同时存在
     if task_name != LEGACY_AUTOSTART_TASK_NAME {
         if let Some(legacy_xml) = query_schtask_xml(LEGACY_AUTOSTART_TASK_NAME) {
+            // 旧任务启用、而新任务不存在或已禁用时，以旧任务为准重建新任务；
             // 旧任务被用户手动禁用时不新建，保留"已关闭"的状态
-            let need_create = xml_tag_equals(&legacy_xml, "Enabled", "true")
-                && query_schtask_xml(task_name).is_none();
+            let target_enabled = query_schtask_xml(task_name)
+                .map(|xml| schtask_xml_is_enabled(&xml))
+                .unwrap_or(false);
+            let need_create = schtask_xml_is_enabled(&legacy_xml) && !target_enabled;
             if need_create {
                 if let Err(err) = create_schtask_autostart() {
                     // 新任务创建失败时保留旧任务，避免丢失自启动
@@ -913,10 +916,19 @@ fn create_schtask_autostart() -> Result<(), String> {
 #[cfg(windows)]
 fn delete_schtask(task_name: &str) {
     use std::os::windows::process::CommandExt;
-    let _ = std::process::Command::new("schtasks")
+    let result = std::process::Command::new("schtasks")
         .args(["/delete", "/tn", task_name, "/f"])
         .creation_flags(CREATE_NO_WINDOW)
         .output();
+    match result {
+        Ok(o) if o.status.success() => {}
+        Ok(o) => warn!(
+            "删除计划任务 {} 失败: {}",
+            task_name,
+            String::from_utf8_lossy(&o.stderr)
+        ),
+        Err(e) => warn!("删除计划任务 {} 失败: {}", task_name, e),
+    }
 }
 
 /// 查询计划任务的 XML 定义，任务不存在或查询失败时返回 None
@@ -948,6 +960,23 @@ fn xml_tag_equals(xml: &str, tag: &str, expected: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// 判断计划任务是否处于启用状态
+///
+/// 任务级启用状态记录在 `<Settings>` 下的 `<Enabled>`，触发器里也有同名标签，
+/// 因此只在 `<Settings>` 内判断；缺省视为启用
+#[cfg(windows)]
+fn schtask_xml_is_enabled(xml: &str) -> bool {
+    use regex::Regex;
+
+    let settings = Regex::new(r"(?is)<\s*Settings\s*>(.*?)<\s*/\s*Settings\s*>")
+        .ok()
+        .and_then(|re| re.captures(xml))
+        .and_then(|caps| caps.get(1))
+        .map(|m| m.as_str())
+        .unwrap_or("");
+    !xml_tag_equals(settings, "Enabled", "false")
+}
+
 /// 判断现有 MXU 自启动计划任务是否需要刷新参数
 #[cfg(windows)]
 fn schtask_autostart_needs_refresh() -> bool {
@@ -958,8 +987,7 @@ fn schtask_autostart_needs_refresh() -> bool {
     let tag_equals = |tag: &str, expected: &str| xml_tag_equals(&xml, tag, expected);
 
     // 尊重用户手动禁用：禁用状态下不自动重建
-    let enabled = tag_equals("Enabled", "true");
-    if !enabled {
+    if !schtask_xml_is_enabled(&xml) {
         return false;
     }
 
