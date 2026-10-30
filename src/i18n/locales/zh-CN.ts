@@ -720,7 +720,6 @@ export default {
       packageCorrupt: '更新包已损坏，请重新下载（{{detail}}）',
       extractFailed: '解压更新包失败，可能被安全软件拦截（{{detail}}）',
       rolledBack: '更新失败，已恢复到更新前的版本（{{detail}}）',
-      updateLocked: '另一个窗口正在安装更新，请关闭其他窗口后重试',
       exeMissing:
         '程序文件已丢失，可能被安全软件删除或隔离。请将安装目录加入安全软件白名单后重新下载更新',
     },

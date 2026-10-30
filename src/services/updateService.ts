@@ -991,12 +991,8 @@ interface ExtractErrorPayload {
 // Rust 端 apply_full_update 失败时返回的错误
 interface ApplyUpdateErrorPayload {
   message: string;
-  /**
-   * - rolledBack: 已回滚到更新前的状态
-   * - rollbackFailed: 回滚未完成，安装目录可能不完整
-   * - locked: 另一个进程正在更新，未改动任何文件
-   */
-  kind: 'rolledBack' | 'rollbackFailed' | 'locked';
+  /** 是否已回滚到更新前的状态 */
+  rolledBack: boolean;
 }
 
 function isExtractError(error: unknown): error is ExtractErrorPayload {
@@ -1004,7 +1000,7 @@ function isExtractError(error: unknown): error is ExtractErrorPayload {
 }
 
 function isApplyUpdateError(error: unknown): error is ApplyUpdateErrorPayload {
-  return typeof error === 'object' && error !== null && 'kind' in error;
+  return typeof error === 'object' && error !== null && 'rolledBack' in error;
 }
 
 /**
@@ -1015,7 +1011,6 @@ export type UpdateInstallErrorCode =
   | 'packageCorrupt'
   | 'extractFailed'
   | 'rolledBack'
-  | 'updateLocked'
   | 'exeMissing';
 
 /**
@@ -1188,12 +1183,9 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
     } catch (error) {
       log.error('更新安装失败:', error);
 
-      // 已回滚或未改动任何文件：程序仍可正常使用，保留更新包，不走兜底
-      if (isApplyUpdateError(error) && error.kind !== 'rollbackFailed') {
+      // 已回滚到更新前的状态：程序仍可正常使用，保留更新包，不走兜底
+      if (isApplyUpdateError(error) && error.rolledBack) {
         await invoke('cleanup_extract_dir', { extractDir }).catch(() => {});
-        if (error.kind === 'locked') {
-          throw new UpdateInstallError('updateLocked');
-        }
         throw new UpdateInstallError('rolledBack', error.message);
       }
 

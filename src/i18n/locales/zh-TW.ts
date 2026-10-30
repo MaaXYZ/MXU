@@ -716,7 +716,6 @@ export default {
       packageCorrupt: '更新包已損毀，請重新下載（{{detail}}）',
       extractFailed: '解壓縮更新包失敗，可能遭安全軟體攔截（{{detail}}）',
       rolledBack: '更新失敗，已還原至更新前的版本（{{detail}}）',
-      updateLocked: '另一個視窗正在安裝更新，請關閉其他視窗後重試',
       exeMissing:
         '程式檔案已遺失，可能遭安全軟體刪除或隔離。請將安裝目錄加入安全軟體白名單後重新下載更新',
     },

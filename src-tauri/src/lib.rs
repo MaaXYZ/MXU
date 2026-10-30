@@ -171,18 +171,10 @@ pub fn run() {
             if let Ok(old_dir) = commands::update::get_old_dir() {
                 if old_dir.exists() {
                     std::thread::spawn(move || {
-                        // 与全量更新跨进程互斥：更新期间 cache/old 中是回滚备份
-                        let _update_lock = match commands::update::try_lock_update() {
-                            Ok(Some(lock)) => lock,
-                            Ok(None) => {
-                                log::info!("另一个进程正在更新，跳过清理 cache/old");
-                                return;
-                            }
-                            Err(e) => {
-                                log::warn!("获取更新锁失败，跳过清理 cache/old: {}", e);
-                                return;
-                            }
-                        };
+                        // 与全量更新互斥：更新期间 cache/old 中是回滚备份
+                        let _guard = commands::update::OLD_DIR_LOCK
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
                         let (deleted, failed) = commands::cleanup_dir_contents(&old_dir);
                         if deleted > 0 || failed > 0 {
                             if failed == 0 {

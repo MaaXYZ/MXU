@@ -746,8 +746,6 @@ export default {
       extractFailed:
         'Failed to extract the update package. It may have been blocked by security software. ({{detail}})',
       rolledBack: 'Update failed. The previous version has been restored. ({{detail}})',
-      updateLocked:
-        'Another window is installing the update. Please close other windows and try again.',
       exeMissing:
         'The program file is missing. It may have been deleted or quarantined by security software. Add the installation folder to the security software allowlist, then download the update again.',
     },

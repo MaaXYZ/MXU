@@ -3,6 +3,7 @@
 //! 提供解压、增量/全量更新、文件移动等功能
 
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::Duration;
 
 use log::{error, info, warn};
@@ -11,8 +12,9 @@ use serde::Serialize;
 use super::file_ops::get_exe_dir;
 use super::types::ChangesJson;
 
-/// 全量更新等待更新锁的最长时间
-const UPDATE_LOCK_WAIT: Duration = Duration::from_secs(10);
+/// cache/old 目录锁：全量更新期间旧文件作为回滚备份放在 cache/old，
+/// 启动时的异步清理必须与之互斥，避免备份在回滚前被删掉
+pub static OLD_DIR_LOCK: Mutex<()> = Mutex::new(());
 
 /// 文件操作失败时的重试次数（间隔从 200ms 开始翻倍，总计约 3 秒）
 const FILE_OP_MAX_ATTEMPTS: u32 = 5;
@@ -43,24 +45,13 @@ impl ExtractError {
     }
 }
 
-/// 全量更新失败的类型
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum ApplyUpdateErrorKind {
-    /// 已回滚到更新前的状态
-    RolledBack,
-    /// 回滚未完成，安装目录可能不完整
-    RollbackFailed,
-    /// 另一个进程正在更新，本次未改动任何文件
-    Locked,
-}
-
 /// 全量更新失败时返回给前端的错误
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApplyUpdateError {
     message: String,
-    kind: ApplyUpdateErrorKind,
+    /// 是否已回滚到更新前的状态
+    rolled_back: bool,
 }
 
 /// 判断 IO 错误是否由压缩数据损坏引起
@@ -243,29 +234,6 @@ pub fn get_old_dir() -> Result<PathBuf, String> {
     Ok(Path::new(&exe_dir).join("cache").join("old"))
 }
 
-/// 尝试获取跨进程的更新锁（cache/update.lock），同一安装目录同时只允许一个进程
-/// 执行全量更新或清理 cache/old。返回的文件句柄关闭时释放锁；已被占用时返回 None
-pub fn try_lock_update() -> Result<Option<std::fs::File>, String> {
-    let exe_dir = get_exe_dir()?;
-    let cache_dir = Path::new(&exe_dir).join("cache");
-    std::fs::create_dir_all(&cache_dir)
-        .map_err(|e| format!("无法创建目录 [{}]: {}", cache_dir.display(), e))?;
-    let lock_path = cache_dir.join("update.lock");
-    let file = std::fs::OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(&lock_path)
-        .map_err(|e| format!("无法打开更新锁 [{}]: {}", lock_path.display(), e))?;
-    match file.try_lock() {
-        Ok(()) => Ok(Some(file)),
-        Err(std::fs::TryLockError::WouldBlock) => Ok(None),
-        Err(std::fs::TryLockError::Error(e)) => {
-            Err(format!("无法获取更新锁 [{}]: {}", lock_path.display(), e))
-        }
-    }
-}
-
 /// 清空 cache/old 目录，返回 (成功数, 失败数)。
 /// 删不掉的文件（如仍被旧进程占用）会保留，后续移动遇到重名时自动加后缀
 fn clear_old_folder(old_dir: &Path) -> (usize, usize) {
@@ -273,20 +241,6 @@ fn clear_old_folder(old_dir: &Path) -> (usize, usize) {
         return (0, 0);
     }
     cleanup_dir_contents(old_dir)
-}
-
-/// 在超时时间内反复尝试获取更新锁，超时仍被占用时返回 None
-fn wait_lock_update(timeout: Duration) -> Result<Option<std::fs::File>, String> {
-    let deadline = std::time::Instant::now() + timeout;
-    loop {
-        if let Some(lock) = try_lock_update()? {
-            return Ok(Some(lock));
-        }
-        if std::time::Instant::now() >= deadline {
-            return Ok(None);
-        }
-        std::thread::sleep(Duration::from_millis(200));
-    }
 }
 
 /// 将文件或目录移动到程序目录下的 cache/old 文件夹，处理重名冲突（内部函数）
@@ -454,26 +408,7 @@ pub fn apply_full_update(extract_dir: String, target_dir: String) -> Result<(), 
     info!("apply_full_update called");
     info!("extract_dir: {}, target_dir: {}", extract_dir, target_dir);
 
-    // 跨进程互斥：另一个实例正在更新或清理 cache/old 时不做任何改动
-    // 启动时的清理可能尚未结束，等待一段时间再放弃
-    let _update_lock = match wait_lock_update(UPDATE_LOCK_WAIT) {
-        Ok(Some(lock)) => lock,
-        Ok(None) => {
-            warn!("另一个进程正在更新，本次不执行全量更新");
-            return Err(ApplyUpdateError {
-                message: "另一个进程正在更新".to_string(),
-                kind: ApplyUpdateErrorKind::Locked,
-            });
-        }
-        Err(message) => {
-            // 尚未改动任何文件，安装目录保持原样
-            warn!("获取更新锁失败，本次不执行全量更新: {}", message);
-            return Err(ApplyUpdateError {
-                message,
-                kind: ApplyUpdateErrorKind::RolledBack,
-            });
-        }
-    };
+    let _old_dir_guard = OLD_DIR_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     // 只在更新开始时清空一次 cache/old，之后移入的旧文件作为本次更新的回滚备份
     if let Ok(old_dir) = get_old_dir() {
@@ -498,14 +433,16 @@ pub fn apply_full_update(extract_dir: String, target_dir: String) -> Result<(), 
         }
         Err(message) => {
             warn!("全量更新失败，开始回滚: {}", message);
-            let kind = if journal.rollback() {
+            let rolled_back = journal.rollback();
+            if rolled_back {
                 info!("回滚完成，已恢复到更新前的状态");
-                ApplyUpdateErrorKind::RolledBack
             } else {
                 error!("回滚未完成，安装目录可能处于不完整状态");
-                ApplyUpdateErrorKind::RollbackFailed
-            };
-            Err(ApplyUpdateError { message, kind })
+            }
+            Err(ApplyUpdateError {
+                message,
+                rolled_back,
+            })
         }
     }
 }
@@ -581,72 +518,54 @@ fn run_full_update(
     target_path: &Path,
     journal: &mut FullUpdateJournal,
 ) -> Result<(), String> {
-    // 1. 获取解压目录中的根级条目（跳过 changes.json）
-    // interface 文件记录版本号，旧文件保留到其他条目都复制完成后再替换：
+    // 1. 获取解压目录中的根级条目（跳过 changes.json），interface 文件排到最后：
     // 即使中途异常退出，版本号也仍是旧的，下次启动会继续提示更新
-    let (interface_names, other_names): (Vec<_>, Vec<_>) = std::fs::read_dir(extract_path)
+    let mut names: Vec<std::ffi::OsString> = std::fs::read_dir(extract_path)
         .map_err(|e| format!("无法读取解压目录: {}", e))?
         .filter_map(|e| e.ok())
         .map(|e| e.file_name())
         .filter(|name| name != "changes.json")
-        .partition(|name| is_interface_file(name));
+        .collect();
+    names.sort_by_key(|name| is_interface_file(name));
 
     // 2. 将目标目录中与新包同名的文件/文件夹移动到 old 文件夹，移不走则中止
-    for name in &other_names {
-        move_entry_to_old(&target_path.join(name), journal)?;
+    for name in &names {
+        let target_item = target_path.join(name);
+        let moved = retry_file_op(
+            &format!("移动旧文件 [{}]", target_item.display()),
+            || move_to_old_folder_dest(&target_item),
+        )?;
+        if let Some(backup) = moved {
+            journal.moved.push((target_item, backup));
+        }
     }
 
     // 3. 复制新包内容到目标目录
-    for name in &other_names {
-        copy_entry(&extract_path.join(name), &target_path.join(name), journal)?;
+    for name in &names {
+        let src_item = extract_path.join(name);
+        let dst_item = target_path.join(name);
+        journal.copied.push(dst_item.clone());
+        if src_item.is_dir() {
+            copy_dir_recursive(&src_item, &dst_item)?;
+        } else {
+            std::fs::copy(&src_item, &dst_item).map_err(|e| {
+                format!(
+                    "无法复制文件 [{}] -> [{}]: {}",
+                    src_item.display(),
+                    dst_item.display(),
+                    e
+                )
+            })?;
+        }
     }
 
-    // 4. 最后替换 interface 文件
-    for name in &interface_names {
-        move_entry_to_old(&target_path.join(name), journal)?;
-        copy_entry(&extract_path.join(name), &target_path.join(name), journal)?;
-    }
-
-    // 5. 稍等片刻再核对新文件是否都在，防止复制后被安全软件删除或隔离
+    // 4. 稍等片刻再核对新文件是否都在，防止复制后被安全软件删除或隔离
     std::thread::sleep(Duration::from_secs(1));
-    for name in other_names.iter().chain(interface_names.iter()) {
+    for name in &names {
         verify_copied(&extract_path.join(name), &target_path.join(name))?;
     }
 
     Ok(())
-}
-
-/// 将目标目录中的根级条目移动到 old 文件夹并记录，失败时重试
-fn move_entry_to_old(target_item: &Path, journal: &mut FullUpdateJournal) -> Result<(), String> {
-    let moved = retry_file_op(
-        &format!("移动旧文件 [{}]", target_item.display()),
-        || move_to_old_folder_dest(target_item),
-    )?;
-    if let Some(backup) = moved {
-        journal.moved.push((target_item.to_path_buf(), backup));
-    }
-    Ok(())
-}
-
-/// 将新包中的根级条目复制到目标目录并记录
-fn copy_entry(
-    src_item: &Path,
-    dst_item: &Path,
-    journal: &mut FullUpdateJournal,
-) -> Result<(), String> {
-    journal.copied.push(dst_item.to_path_buf());
-    if src_item.is_dir() {
-        copy_dir_recursive(src_item, dst_item)
-    } else {
-        std::fs::copy(src_item, dst_item).map(|_| ()).map_err(|e| {
-            format!(
-                "无法复制文件 [{}] -> [{}]: {}",
-                src_item.display(),
-                dst_item.display(),
-                e
-            )
-        })
-    }
 }
 
 /// 核对源路径下的每个文件在目标位置都存在
