@@ -148,7 +148,7 @@ export interface AppState {
   projectInterface: ProjectInterface | null;
   interfaceTranslations: Record<string, Record<string, string>>;
   basePath: string; // exe 所在目录（资源路径）
-  dataPath: string; // 数据目录（macOS: ~/Library/Application Support/MXU/，其他平台同 basePath）
+  dataPath: string; // 数据目录（macOS: Application Support；Linux 启用 xdg-data-dir feature: $XDG_DATA_HOME/{项目名}；否则同 basePath）
   setProjectInterface: (pi: ProjectInterface) => void;
   setInterfaceTranslations: (lang: string, translations: Record<string, string>) => void;
   setBasePath: (path: string) => void;
