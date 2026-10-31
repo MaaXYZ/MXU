@@ -168,9 +168,7 @@ const MXU_EXAMPLE_OPTION: InputOption = {
       pipeline_type: 'int',     // 'string' | 'int' | 'bool'
       verify: '^[1-9]\\d*$',   // 可选，输入校验正则
       pattern_msg: 'specialTask.example.inputError', // 校验失败提示 i18n key
-      // MXU 扩展字段（可选）：
-      input_type: 'file',       // 'text'(默认) | 'file'(渲染文件选择器)
-      placeholder: 'specialTask.example.placeholder', // 占位提示文本 i18n key
+      input_type: 'file',       // PI v2.10.5: 'text' | 'file' | 'directory'
     },
   ],
   pipeline_override: {
@@ -183,12 +181,7 @@ const MXU_EXAMPLE_OPTION: InputOption = {
 };
 ```
 
-**MXU 扩展字段说明**（`InputItem` 上的可选字段，不影响 PI V2 协议）：
-
-| 字段 | 类型 | 说明 |
-| ------ | ------ | ------ |
-| `input_type` | `'text' \| 'file' \| 'time'` | 控制 UI 渲染：`'file'` 渲染带浏览按钮的文件选择器；`'time'` 渲染 HH:MM 时间选择器 |
-| `placeholder` | `string` | 输入框占位提示文本的 i18n key，通过 `t()` 翻译。若未设置则 fallback 到 `default` |
+选项定义使用 PI V2 标准字段。内置任务如需时间选择器或占位提示，请在 `src/types/specialTasks.ts` 的 `MXU_INPUT_UI` 中配置 `timePicker` / `placeholderKey`；这些是客户端内部界面配置，不从 `interface.json` 读取。
 
 **switch 类型**（开关）：
 
@@ -316,6 +309,6 @@ specialTask: {
 - **任务添加/删除**：`addMxuSpecialTask` 根据注册表初始化选项值
 - **UI 渲染**：`TaskItem` / `AddTaskPanel` / `OptionEditor` 检测 `__MXU_` 前缀自动适配
 - **选项定义查找**：`OptionEditor` 通过 `findMxuOptionByKey()` 遍历所有特殊任务反查选项定义，无需选项 key 与任务名严格对应
-- **i18n 翻译**：选项的 `label`、`description`、`placeholder`、`pattern_msg` 等字段均通过 `t()` 翻译
+- **i18n 翻译**：选项的 `label`、`description`、`pattern_msg` 等字段均通过 `t()` 翻译
 - **配置持久化**：`appStore` 中的配置恢复逻辑通过 `isMxuSpecialTask` 正确保留选项值
 - **任务校验**：配置加载时通过 `MXU_SPECIAL_TASKS` key 集合判断任务有效性

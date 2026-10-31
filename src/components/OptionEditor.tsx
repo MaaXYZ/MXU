@@ -13,7 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { useAppStore } from '@/stores/appStore';
 import { loadIconAsDataUrl, useResolvedContent } from '@/services/contentResolver';
 import type { OptionValue, CaseItem, InputItem, OptionDefinition } from '@/types/interface';
-import { findMxuOptionByKey } from '@/types/specialTasks';
+import { findMxuOptionByKey, getMxuInputUi, type MxuInputUi } from '@/types/specialTasks';
 import clsx from 'clsx';
 import {
   Info,
@@ -28,9 +28,7 @@ import {
 import { getInterfaceLangKey } from '@/i18n';
 import { findSwitchCase } from '@/utils/optionHelpers';
 import { getCheckboxMaxCount, getCheckboxMinCount } from '@/utils/checkboxOptionValidation';
-import { stripInlineRichText } from '@/utils/richText';
 import { SwitchButton, TextInput, FileInput, TimeInput, HotkeyInput } from './FormControls';
-import { RichLabel } from './RichLabel';
 import { Tooltip } from './ui/Tooltip';
 
 /** 判断 switch 类型的选项是否有子选项 */
@@ -140,7 +138,7 @@ function OptionLabel({
           className="w-4 h-4 object-contain flex-shrink-0"
         />
       )}
-      <RichLabel text={label} className="text-sm text-text-secondary" />
+      <span className="text-sm text-text-secondary">{label}</span>
     </div>
   );
 }
@@ -257,7 +255,7 @@ function InputField({
   onChange,
   langKey,
   resolveI18nText,
-  basePath,
+  mxuUi,
   disabled,
   isMxuOption = false,
   isHotkey = false,
@@ -268,7 +266,7 @@ function InputField({
   onChange: (val: string) => void;
   langKey: string;
   resolveI18nText: (text: string | undefined, lang: string) => string;
-  basePath: string;
+  mxuUi?: MxuInputUi;
   disabled?: boolean;
   isMxuOption?: boolean;
   isHotkey?: boolean;
@@ -292,11 +290,9 @@ function InputField({
         : undefined
       : resolveI18nText(input.pattern_msg, langKey);
   const inputPlaceholder =
-    isMxuOption && t
-      ? input.placeholder
-        ? t(input.placeholder)
-        : input.default || undefined
-      : resolveI18nText(input.placeholder, langKey) || input.default || undefined;
+    isMxuOption && t && mxuUi?.placeholderKey
+      ? t(mxuUi.placeholderKey)
+      : input.default || undefined;
 
   // 验证输入
   const validationError = useMemo(() => {
@@ -316,14 +312,7 @@ function InputField({
     <div className="space-y-1">
       <div className="flex flex-wrap items-center gap-3 min-w-0">
         <div className="flex items-center gap-1.5 min-w-0 flex-1 basis-[14rem]">
-          {input.icon && (
-            <AsyncIcon
-              icon={input.icon}
-              basePath={basePath}
-              className="w-4 h-4 object-contain flex-shrink-0"
-            />
-          )}
-          <RichLabel text={inputLabel} className="text-sm text-text-tertiary truncate" />
+          <span className="text-sm text-text-tertiary truncate">{inputLabel}</span>
           {inputDescription && (
             <Tooltip content={inputDescription} side="top" align="start" maxWidth="max-w-[200px]">
               <Info className="w-3.5 h-3.5 text-text-muted cursor-help flex-shrink-0" />
@@ -338,15 +327,17 @@ function InputField({
             disabled={disabled}
             className="min-w-[min(12rem,100%)] flex-1 basis-[30%]"
           />
-        ) : input.input_type === 'file' ? (
+        ) : input.input_type === 'file' || input.input_type === 'directory' ? (
           <FileInput
             value={value}
             onChange={onChange}
             placeholder={inputPlaceholder}
+            directory={input.input_type === 'directory'}
+            password={input.password === true}
             disabled={disabled}
             className="min-w-[min(12rem,100%)] flex-1 basis-[30%]"
           />
-        ) : input.input_type === 'time' ? (
+        ) : isMxuOption && mxuUi?.timePicker ? (
           <TimeInput
             value={value}
             onChange={onChange}
@@ -683,7 +674,7 @@ export function OptionEditor({
                       className="w-4 h-4 object-contain flex-shrink-0"
                     />
                   )}
-                  <RichLabel text={caseLabel} className="truncate" />
+                  <span className="truncate">{caseLabel}</span>
                 </span>
               </button>
             );
@@ -716,7 +707,15 @@ export function OptionEditor({
 
   // Input / Hotkey 类型
   if (optionDef.type === 'input' || optionDef.type === 'hotkey') {
-    const fields = optionDef.type === 'input' ? optionDef.inputs : optionDef.hotkeys;
+    const fields =
+      optionDef.type === 'input'
+        ? optionDef.inputs
+        : optionDef.hotkeys.map(({ name, label, description, default: defaultValue }) => ({
+            name,
+            label,
+            description,
+            default: defaultValue,
+          }));
     const inputValues =
       effectiveValue?.type === 'input' || effectiveValue?.type === 'hotkey'
         ? effectiveValue.values
@@ -762,7 +761,7 @@ export function OptionEditor({
               }}
               langKey={langKey}
               resolveI18nText={resolveI18nText}
-              basePath={basePath}
+              mxuUi={isMxuOption ? getMxuInputUi(optionKey, input.name) : undefined}
               disabled={effectiveDisabled}
               isMxuOption={isMxuOption}
               t={t}
@@ -1153,7 +1152,7 @@ function OptionSelectDropdown({
               className="w-4 h-4 object-contain flex-shrink-0"
             />
           )}
-          <RichLabel text={selectedOption?.label ?? ''} />
+          {selectedOption?.label ?? ''}
         </span>
         <ChevronDown
           className={clsx('w-4 h-4 text-text-secondary transition-transform', open && 'rotate-180')}
@@ -1205,7 +1204,7 @@ function OptionSelectDropdown({
                   )}
                   role="option"
                   aria-selected={isSelected}
-                  title={stripInlineRichText(opt.label)}
+                  title={opt.label}
                 >
                   <span className="flex items-center gap-1.5 truncate">
                     {opt.icon && (
@@ -1215,7 +1214,7 @@ function OptionSelectDropdown({
                         className="w-4 h-4 object-contain flex-shrink-0"
                       />
                     )}
-                    <RichLabel text={opt.label} />
+                    {opt.label}
                   </span>
                   {isSelected && <Check className="w-4 h-4 flex-shrink-0" />}
                 </button>
@@ -1250,14 +1249,12 @@ function OptionSelectComboBox({
 
   const selectedOption = options.find((opt) => opt.value === value) ?? options[0];
 
-  // 过滤选项：label 可能含行内 Markdown（图标等），按去掉标记的纯文本匹配
+  // 按选项名称和取值过滤
   const filteredOptions = useMemo(() => {
     if (!searchQuery.trim()) return options;
     const query = searchQuery.toLowerCase();
     return options.filter(
-      (opt) =>
-        stripInlineRichText(opt.label).toLowerCase().includes(query) ||
-        opt.value.toLowerCase().includes(query),
+      (opt) => opt.label.toLowerCase().includes(query) || opt.value.toLowerCase().includes(query),
     );
   }, [options, searchQuery]);
 
@@ -1408,7 +1405,7 @@ function OptionSelectComboBox({
               className="w-4 h-4 object-contain flex-shrink-0"
             />
           )}
-          <RichLabel text={selectedOption?.label ?? ''} />
+          {selectedOption?.label ?? ''}
         </span>
         <ChevronDown
           className={clsx('w-4 h-4 text-text-secondary transition-transform', open && 'rotate-180')}
@@ -1486,7 +1483,7 @@ function OptionSelectComboBox({
                       )}
                       role="option"
                       aria-selected={isSelected}
-                      title={stripInlineRichText(opt.label)}
+                      title={opt.label}
                     >
                       <span className="flex items-center gap-1.5 truncate">
                         {opt.icon && (
@@ -1496,7 +1493,7 @@ function OptionSelectComboBox({
                             className="w-4 h-4 object-contain flex-shrink-0"
                           />
                         )}
-                        <RichLabel text={opt.label} />
+                        {opt.label}
                       </span>
                       {isSelected && <Check className="w-4 h-4 flex-shrink-0" />}
                     </button>
@@ -1514,7 +1511,6 @@ function OptionSelectComboBox({
 /** Switch 网格组件的单个项 */
 interface SwitchGridItemData {
   optionKey: string;
-  /** UI 展示名称，可能含行内 Markdown（图标等）；原生 title 等纯文本场景需先 stripInlineRichText */
   label: string;
   description?: string;
   isChecked: boolean;
@@ -1563,9 +1559,9 @@ export function SwitchGrid({ instanceId, taskId, items, disabled = false }: Swit
                   : 'bg-bg-primary text-text-secondary border-border hover:border-accent hover:text-accent',
                 itemDisabled && 'opacity-60 cursor-not-allowed',
               )}
-              title={item.description || stripInlineRichText(item.label)}
+              title={item.description || item.label}
             >
-              <RichLabel text={item.label} />
+              {item.label}
             </button>
           </Tooltip>
         );

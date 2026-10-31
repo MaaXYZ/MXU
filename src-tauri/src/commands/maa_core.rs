@@ -906,27 +906,6 @@ pub async fn connect_controller_impl(
                 input_method,
                 ..
             } => create_macos_controller(*handle, *screencap_method, *input_method)?,
-            ControllerConfig::WlRoots {
-                wlr_socket_path,
-                use_win32_vk_code,
-                ..
-            } => {
-                // 迁移：WlRoots 已废弃，内部改用 Linux 控制器（Wlr 截图 + Wlr 输入）
-                ensure_linux_maafw_version()?;
-                let linux_config = build_linux_controller_config(
-                    maa_framework::common::LinuxScreencapMethod::WLR.bits(),
-                    maa_framework::common::LinuxInputMethod::WLR.bits(),
-                    Some(wlr_socket_path.as_str()),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    Some(*use_win32_vk_code),
-                );
-                Controller::new_linux(&linux_config).map_err(|e| e.to_string())?
-            }
             ControllerConfig::PlayCover { address, uuid, .. } => {
                 let uuid_str = uuid.as_deref().unwrap_or("");
                 Controller::new_playcover(address, uuid_str).map_err(|e| e.to_string())?
@@ -1032,9 +1011,6 @@ pub async fn connect_controller_impl(
                 display_short_side, ..
             }
             | ControllerConfig::MacOS {
-                display_short_side, ..
-            }
-            | ControllerConfig::WlRoots {
                 display_short_side, ..
             }
             | ControllerConfig::Gamepad {

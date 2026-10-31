@@ -96,13 +96,6 @@ pub enum ControllerConfig {
         #[serde(default)]
         display_short_side: Option<i32>,
     },
-    WlRoots {
-        wlr_socket_path: String,
-        #[serde(default)]
-        use_win32_vk_code: bool,
-        #[serde(default)]
-        display_short_side: Option<i32>,
-    },
     Gamepad {
         handle: u64,
         #[serde(default)]
@@ -402,8 +395,6 @@ pub struct AgentConfig {
     pub child_exec: String,
     pub child_args: Option<Vec<String>>,
     pub identifier: Option<String>,
-    /// 连接超时时间（毫秒），-1 表示无限等待
-    pub timeout: Option<i64>,
 }
 
 /// 任务配置

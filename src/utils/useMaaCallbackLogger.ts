@@ -93,14 +93,12 @@ function parseFocusEntry(
   };
 }
 
-// Focus 消息的占位符替换（不包含 {image}，由专门函数处理）
+// 使用回调详情替换 Focus 消息占位符
 function replaceFocusPlaceholders(
   template: string,
   details: MaaCallbackDetails & Record<string, unknown>,
 ): string {
   return template.replace(/\{(\w+)\}/g, (match, key) => {
-    // {image} 由专门的函数处理，这里跳过
-    if (key === 'image') return match;
     const value = details[key];
     if (value !== undefined && value !== null) {
       return String(value);
@@ -111,53 +109,29 @@ function replaceFocusPlaceholders(
 
 /**
  * 解析 focus 消息内容
- * 支持国际化（$开头）、URL、文件路径、Markdown 格式、{image} 截图占位符
+ * 支持国际化（$开头）、URL、文件路径、Markdown 格式
  * @param template 模板字符串
  * @param details 回调详情（用于占位符替换）
- * @param instanceId 实例 ID（用于获取截图）
  */
 async function resolveFocusContent(
   template: string,
   details: MaaCallbackDetails & Record<string, unknown>,
-  instanceId: string,
 ): Promise<{ message: string; html?: string }> {
   const state = useAppStore.getState();
   const langKey = getInterfaceLangKey(state.language);
   const translations = state.interfaceTranslations[langKey];
   const basePath = state.basePath;
 
-  // 1. 替换普通占位符（不包含 {image}）
-  let withPlaceholders = replaceFocusPlaceholders(template, details);
+  // 1. 使用回调详情替换占位符
+  const withPlaceholders = replaceFocusPlaceholders(template, details);
 
-  // 2. 处理 {image} 占位符 - 获取控制器缓存的截图（带超时保护）
-  if (withPlaceholders.includes('{image}')) {
-    try {
-      // 添加超时保护，避免长时间阻塞
-      const timeoutPromise = new Promise<string>((_, reject) => {
-        setTimeout(() => reject(new Error('获取截图超时')), 5000);
-      });
-      const imagePromise = maaService.getCachedImage(instanceId);
-
-      const imageDataUrl = await Promise.race([imagePromise, timeoutPromise]);
-      if (imageDataUrl) {
-        // 直接替换为 data URL，用户可自行组装到 Markdown/HTML 中
-        withPlaceholders = withPlaceholders.replace(/\{image\}/g, imageDataUrl);
-      } else {
-        withPlaceholders = withPlaceholders.replace(/\{image\}/g, '');
-      }
-    } catch (err) {
-      log.warn('获取截图失败:', err);
-      withPlaceholders = withPlaceholders.replace(/\{image\}/g, '');
-    }
-  }
-
-  // 3. 处理国际化
+  // 2. 处理国际化
   const resolved = resolveI18nText(withPlaceholders, translations);
 
-  // 4. 检测内容类型
+  // 3. 检测内容类型
   const contentType = detectContentType(resolved);
 
-  // 5. 如果是直接文本，检查是否包含富文本特征
+  // 4. 如果是直接文本，检查是否包含富文本特征
   if (contentType === 'text') {
     // 判定规则集中在 utils/richText，避免各处各写一套正则
     if (hasRichTextFeatures(resolved)) {
@@ -167,7 +141,7 @@ async function resolveFocusContent(
     return { message: resolved };
   }
 
-  // 6. 加载外部内容（URL 或文件）
+  // 5. 加载外部内容（URL 或文件）
   try {
     const loadedContent = await resolveContent(resolved, { translations, basePath });
     // 将加载的内容转换为 HTML（支持 Markdown）
@@ -210,8 +184,6 @@ function inferCtrlInfoFromInstance(
     return { type: 'window', name: savedDevice?.windowName };
   } else if (controller.type === 'Adb') {
     return { type: 'device', name: savedDevice?.adbDeviceName };
-  } else if (controller.type === 'WlRoots') {
-    return { type: 'device', name: savedDevice?.wlrSocketPath };
   } else if (controller.type === 'Linux') {
     // 按当前配置实际需要的设备派生名称：不依赖 gamescope 的配置（如 Portal+Uinput）
     // 会忽略残留的 savedDevice.gamescopeDisplayNo，避免显示过期的 `gamescope-<n>`。
@@ -364,30 +336,18 @@ function handleCallback(
   if (focusEntry) {
     const { content: focusTemplate, displayChannels } = focusEntry;
 
-    // 如果包含 {image} 占位符，先快速显示不含图片的版本，避免阻塞
-    const hasImagePlaceholder = focusTemplate.includes('{image}');
-    if (hasImagePlaceholder && displayChannels.includes('log')) {
-      const tempMessage = replaceFocusPlaceholders(focusTemplate, details).replace(
-        /\{image\}/g,
-        '[图片加载中...]',
-      );
-      addLog(instanceId, { type: 'focus', message: tempMessage });
-    }
-
-    resolveFocusContent(focusTemplate, details, instanceId)
+    resolveFocusContent(focusTemplate, details)
       .then((resolved) => {
         // 根据 display 渠道分发消息；toast 与 notification 同为系统通知，去重避免双发
         let notificationDispatched = false;
         for (const channel of displayChannels) {
           switch (channel) {
             case 'log':
-              if (!hasImagePlaceholder) {
-                addLog(instanceId, {
-                  type: 'focus',
-                  message: resolved.message,
-                  html: resolved.html,
-                });
-              }
+              addLog(instanceId, {
+                type: 'focus',
+                message: resolved.message,
+                html: resolved.html,
+              });
               break;
             case 'toast':
             case 'notification':
@@ -406,7 +366,7 @@ function handleCallback(
       })
       .catch((err) => {
         log.warn('Failed to resolve focus content:', err);
-        if (!hasImagePlaceholder && displayChannels.includes('log')) {
+        if (displayChannels.includes('log')) {
           addLog(instanceId, { type: 'focus', message: focusTemplate });
         }
       });
@@ -680,7 +640,7 @@ export function useMaaAgentLogger() {
   };
 
   const emitAgentLog = (instanceId: string, mergedLine: string) => {
-    resolveFocusContent(mergedLine, {} as MaaCallbackDetails & Record<string, unknown>, instanceId)
+    resolveFocusContent(mergedLine, {} as MaaCallbackDetails & Record<string, unknown>)
       .then((resolved) => {
         addLog(instanceId, {
           type: 'agent',

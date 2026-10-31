@@ -50,17 +50,14 @@ export function DeviceSelector({
   const {
     cachedAdbDevices,
     cachedWin32Windows,
-    cachedWlrootsSockets,
     setCachedAdbDevices,
     setCachedWin32Windows,
-    setCachedWlrootsSockets,
     registerCtrlIdName,
   } = useAppStore();
 
   // 选中的设备（本地状态）
   const [selectedAdbDevice, setSelectedAdbDevice] = useState<AdbDevice | null>(null);
   const [selectedWindow, setSelectedWindow] = useState<Win32Window | null>(null);
-  const [selectedWlrootsSocket, setSelectedWlrootsSocket] = useState<string | null>(null);
 
   const [showDropdown, setShowDropdown] = useState(false);
 
@@ -146,8 +143,7 @@ export function DeviceSelector({
   }, [pendingCtrlId, onConnectionChange]);
 
   // 判断是否需要搜索设备（PlayCover 不需要搜索）
-  const needsDeviceSearch =
-    controllerType === 'Adb' || isDesktopWindowController || controllerType === 'WlRoots';
+  const needsDeviceSearch = controllerType === 'Adb' || isDesktopWindowController;
 
   // 初始化 MaaFramework（如果还没初始化）
   const ensureMaaInitialized = async () => {
@@ -196,15 +192,6 @@ export function DeviceSelector({
         if (windows.length > 0) {
           setShowDropdown(true);
         }
-      } else if (controllerType === 'WlRoots') {
-        const sockets = await maaService.findWlrootsSockets();
-        setCachedWlrootsSockets(sockets);
-        if (sockets.length === 1) {
-          setSelectedWlrootsSocket(sockets[0]);
-        }
-        if (sockets.length > 0) {
-          setShowDropdown(true);
-        }
       }
     } catch (err) {
       log.error('搜索设备失败:', err);
@@ -250,12 +237,6 @@ export function DeviceSelector({
           throw new Error(t('controller.selectWindow'));
         }
         config = desktopConfig;
-      } else if (controllerType === 'WlRoots' && selectedWlrootsSocket) {
-        config = {
-          type: 'WlRoots',
-          wlr_socket_path: selectedWlrootsSocket,
-          use_win32_vk_code: controllerDef.wlroots?.use_win32_vk_code ?? false,
-        };
       } else if (controllerType === 'PlayCover') {
         config = {
           type: 'PlayCover',
@@ -277,9 +258,6 @@ export function DeviceSelector({
       } else if (isDesktopWindowController && selectedWindow) {
         deviceName = selectedWindow.window_name || selectedWindow.class_name;
         targetType = 'window';
-      } else if (controllerType === 'WlRoots' && selectedWlrootsSocket) {
-        deviceName = selectedWlrootsSocket;
-        targetType = 'device';
       } else if (controllerType === 'PlayCover') {
         deviceName = playcoverAddress;
         targetType = 'device';
@@ -318,9 +296,7 @@ export function DeviceSelector({
     if (isDesktopWindowController && selectedWindow) {
       return selectedWindow.window_name || selectedWindow.class_name;
     }
-    if (controllerType === 'WlRoots' && selectedWlrootsSocket) {
-      return selectedWlrootsSocket;
-    }
+
     return t('controller.selectController');
   };
 
@@ -405,45 +381,6 @@ export function DeviceSelector({
     }
   };
 
-  // 选择 WlRoots socket 并自动连接
-  const handleSelectWlrootsSocket = async (socketPath: string) => {
-    setSelectedWlrootsSocket(socketPath);
-    setShowDropdown(false);
-
-    // 自动连接
-    setIsConnecting(true);
-    setError(null);
-
-    try {
-      const initialized = await ensureMaaInitialized();
-      if (!initialized) {
-        throw new Error('无法初始化 MaaFramework，请确保 MaaFramework 动态库在正确的位置');
-      }
-
-      await maaService.createInstance(instanceId).catch(() => {});
-
-      const config: ControllerConfig = {
-        type: 'WlRoots',
-        wlr_socket_path: socketPath,
-        use_win32_vk_code: controllerDef.wlroots?.use_win32_vk_code ?? false,
-      };
-
-      const ctrlId = await maaService.connectController(instanceId, config);
-
-      // 注册 ctrl_id 与窗口名/类型的映射
-      registerCtrlIdName(instanceId, ctrlId, socketPath, 'device');
-
-      // 记录等待中的 ctrl_id，后续由回调处理完成状态
-      setPendingCtrlId(ctrlId);
-    } catch (err) {
-      log.error('自动连接失败:', err);
-      setError(err instanceof Error ? err.message : '连接失败');
-      setIsConnected(false);
-      onConnectionChange?.(false);
-      setIsConnecting(false);
-    }
-  };
-
   // 获取设备列表
   const getDeviceList = () => {
     if (controllerType === 'Adb') {
@@ -464,15 +401,7 @@ export function DeviceSelector({
         onClick: () => handleSelectWindow(window),
       }));
     }
-    if (controllerType === 'WlRoots') {
-      return cachedWlrootsSockets.map((socket) => ({
-        id: `wlr:${socket}`,
-        name: socket,
-        description: socket,
-        selected: selectedWlrootsSocket === socket,
-        onClick: () => handleSelectWlrootsSocket(socket),
-      }));
-    }
+
     return [];
   };
 
@@ -480,7 +409,7 @@ export function DeviceSelector({
   const canConnect = () => {
     if (controllerType === 'Adb') return !!selectedAdbDevice;
     if (isDesktopWindowController) return !!selectedWindow;
-    if (controllerType === 'WlRoots') return !!selectedWlrootsSocket;
+
     if (controllerType === 'PlayCover') return playcoverAddress.trim().length > 0;
     return false;
   };
@@ -493,7 +422,6 @@ export function DeviceSelector({
       case 'Adb':
         return <Smartphone className="w-4 h-4" />;
       case 'Win32':
-      case 'WlRoots':
         return <Monitor className="w-4 h-4" />;
       case 'MacOS':
       case 'PlayCover':
@@ -512,8 +440,6 @@ export function DeviceSelector({
         return t('controller.adb');
       case 'Win32':
         return t('controller.win32');
-      case 'WlRoots':
-        return t('controller.wlroots');
       case 'PlayCover':
         return t('controller.playcover');
       case 'MacOS':
@@ -587,13 +513,7 @@ export function DeviceSelector({
               <span
                 className={clsx(
                   'truncate',
-                  (
-                    controllerType === 'Adb'
-                      ? selectedAdbDevice
-                      : controllerType === 'WlRoots'
-                        ? selectedWlrootsSocket
-                        : selectedWindow
-                  )
+                  (controllerType === 'Adb' ? selectedAdbDevice : selectedWindow)
                     ? 'text-text-primary'
                     : 'text-text-muted',
                 )}
