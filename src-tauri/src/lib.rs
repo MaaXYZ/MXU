@@ -169,10 +169,14 @@ pub fn run() {
             }
 
             // 启动时异步清理 cache/old 目录（更新残留的旧文件），不阻塞应用启动
-            if let Ok(data_dir) = commands::get_data_dir() {
-                let old_dir = std::path::Path::new(&data_dir).join("cache").join("old");
+            // 路径与更新时移入旧文件的位置一致（macOS 上数据目录与程序目录不同）
+            if let Ok(old_dir) = commands::update::get_old_dir() {
                 if old_dir.exists() {
                     std::thread::spawn(move || {
+                        // 与全量更新互斥：更新期间 cache/old 中是回滚备份
+                        let _guard = commands::update::OLD_DIR_LOCK
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
                         let (deleted, failed) = commands::cleanup_dir_contents(&old_dir);
                         if deleted > 0 || failed > 0 {
                             if failed == 0 {
@@ -295,6 +299,7 @@ pub fn run() {
             commands::update::fallback_update,
             commands::update::move_file_to_old,
             commands::update::cleanup_update_artifacts,
+            commands::update::current_exe_exists,
             // 下载命令
             commands::download::get_github_release_by_version,
             commands::download::download_file,

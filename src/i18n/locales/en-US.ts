@@ -740,6 +740,15 @@ export default {
     installing: 'Installing update...',
     installComplete: 'Installation Complete',
     installFailed: 'Installation Failed',
+    installErrors: {
+      packageMissing: 'Update package not found. Please download it again.',
+      packageCorrupt: 'The update package is corrupted. Please download it again. ({{detail}})',
+      extractFailed:
+        'Failed to extract the update package. It may have been blocked by security software. ({{detail}})',
+      rolledBack: 'Update failed. The previous version has been restored. ({{detail}})',
+      exeMissing:
+        'The program file is missing. It may have been deleted or quarantined by security software. Add the installation folder to the security software allowlist, then download the update again.',
+    },
     installNow: 'Install Now',
     installUpdate: 'Install Update',
     installStages: {

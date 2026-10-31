@@ -711,6 +711,14 @@ export default {
     installing: '正在安裝更新...',
     installComplete: '安裝完成',
     installFailed: '安裝失敗',
+    installErrors: {
+      packageMissing: '更新包不存在，請重新下載',
+      packageCorrupt: '更新包已損毀，請重新下載（{{detail}}）',
+      extractFailed: '解壓縮更新包失敗，可能遭安全軟體攔截（{{detail}}）',
+      rolledBack: '更新失敗，已還原至更新前的版本（{{detail}}）',
+      exeMissing:
+        '程式檔案已遺失，可能遭安全軟體刪除或隔離。請將安裝目錄加入安全軟體白名單後重新下載更新',
+    },
     installNow: '立即安裝',
     installUpdate: '安裝更新',
     installStages: {

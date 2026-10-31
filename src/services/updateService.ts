@@ -24,6 +24,15 @@ let isDownloading = false;
 let downloadCancelled = false;
 // 安装互斥锁，防止并发 installUpdate 导致目录竞争
 let isInstalling = false;
+// 本次运行中是否有安装失败过：失败后不再自动重试，手动安装和下次启动不受影响
+let installFailedInSession = false;
+
+/**
+ * 本次运行中是否有安装失败过（用于阻止自动安装反复重试）
+ */
+export function hasInstallFailedInSession(): boolean {
+  return installFailedInSession;
+}
 
 /**
  * 将文件移动到 cache/old 文件夹（调用 Rust 端统一实现）
@@ -827,6 +836,8 @@ export async function downloadUpdate(
     currentSessionId = result.session_id;
 
     log.info(`下载完成 (session ${result.session_id})`);
+    // 新的更新包下载完成，允许再次自动安装
+    installFailedInSession = false;
     log.info(`实际保存路径: ${result.actual_save_path}`);
     if (result.detected_filename) {
       log.info(`检测到文件名: ${result.detected_filename}`);
@@ -970,15 +981,78 @@ export function isExecutableInstaller(filePath: string): boolean {
   return lower.endsWith('.exe') || lower.endsWith('.dmg');
 }
 
+// Rust 端 extract_zip 失败时返回的错误
+interface ExtractErrorPayload {
+  message: string;
+  /** 更新包本身损坏（截断、校验失败等） */
+  corrupt: boolean;
+}
+
+// Rust 端 apply_full_update 失败时返回的错误
+interface ApplyUpdateErrorPayload {
+  message: string;
+  /** 是否已回滚到更新前的状态 */
+  rolledBack: boolean;
+}
+
+function isExtractError(error: unknown): error is ExtractErrorPayload {
+  return typeof error === 'object' && error !== null && 'corrupt' in error;
+}
+
+function isApplyUpdateError(error: unknown): error is ApplyUpdateErrorPayload {
+  return typeof error === 'object' && error !== null && 'rolledBack' in error;
+}
+
+/**
+ * 安装更新失败的错误类型，对应 mirrorChyan.installErrors 下的文案
+ */
+export type UpdateInstallErrorCode =
+  | 'packageMissing'
+  | 'packageCorrupt'
+  | 'extractFailed'
+  | 'rolledBack'
+  | 'exeMissing';
+
+/**
+ * 安装更新失败的错误，由界面根据 code 显示本地化文案
+ */
+export class UpdateInstallError extends Error {
+  public readonly code: UpdateInstallErrorCode;
+  public readonly detail: string;
+
+  constructor(code: UpdateInstallErrorCode, detail = '') {
+    super(detail ? `${code}: ${detail}` : code);
+    this.name = 'UpdateInstallError';
+    this.code = code;
+    this.detail = detail;
+  }
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    return String((error as { message: unknown }).message);
+  }
+  return String(error);
+}
+
+/**
+ * 放弃当前的更新包：清除待安装信息并重置下载状态，让用户重新下载
+ */
+function discardPendingPackage(): void {
+  clearPendingUpdateInfo();
+  useAppStore.getState().resetDownloadState();
+}
+
 /**
  * 安装更新包
  * 1. 如果是 exe/dmg 文件，直接打开（调用系统默认程序）
- * 2. 否则解压更新包（支持 zip/tar.gz/tgz）
+ * 2. 否则解压更新包（支持 zip/tar.gz/tgz），包不存在或已损坏时放弃该包
  * 3. 检查是否为增量包（存在 changes.json）
  * 4. 增量包：删除 deleted 文件，复制覆盖
- * 5. 全量包：删除同名文件夹，复制覆盖
+ * 5. 全量包：移走同名文件夹后复制，失败时回滚到更新前的状态
  * 6. 清理临时文件
- * 7. 如果失败，尝试兜底：创建 v版本号 文件夹
+ * 7. 如果失败且未能回滚，尝试兜底：创建 v版本号 文件夹
  */
 export async function installUpdate(options: InstallUpdateOptions): Promise<boolean> {
   if (isInstalling) {
@@ -992,11 +1066,10 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
   log.info(`开始安装更新: ${zipPath} -> ${targetDir}`);
 
   try {
-    await backupConfigBeforeUpdate(targetDir, projectName);
-
     // 对于 exe/dmg 文件，直接打开而不是解压
     if (isExecutableInstaller(zipPath)) {
       log.info(`检测到可执行安装程序，直接打开: ${zipPath}`);
+      await backupConfigBeforeUpdate(targetDir, projectName);
       onProgress?.('opening', zipPath);
 
       try {
@@ -1013,22 +1086,45 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
       }
     }
 
+    // 更新包已不存在（如已被安装过并移走），放弃该包，不再走兜底
+    if (!(await exists(zipPath))) {
+      log.warn(`更新包不存在，放弃本次安装: ${zipPath}`);
+      discardPendingPackage();
+      throw new UpdateInstallError('packageMissing');
+    }
+
     // 生成临时解压目录
     const extractDir = joinPath(await dirname(zipPath), 'update_extract');
 
+    // 先清理上次可能残留的解压目录，避免历史文件混入本次更新
+    await invoke('cleanup_extract_dir', { extractDir }).catch(() => {});
+
+    // 1. 解压更新包
+    onProgress?.('extracting', zipPath);
+    log.info(`解压更新包到: ${extractDir}`);
+
     try {
-      // 先清理上次可能残留的解压目录，避免历史文件混入本次更新
-      await invoke('cleanup_extract_dir', { extractDir }).catch(() => {});
-
-      // 1. 解压更新包
-      onProgress?.('extracting', zipPath);
-      log.info(`解压更新包到: ${extractDir}`);
-
       await invoke('extract_zip', {
         zipPath,
         destDir: extractDir,
       });
+    } catch (error) {
+      log.error('解压更新包失败:', error);
+      await invoke('cleanup_extract_dir', { extractDir }).catch(() => {});
 
+      if (isExtractError(error) && error.corrupt) {
+        // 包已损坏，移走并放弃，避免每次都拿同一个坏包重试
+        await moveToOldFolder(zipPath);
+        discardPendingPackage();
+        throw new UpdateInstallError('packageCorrupt', error.message);
+      }
+      throw new UpdateInstallError('extractFailed', getErrorMessage(error));
+    }
+
+    // 解压成功后再备份配置，避免每次失败的尝试都轮换掉旧备份
+    await backupConfigBeforeUpdate(targetDir, projectName);
+
+    try {
       // 2. 检查是否为增量包
       onProgress?.('checking', 'changes.json');
       log.info('检查更新包类型...');
@@ -1062,6 +1158,9 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
         });
       }
 
+      // 文件已替换完成，立即清除待安装信息，避免之后再次拿这个包安装
+      clearPendingUpdateInfo();
+
       // 3. 清理临时文件
       onProgress?.('cleanup');
       log.info('清理临时文件...');
@@ -1083,6 +1182,12 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
       return true;
     } catch (error) {
       log.error('更新安装失败:', error);
+
+      // 已回滚到更新前的状态：程序仍可正常使用，保留更新包，不走兜底
+      if (isApplyUpdateError(error) && error.rolledBack) {
+        await invoke('cleanup_extract_dir', { extractDir }).catch(() => {});
+        throw new UpdateInstallError('rolledBack', error.message);
+      }
 
       // 兜底逻辑：尝试将新文件解压到 v版本号 文件夹
       try {
@@ -1118,9 +1223,12 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
         // 尝试清理临时目录
         await invoke('cleanup_extract_dir', { extractDir }).catch(() => {});
 
-        throw error; // 抛出原始错误
+        throw new Error(getErrorMessage(error)); // 抛出原始错误
       }
     }
+  } catch (error) {
+    installFailedInSession = true;
+    throw error;
   } finally {
     isInstalling = false;
   }
@@ -1270,6 +1378,17 @@ export function clearPendingUpdateInfo(): void {
     log.info('已清除待安装更新信息');
   } catch (error) {
     log.warn('清除待安装更新信息失败:', error);
+  }
+}
+
+/**
+ * 重启前确认程序文件仍然存在（可能在更新后被安全软件删除或隔离），
+ * 不存在时抛出错误，避免重启失败后进程直接退出
+ */
+export async function ensureCurrentExeExists(): Promise<void> {
+  const exeExists = await invoke<boolean>('current_exe_exists').catch(() => true);
+  if (!exeExists) {
+    throw new UpdateInstallError('exeMissing');
   }
 }
 

@@ -715,6 +715,14 @@ export default {
     installing: '正在安装更新...',
     installComplete: '安装完成',
     installFailed: '安装失败',
+    installErrors: {
+      packageMissing: '更新包不存在，请重新下载',
+      packageCorrupt: '更新包已损坏，请重新下载（{{detail}}）',
+      extractFailed: '解压更新包失败，可能被安全软件拦截（{{detail}}）',
+      rolledBack: '更新失败，已恢复到更新前的版本（{{detail}}）',
+      exeMissing:
+        '程序文件已丢失，可能被安全软件删除或隔离。请将安装目录加入安全软件白名单后重新下载更新',
+    },
     installNow: '立即安装',
     installUpdate: '安装更新',
     installStages: {
