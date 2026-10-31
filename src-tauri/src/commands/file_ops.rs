@@ -195,18 +195,6 @@ fn collect_files_recursively(dir: &Path, archive_prefix: &str) -> Result<Vec<Exp
     Ok(files)
 }
 
-fn is_image_file(path: &Path) -> bool {
-    if !path.is_file() {
-        return false;
-    }
-    path.extension()
-        .map(|ext| {
-            let ext_lower = ext.to_string_lossy().to_lowercase();
-            ext_lower == "png" || ext_lower == "jpg" || ext_lower == "jpeg"
-        })
-        .unwrap_or(false)
-}
-
 fn has_extension(path: &Path, extensions: &[&str]) -> bool {
     path.extension()
         .map(|ext| {
@@ -541,8 +529,12 @@ pub fn set_executable(file_path: String) -> Result<(), String> {
     Ok(())
 }
 
-/// 从指定目录收集图片，按 mtime 从新到旧排序。不做任何大小截断。
-fn collect_debug_images(dir: &Path, archive_prefix: &str) -> Vec<ExportEntry> {
+/// 从指定目录收集允许的调试产物，按 mtime 从新到旧排序。不做任何大小截断。
+fn collect_debug_artifacts(
+    dir: &Path,
+    archive_prefix: &str,
+    extensions: &[&str],
+) -> Vec<ExportEntry> {
     if !dir.exists() || !dir.is_dir() {
         return Vec::new();
     }
@@ -560,16 +552,19 @@ fn collect_debug_images(dir: &Path, archive_prefix: &str) -> Vec<ExportEntry> {
         }
     };
 
-    let mut images: Vec<_> = rd.flatten().filter(|e| is_image_file(&e.path())).collect();
+    let mut artifacts: Vec<_> = rd
+        .flatten()
+        .filter(|e| e.path().is_file() && has_extension(&e.path(), extensions))
+        .collect();
 
-    images.sort_by(|a, b| {
+    artifacts.sort_by(|a, b| {
         let time_a = a.metadata().and_then(|m| m.modified()).ok();
         let time_b = b.metadata().and_then(|m| m.modified()).ok();
         time_b.cmp(&time_a)
     });
 
-    let mut entries = Vec::with_capacity(images.len());
-    for entry in images {
+    let mut entries = Vec::with_capacity(artifacts.len());
+    for entry in artifacts {
         let path = entry.path();
         let Some(name) = path.file_name() else {
             continue;
@@ -660,15 +655,20 @@ fn export_logs_blocking(
         &["log", "json", "dmp"],
     )?);
 
-    // ─── 2. 收集图片（on_error + vision，按 mtime 新→旧） ───
-    let on_error_images = collect_debug_images(&debug_dir.join("on_error"), "on_error");
-    let vision_images = collect_debug_images(&debug_dir.join("vision"), "vision");
+    // ─── 2. 收集错误截图/视频与识别图片（按 mtime 新→旧） ───
+    let on_error_artifacts = collect_debug_artifacts(
+        &debug_dir.join("on_error"),
+        "on_error",
+        &["png", "jpg", "jpeg", "avi"],
+    );
+    let vision_images =
+        collect_debug_artifacts(&debug_dir.join("vision"), "vision", &["png", "jpg", "jpeg"]);
 
     // ─── 3. 合并入卷条目：先 regular，再 on_error，再 vision ───
     // 图片按 mtime 新→旧排在尾部，保证最近的崩溃图一定落在 part01.zip。
     let mut all_entries: Vec<ExportEntry> = Vec::new();
     all_entries.extend(regular_entries);
-    all_entries.extend(on_error_images);
+    all_entries.extend(on_error_artifacts);
     all_entries.extend(vision_images);
 
     let total_entries = all_entries.len();
