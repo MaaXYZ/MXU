@@ -730,7 +730,10 @@ export function OptionEditor({
           isOptionIncompatible && 'opacity-60',
         )}
       >
-        <div className="max-w-[60%]">
+        {/* 标题与描述原先被限制在 60% 宽，右侧留空；60% 本是给 switch/select
+            行右侧控件让位，而 input/hotkey 的标题区右侧没有控件（输入字段各自
+            成行排布），因此这里放开整行，让描述与内联图片按可用宽度显示。 */}
+        <div className="max-w-full">
           <OptionLabelWithIncompatible
             label={optionLabel}
             icon={optionDef.icon}
