@@ -62,6 +62,7 @@ import {
 import { scheduleService } from '@/services/scheduleService';
 import { stopInstanceTasks } from '@/services/taskStopService';
 import { taskStartService, type TaskStartOptions } from '@/services/taskStartService';
+import { taskControlService } from '@/services/taskControlService';
 import { isTaskSelectedForRun, filterTasksForRun } from '@/utils/taskRunFilter';
 import { isTauri } from '@/utils/paths';
 import { onStateChanged } from '@/services/wsService';
@@ -1540,6 +1541,25 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
   };
 
   const hotkeyStartingRef = useRef(false);
+
+  // 外部触发入口（MCP）：与托盘/全局快捷键走同一套启动、停止流程
+  const performStopRef = useRef(performStop);
+  performStopRef.current = performStop;
+
+  useEffect(() => {
+    taskControlService.setHandlers({
+      start: (targetInstance, options) => {
+        const isActive = useAppStore.getState().activeInstanceId === targetInstance.id;
+        return scheduleTriggerRef.current(targetInstance, {
+          ...options,
+          // 自动连接阶段仅在当前标签页的工具栏上展示
+          onPhaseChange: isActive ? setAutoConnectPhase : undefined,
+        });
+      },
+      stop: (targetInstanceId) => performStopRef.current(targetInstanceId),
+    });
+    return () => taskControlService.setHandlers(null);
+  }, []);
 
   // 监听来自 App 的全局快捷键事件：F10 开始任务，F11 结束任务
   useEffect(() => {

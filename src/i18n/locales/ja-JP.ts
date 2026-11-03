@@ -607,7 +607,7 @@ export default {
   },
 
   webserver: {
-    title: 'Web サーバー',
+    title: 'Web と AI',
     enabled: 'Web サーバーを有効化',
     enabledHint: '無効にすると内蔵 Web サーバーは起動しません（再起動後に反映）',
     port: 'Web サーバーポート',
@@ -619,6 +619,26 @@ export default {
     restartLater: '後で',
     restartNow: '今すぐ再起動',
     address: 'Web サーバーアドレス',
+  },
+
+  // MCP server
+  mcp: {
+    enabled: 'AI アシスタント（MCP）を有効化',
+    enabledHint:
+      'ローカルの AI ツールが MXU に接続し、タスクの管理・開始やスクリーンショットの確認を行えるようにします。AI の操作はログパネルに記録されます',
+    requiresWebServer:
+      'AI アシスタントには Web サーバーが必要です。先に Web サーバーを有効にしてください',
+    address: '接続 URL',
+    copy: 'コピー',
+    copied: 'コピーしました',
+    log: {
+      addTask: 'AI：タスク「{{name}}」を追加しました',
+      updateTask: 'AI：タスク「{{name}}」を変更しました',
+      removeTask: 'AI：タスク「{{name}}」を削除しました',
+      startTasks: 'AI：タスクを開始します',
+      startTask: 'AI：タスク「{{name}}」を開始します',
+      stopTasks: 'AI：タスクを停止します',
+    },
   },
 
   // 設定の自動修復通知

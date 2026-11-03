@@ -34,6 +34,7 @@ import {
 import type { ConfigRecoveryNotice } from '@/services';
 import { clearIconDataUrlCache, loadIconAsDataUrl } from '@/services/contentResolver';
 import * as wsService from '@/services/wsService';
+import { initMcpBridge, syncMcpEnabled } from '@/services/mcpBridge';
 import {
   downloadUpdate,
   getUpdateSavePath,
@@ -1731,6 +1732,33 @@ function App() {
         .catch(() => {});
     };
   }, [hotkeys?.globalEnabled, hotkeys?.startTasks, hotkeys?.stopTasks]);
+
+  // MCP 前端桥：处理后端转发的 MCP 工具请求（仅桌面端）
+  useEffect(() => {
+    if (!isTauri()) return;
+
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    initMcpBridge()
+      .then((fn) => {
+        if (disposed) fn?.();
+        else unlisten = fn;
+      })
+      .catch((err) => log.warn('注册 MCP 前端桥失败:', err));
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+
+  // 配置加载完成后，把 MCP 开关同步到后端（后端启动时也会从配置文件读取一次）
+  const mcpEnabled = useAppStore((s) => s.mcpEnabled);
+  const configPersistenceReady = useAppStore((s) => s.configPersistenceReady);
+  useEffect(() => {
+    if (!isTauri() || !configPersistenceReady) return;
+    syncMcpEnabled(mcpEnabled).catch((err) => log.warn('同步 MCP 开关失败:', err));
+  }, [mcpEnabled, configPersistenceReady]);
 
   // 监听托盘菜单事件（开始/停止任务）
   useEffect(() => {

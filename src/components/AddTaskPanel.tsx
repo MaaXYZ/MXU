@@ -13,9 +13,8 @@ import {
   GripHorizontal,
 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
-import { maaService } from '@/services/maaService';
+import { addPretask, addProjectTask, addSpecialTask } from '@/services/taskAddService';
 import { useResolvedContent } from '@/services/contentResolver';
-import { loggers, generateTaskPipelineOverride } from '@/utils';
 import { getInterfaceLangKey } from '@/i18n';
 import {
   addTaskPanelHeightMax,
@@ -25,18 +24,10 @@ import {
 import { Tooltip } from './ui/Tooltip';
 import type { TaskItem, ActionConfig, GroupItem, PretaskItem } from '@/types/interface';
 import type { MxuSpecialTaskDefinition } from '@/types/specialTasks';
-import {
-  getAllMxuSpecialTasks,
-  MXU_LAUNCH_TASK_NAME,
-  MXU_KILLPROC_TASK_NAME,
-  MXU_WEBHOOK_TASK_NAME,
-} from '@/types/specialTasks';
+import { getAllMxuSpecialTasks, MXU_WEBHOOK_TASK_NAME } from '@/types/specialTasks';
 import { getPretaskItems, pretaskName, pretaskItemId, buildPretaskDef } from '@/types/pretasks';
 import { generateId } from '@/stores/helpers';
-import { getProcessNameFromPath } from '@/utils/paths';
 import clsx from 'clsx';
-
-const log = loggers.task;
 
 // 按面板实际宽度排列等宽列；auto-fill 保留空列，使不同任务数的分组仍然对齐。
 const taskGridClassName = 'grid grid-cols-[repeat(auto-fill,minmax(min(100%,14rem),1fr))] gap-2';
@@ -171,12 +162,9 @@ export function AddTaskPanel() {
   const {
     projectInterface,
     getActiveInstance,
-    addTaskToInstance,
-    addMxuSpecialTask,
     resolveI18nText,
     language,
     basePath,
-    registerTaskIdName,
     // 新增任务标记
     newTaskNames,
     removeNewTaskName,
@@ -275,62 +263,8 @@ export function AddTaskPanel() {
     // 收起添加任务面板
     setShowAddTaskPanel(false);
 
-    // 根据 connectedProgramPath 为特定任务提供默认值
-    const connectedPath = instance.savedDevice?.connectedProgramPath;
-    let initialValues: Record<string, string> | undefined;
-    if (connectedPath) {
-      if (specialTask.taskName === MXU_LAUNCH_TASK_NAME) {
-        initialValues = { program: connectedPath };
-      } else if (specialTask.taskName === MXU_KILLPROC_TASK_NAME) {
-        initialValues = { process_name: getProcessNameFromPath(connectedPath) };
-      }
-    }
-
-    // 添加特殊任务到列表
-    const taskId = addMxuSpecialTask(instance.id, specialTask.taskName, initialValues);
-
-    // 如果实例正在运行，立即调用 PostTask 追加到执行队列
-    if (instance.isRunning) {
-      try {
-        const latestState = useAppStore.getState();
-        const updatedInstance = latestState.instances.find((i) => i.id === instance.id);
-        const addedTask = updatedInstance?.selectedTasks.find((t) => t.id === taskId);
-
-        if (!addedTask) {
-          log.warn(`无法找到刚添加的特殊任务: ${specialTask.taskName}`);
-          return;
-        }
-
-        // 构建 pipeline override
-        const pipelineOverride = generateTaskPipelineOverride(
-          addedTask,
-          projectInterface,
-          selectedControllerName,
-          selectedResourceName,
-          useAppStore.getState().globalOptionValues,
-        );
-
-        log.info(`运行中追加特殊任务 ${specialTask.entry}, pipelineOverride:`, pipelineOverride);
-
-        // 调用 PostTask（使用注册表中的 entry）
-        const maaTaskId = await maaService.runTask(
-          instance.id,
-          specialTask.entry,
-          pipelineOverride,
-          addedTask.id,
-        );
-
-        log.info(`特殊任务已追加, maaTaskId:`, maaTaskId);
-
-        // 注册 task_id 与任务名的映射（用于日志显示）
-        registerTaskIdName(
-          maaTaskId,
-          addedTask.customName || t(specialTask.taskDef.label || specialTask.taskName),
-        );
-      } catch (err) {
-        log.error(`追加特殊任务失败:`, err);
-      }
-    }
+    // 添加到列表；运行中会自动追加到执行队列
+    await addSpecialTask(instance.id, specialTask);
   };
 
   const handleAddTask = async (taskName: string) => {
@@ -347,53 +281,8 @@ export function AddTaskPanel() {
       removeNewTaskName(taskName);
     }
 
-    // 先添加任务到列表
-    addTaskToInstance(instance.id, task);
-
-    // 如果实例正在运行，立即调用 PostTask 追加到执行队列
-    if (instance.isRunning) {
-      try {
-        // 使用 getState() 获取最新状态（zustand 状态更新是同步的）
-        const latestState = useAppStore.getState();
-        const updatedInstance = latestState.instances.find((i) => i.id === instance.id);
-        const addedTask = updatedInstance?.selectedTasks
-          .filter((t) => t.taskName === taskName)
-          .pop();
-
-        if (!addedTask) {
-          log.warn('无法找到刚添加的任务');
-          return;
-        }
-
-        // 构建 pipeline override
-        const pipelineOverride = generateTaskPipelineOverride(
-          addedTask,
-          projectInterface,
-          selectedControllerName,
-          selectedResourceName,
-          useAppStore.getState().globalOptionValues,
-        );
-
-        log.info('运行中追加任务:', task.entry, ', pipelineOverride:', pipelineOverride);
-
-        // 调用 PostTask
-        const maaTaskId = await maaService.runTask(
-          instance.id,
-          task.entry,
-          pipelineOverride,
-          addedTask.id,
-        );
-
-        log.info('任务已追加, maaTaskId:', maaTaskId);
-
-        // 注册 task_id 与任务名的映射（用于日志显示）
-        const taskDisplayName =
-          addedTask.customName || resolveI18nText(task.label, langKey) || addedTask.taskName;
-        registerTaskIdName(maaTaskId, taskDisplayName);
-      } catch (err) {
-        log.error('追加任务失败:', err);
-      }
-    }
+    // 添加到列表；运行中会自动追加到执行队列
+    await addProjectTask(instance.id, taskName);
   };
 
   // v2.7.0: 添加前置任务（pretask）伪任务。pretask 固定置于列表顶部，
@@ -403,15 +292,7 @@ export function AddTaskPanel() {
 
     setShowAddTaskPanel(false);
 
-    addTaskToInstance(
-      instance.id,
-      {
-        name: pretaskName(item),
-        option: item.option,
-        description: item.description,
-      },
-      { prepend: true },
-    );
+    addPretask(instance.id, item);
   };
 
   // v2.4.0: 按 group 分组任务

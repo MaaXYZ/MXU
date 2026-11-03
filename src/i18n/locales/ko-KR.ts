@@ -598,7 +598,7 @@ export default {
   },
 
   webserver: {
-    title: 'Web 서버',
+    title: '웹 및 AI',
     enabled: 'Web 서버 활성화',
     enabledHint: '비활성화하면 내장 Web 서버가 시작되지 않습니다 (재시작 필요)',
     port: 'Web 서버 포트',
@@ -610,6 +610,25 @@ export default {
     restartLater: '나중에',
     restartNow: '지금 재시작',
     address: 'Web 서버 주소',
+  },
+
+  // MCP server
+  mcp: {
+    enabled: 'AI 도우미(MCP) 사용',
+    enabledHint:
+      '로컬 AI 도구가 MXU에 연결하여 작업을 관리·시작하고 스크린샷을 확인할 수 있도록 합니다. AI의 작업은 로그 패널에 기록됩니다',
+    requiresWebServer: 'AI 도우미는 웹 서버가 필요합니다. 먼저 웹 서버를 활성화하세요',
+    address: '연결 URL',
+    copy: '복사',
+    copied: '복사됨',
+    log: {
+      addTask: 'AI: 작업 "{{name}}" 추가',
+      updateTask: 'AI: 작업 "{{name}}" 수정',
+      removeTask: 'AI: 작업 "{{name}}" 삭제',
+      startTasks: 'AI: 작업 시작',
+      startTask: 'AI: 작업 "{{name}}" 시작',
+      stopTasks: 'AI: 작업 중지',
+    },
   },
 
   // 설정 자동 복구 알림

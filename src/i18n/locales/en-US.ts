@@ -609,7 +609,7 @@ export default {
   },
 
   webserver: {
-    title: 'Web Server',
+    title: 'Web & AI',
     enabled: 'Enable Web Server',
     enabledHint: 'When disabled, the built-in web server will not start (restart required)',
     port: 'Web Server Port',
@@ -621,6 +621,26 @@ export default {
     restartLater: 'Later',
     restartNow: 'Restart Now',
     address: 'Web Server Address',
+  },
+
+  // MCP server
+  mcp: {
+    enabled: 'Enable AI Assistant (MCP)',
+    enabledHint:
+      'Allow local AI tools to connect to MXU to manage and start tasks and view screenshots. AI actions are recorded in the log panel',
+    requiresWebServer:
+      'The AI assistant requires the Web server. Please enable the Web server first',
+    address: 'Connection URL',
+    copy: 'Copy',
+    copied: 'Copied',
+    log: {
+      addTask: 'AI: added task "{{name}}"',
+      updateTask: 'AI: updated task "{{name}}"',
+      removeTask: 'AI: removed task "{{name}}"',
+      startTasks: 'AI: starting tasks',
+      startTask: 'AI: starting task "{{name}}"',
+      stopTasks: 'AI: stopping tasks',
+    },
   },
 
   // Config self-heal notices

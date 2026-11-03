@@ -585,7 +585,7 @@ export default {
 
   webserver: {
     address: 'Web 服務地址',
-    title: 'Web 服務',
+    title: 'Web 與 AI',
     enabled: '啟用 Web 服務',
     enabledHint: '關閉後內建 Web 伺服器將不會啟動（重啟生效）',
     port: 'Web 服務連接埠',
@@ -595,6 +595,25 @@ export default {
     restartMessage: '變更 Web 服務設定需要重啟才能生效，是否立即重啟？',
     restartLater: '稍後重啟',
     restartNow: '立即重啟',
+  },
+
+  // MCP 服務
+  mcp: {
+    enabled: '啟用 AI 助手（MCP）',
+    enabledHint:
+      '允許本機的 AI 工具連接 MXU，管理與啟動任務、檢視截圖。AI 的操作會記錄在日誌面板中',
+    requiresWebServer: 'AI 助手依賴 Web 服務，請先啟用 Web 服務',
+    address: '連線位址',
+    copy: '複製',
+    copied: '已複製',
+    log: {
+      addTask: 'AI：新增任務「{{name}}」',
+      updateTask: 'AI：修改任務「{{name}}」',
+      removeTask: 'AI：刪除任務「{{name}}」',
+      startTasks: 'AI：啟動任務',
+      startTask: 'AI：啟動任務「{{name}}」',
+      stopTasks: 'AI：停止任務',
+    },
   },
 
   // 設定自我修復提示
