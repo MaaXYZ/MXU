@@ -207,6 +207,9 @@ pub fn restart_as_admin(app_handle: tauri::AppHandle) -> Result<(), String> {
 
         info!("restart_as_admin: restarting with admin privileges");
 
+        // 先释放单实例锁：当前进程异步退出，若锁仍被占用，新进程会被当成重复启动
+        crate::single_instance::release();
+
         let result = ShellExecuteEx(&SHELLEXECUTEINFO {
             file: &exe_path_str,
             verb: Option::from("runas"),
@@ -217,6 +220,10 @@ pub fn restart_as_admin(app_handle: tauri::AppHandle) -> Result<(), String> {
 
         // ShellExecuteEx 返回 Result：Ok 表示成功，Err 表示失败
         if let Err(e) = result {
+            // 提权失败，当前进程继续运行，重新获取单实例锁
+            if !crate::single_instance::reacquire() {
+                warn!("restart_as_admin: 重新获取单实例锁失败，当前进程已无单实例保护");
+            }
             Err(format!("以管理员身份启动失败: 错误码 {}", e.raw()))
         } else {
             info!("restart_as_admin: new process started, exiting current");
