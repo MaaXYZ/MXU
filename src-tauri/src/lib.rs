@@ -344,6 +344,7 @@ pub fn run() {
             mcp::set_mcp_server_enabled,
             mcp::bridge::mcp_respond,
             mcp::bridge::mcp_bridge_ready,
+            mcp::texts::mcp_set_texts,
             commands::system::get_local_lan_ip,
             commands::system::get_webview2_dir,
             // 托盘相关命令

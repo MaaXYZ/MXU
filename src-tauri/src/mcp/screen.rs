@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
+use super::texts;
 use crate::commands::types::MaaState;
 
 /// 等待一次截图完成的最长时间
@@ -23,12 +24,12 @@ pub async fn capture_png_base64(
         let instance = instances
             .get(instance_id)
             // 后端只在连接设备时才为标签页创建运行时实例，查不到即视为未连接
-            .ok_or("设备未连接，无法截图")?;
+            .ok_or_else(not_connected)?;
         let controller = instance
             .controller
             .as_ref()
             .filter(|c| c.connected())
-            .ok_or("设备未连接，无法截图")?
+            .ok_or_else(not_connected)?
             .clone();
         let is_running = instance.tasker.as_ref().is_some_and(|t| t.running());
         (controller, is_running)
@@ -42,19 +43,31 @@ pub async fn capture_png_base64(
         });
         match tokio::time::timeout(SCREENCAP_TIMEOUT, wait).await {
             Ok(Ok(Ok(status))) if status.succeeded() => {}
-            Ok(Ok(Ok(_))) => return Err("截图失败".to_string()),
-            Ok(Ok(Err(e))) => return Err(format!("截图失败: {}", e)),
-            Ok(Err(e)) => return Err(format!("截图失败: {}", e)),
-            Err(_) => return Err("截图超时".to_string()),
+            Ok(Ok(Ok(_))) => return Err(texts::error("captureFailed", "截图失败", &[])),
+            Ok(Ok(Err(e))) => return Err(capture_failed(&e)),
+            Ok(Err(e)) => return Err(capture_failed(&e.to_string())),
+            Err(_) => return Err(texts::error("captureTimeout", "截图超时", &[])),
         }
     }
 
     let buffer = controller.cached_image().map_err(|e| e.to_string())?;
     let data = buffer
         .to_vec()
-        .ok_or_else(|| "读取截图数据失败".to_string())?;
+        .ok_or_else(|| texts::error("readImageFailed", "读取截图数据失败", &[]))?;
     if data.is_empty() {
-        return Err("暂无截图数据".to_string());
+        return Err(texts::error("noImageData", "暂无截图数据", &[]));
     }
     Ok(STANDARD.encode(&data))
+}
+
+fn not_connected() -> String {
+    texts::error("deviceNotConnected", "设备未连接，无法截图", &[])
+}
+
+fn capture_failed(error: &str) -> String {
+    texts::error(
+        "captureFailedWithError",
+        "截图失败：{error}",
+        &[("error", error)],
+    )
 }

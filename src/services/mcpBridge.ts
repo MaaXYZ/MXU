@@ -86,13 +86,13 @@ const truncate = (text: string | undefined): string | undefined => {
 const optionalString = (args: Record<string, unknown>, key: string): string | undefined => {
   const value = args[key];
   if (value === undefined || value === null) return undefined;
-  if (typeof value !== 'string') throw new Error(`参数 ${key} 需要是字符串`);
+  if (typeof value !== 'string') throw mcpError('paramNotString', { key });
   return value;
 };
 
 const requiredString = (args: Record<string, unknown>, key: string): string => {
   const value = optionalString(args, key);
-  if (!value) throw new Error(`缺少参数 ${key}`);
+  if (!value) throw mcpError('paramMissing', { key });
   return value;
 };
 
@@ -102,11 +102,11 @@ function resolveInstance(args: Record<string, unknown>): Instance {
   const instanceId = optionalString(args, 'tab_id');
   if (instanceId) {
     const instance = state.instances.find((i) => i.id === instanceId);
-    if (!instance) throw new Error(`标签页不存在: ${instanceId}，请先调用 list_tabs`);
+    if (!instance) throw mcpError('tabNotFound', { id: instanceId });
     return instance;
   }
   const active = state.getActiveInstance();
-  if (!active) throw new Error('当前没有打开的标签页');
+  if (!active) throw mcpError('noActiveTab');
   return active;
 }
 
@@ -134,6 +134,25 @@ function isTaskDefCompatible(
     return false;
   }
   return true;
+}
+
+/** 构造本地化错误（语言包 mcp.errors.*） */
+function mcpError(key: string, params?: Record<string, string | number>): Error {
+  return new Error(i18n.t(`mcp.errors.${key}`, params));
+}
+
+/** 选项上下文：错误信息走语言包 */
+function optionContext(
+  resolveText: OptionContext['resolveText'],
+  controllerName: string | undefined,
+  resourceName: string | undefined,
+): OptionContext {
+  return {
+    resolveText,
+    controllerName,
+    resourceName,
+    translate: (key, params) => i18n.t(`mcp.errors.${key}`, params),
+  };
 }
 
 function addAiLog(instanceId: string, key: string, params?: Record<string, string>) {
@@ -227,7 +246,7 @@ async function startTabTasks(
   const { controllerName } = getCurrentControllerAndResource(state, instance.id);
   const controller = state.projectInterface?.controller.find((c) => c.name === controllerName);
   if (controller?.permission_required && !(await maaService.isElevated())) {
-    throw new Error('当前控制器需要管理员权限，请用户以管理员身份重启 MXU 后再试');
+    throw mcpError('adminRequired');
   }
 
   if (taskName) {
@@ -248,9 +267,9 @@ async function startTabTasks(
   const reasons = (getState().instanceLogs[instance.id] ?? [])
     .filter((l) => !existingLogIds.has(l.id) && (l.type === 'error' || l.type === 'warning'))
     .map((l) => l.message);
-  throw new Error(
-    reasons.length > 0 ? `启动失败：${reasons.join('；')}` : '启动失败，请查看 MXU 日志',
-  );
+  throw reasons.length > 0
+    ? mcpError('startFailedWithReasons', { reasons: reasons.join('; ') })
+    : mcpError('startFailed');
 }
 
 // ============================================================================
@@ -302,7 +321,7 @@ const handlers: Record<string, Handler> = {
   list_available_tasks: (args) => {
     const instance = resolveInstance(args);
     const pi = getState().projectInterface;
-    if (!pi) throw new Error('项目尚未加载');
+    if (!pi) throw mcpError('projectNotLoaded');
     const { controllerName, resourceName } = getPanelControllerAndResource(instance);
 
     const tasks: Record<string, unknown>[] = [];
@@ -345,9 +364,9 @@ const handlers: Record<string, Handler> = {
     const instance = resolveInstance(args);
     const taskName = requiredString(args, 'task_name');
     const resolved = resolveTaskDef(taskName);
-    if (!resolved) throw new Error(`任务不存在: ${taskName}，请先调用 list_available_tasks`);
+    if (!resolved) throw mcpError('taskNotFound', { name: taskName });
     const { controllerName, resourceName } = getPanelControllerAndResource(instance);
-    const ctx: OptionContext = { resolveText: resolved.resolveText, controllerName, resourceName };
+    const ctx = optionContext(resolved.resolveText, controllerName, resourceName);
     const optionKeys = resolved.def.option ?? [];
 
     // 指定 option_key：只返回这一个选项，取值列表完整展开
@@ -380,11 +399,11 @@ const handlers: Record<string, Handler> = {
       running: instance.isRunning,
       tasks: instance.selectedTasks.map((task) => {
         const resolved = resolveTaskDef(task.taskName);
-        const ctx: OptionContext = {
-          resolveText: resolved?.resolveText ?? resolveProjectText,
+        const ctx = optionContext(
+          resolved?.resolveText ?? resolveProjectText,
           controllerName,
           resourceName,
-        };
+        );
         return {
           task_id: task.id,
           name: task.taskName,
@@ -410,14 +429,14 @@ const handlers: Record<string, Handler> = {
     const instance = resolveInstance(args);
     const taskName = requiredString(args, 'task_name');
     const resolved = resolveTaskDef(taskName);
-    if (!resolved) throw new Error(`任务不存在: ${taskName}，请先调用 list_available_tasks`);
+    if (!resolved) throw mcpError('taskNotFound', { name: taskName });
     if (resolved.special?.taskName === MXU_WEBHOOK_TASK_NAME) {
-      throw new Error(`任务 ${taskName} 不支持添加`);
+      throw mcpError('taskNotAddable', { name: taskName });
     }
 
     const { controllerName, resourceName } = getPanelControllerAndResource(instance);
     if (!isTaskDefCompatible(resolved.def, controllerName, resourceName)) {
-      throw new Error(`任务 ${taskName} 不适用于当前控制器/资源`);
+      throw mcpError('taskIncompatible', { name: taskName });
     }
 
     const rawOptions = args.options;
@@ -426,11 +445,11 @@ const handlers: Record<string, Handler> = {
       rawOptions !== null &&
       (typeof rawOptions !== 'object' || Array.isArray(rawOptions))
     ) {
-      throw new Error('参数 options 需要是对象');
+      throw mcpError('paramOptionsNotObject');
     }
     const enabled = args.enabled;
     if (enabled !== undefined && enabled !== null && typeof enabled !== 'boolean') {
-      throw new Error('参数 enabled 需要是布尔值');
+      throw mcpError('paramEnabledNotBoolean');
     }
 
     const optionValues = convertMcpOptions({
@@ -438,7 +457,7 @@ const handlers: Record<string, Handler> = {
       allOptions: resolved.allOptions,
       defaults: getDefaultOptionValues(instance, resolved),
       input: (rawOptions as Record<string, unknown> | undefined) ?? {},
-      ctx: { resolveText: resolved.resolveText, controllerName, resourceName },
+      ctx: optionContext(resolved.resolveText, controllerName, resourceName),
     });
 
     const addOptions = { optionValues, enabled: enabled ?? undefined };
@@ -448,7 +467,7 @@ const handlers: Record<string, Handler> = {
         : resolved.kind === 'pretask' && resolved.pretask
           ? addPretask(instance.id, resolved.pretask, addOptions)
           : await addProjectTask(instance.id, taskName, addOptions);
-    if (!result) throw new Error(`添加任务失败: ${taskName}`);
+    if (!result) throw mcpError('addTaskFailed', { name: taskName });
 
     addAiLog(instance.id, 'mcp.log.addTask', { name: taskLabel(resolved) });
 
@@ -456,7 +475,9 @@ const handlers: Record<string, Handler> = {
     return {
       task_id: result.taskId,
       appended_to_queue: result.appendedToQueue,
-      ...(running && resolved.kind === 'pretask' ? { note: '前置任务将在下次启动时生效' } : {}),
+      ...(running && resolved.kind === 'pretask'
+        ? { note: i18n.t('mcp.notes.pretaskNextRun') }
+        : {}),
     };
   },
 
@@ -464,18 +485,17 @@ const handlers: Record<string, Handler> = {
     const instance = resolveInstance(args);
     const taskId = requiredString(args, 'task_id');
     // 本期只支持标签页未运行时修改（运行中修改排队任务需同步执行队列，暂不支持）
-    if (instance.isRunning) throw new Error('任务运行中不能修改任务，请先停止任务');
+    if (instance.isRunning) throw mcpError('updateWhileRunning');
     const task = instance.selectedTasks.find((t) => t.id === taskId);
-    if (!task)
-      throw new Error(`任务列表中没有 task_id 为 ${taskId} 的任务，请先调用 get_task_list`);
+    if (!task) throw mcpError('taskIdNotFound', { id: taskId });
 
     const resolved = resolveTaskDef(task.taskName);
-    if (!resolved) throw new Error(`任务 ${task.taskName} 的定义已不存在，无法修改`);
+    if (!resolved) throw mcpError('taskDefMissing', { name: task.taskName });
 
     const { controllerName, resourceName } = getPanelControllerAndResource(instance);
     // 与界面一致：不兼容当前控制器/资源的任务不能修改
     if (!isTaskDefCompatible(resolved.def, controllerName, resourceName)) {
-      throw new Error(`任务 ${task.taskName} 不适用于当前控制器/资源，不能修改`);
+      throw mcpError('updateIncompatible', { name: task.taskName });
     }
 
     const rawOptions = args.options;
@@ -484,18 +504,18 @@ const handlers: Record<string, Handler> = {
       rawOptions !== null &&
       (typeof rawOptions !== 'object' || Array.isArray(rawOptions))
     ) {
-      throw new Error('参数 options 需要是对象');
+      throw mcpError('paramOptionsNotObject');
     }
     const enabled = args.enabled;
     if (enabled !== undefined && enabled !== null && typeof enabled !== 'boolean') {
-      throw new Error('参数 enabled 需要是布尔值');
+      throw mcpError('paramEnabledNotBoolean');
     }
     const input = (rawOptions as Record<string, unknown> | undefined) ?? {};
     if (Object.keys(input).length === 0 && typeof enabled !== 'boolean') {
-      throw new Error('没有要修改的内容，请传入 options 或 enabled');
+      throw mcpError('nothingToUpdate');
     }
 
-    const ctx: OptionContext = { resolveText: resolved.resolveText, controllerName, resourceName };
+    const ctx = optionContext(resolved.resolveText, controllerName, resourceName);
     const optionKeys = resolved.def.option ?? [];
     // 以当前值为基准（缺失的选项按默认值补齐），只覆盖传入的选项
     const current = {
@@ -539,10 +559,9 @@ const handlers: Record<string, Handler> = {
     const instance = resolveInstance(args);
     const taskId = requiredString(args, 'task_id');
     // 与界面一致：运行中不能删除任务
-    if (instance.isRunning) throw new Error('任务运行中不能删除任务，请先停止任务');
+    if (instance.isRunning) throw mcpError('removeWhileRunning');
     const task = instance.selectedTasks.find((t) => t.id === taskId);
-    if (!task)
-      throw new Error(`任务列表中没有 task_id 为 ${taskId} 的任务，请先调用 get_task_list`);
+    if (!task) throw mcpError('taskIdNotFound', { id: taskId });
 
     const resolved = resolveTaskDef(task.taskName);
     getState().removeTaskFromInstance(instance.id, taskId);
@@ -555,18 +574,17 @@ const handlers: Record<string, Handler> = {
   start_tasks: async (args) => {
     const instance = resolveInstance(args);
     const taskId = optionalString(args, 'task_id');
-    if (instance.isRunning) throw new Error('该标签页的任务已在运行中');
+    if (instance.isRunning) throw mcpError('alreadyRunning');
     // 检查与占用都发生在第一个 await 之前，不会被并发请求穿插
     if (startingTabIds.has(instance.id)) {
-      throw new Error('该标签页正在启动中，请稍后用 get_run_status 查看状态，不要重复启动');
+      throw mcpError('tabStarting');
     }
-    if (!taskControlService.isReady()) throw new Error('MXU 界面尚未就绪，请稍后重试');
+    if (!taskControlService.isReady()) throw mcpError('uiNotReady');
 
     let taskName: string | undefined;
     if (taskId) {
       const task = instance.selectedTasks.find((t) => t.id === taskId);
-      if (!task)
-        throw new Error(`任务列表中没有 task_id 为 ${taskId} 的任务，请先调用 get_task_list`);
+      if (!task) throw mcpError('taskIdNotFound', { id: taskId });
       const resolved = resolveTaskDef(task.taskName);
       taskName = task.customName || (resolved ? taskLabel(resolved) : task.taskName);
     }
@@ -581,12 +599,10 @@ const handlers: Record<string, Handler> = {
 
   stop_tasks: async (args) => {
     const instance = resolveInstance(args);
-    if (!taskControlService.isReady()) throw new Error('MXU 界面尚未就绪，请稍后重试');
+    if (!taskControlService.isReady()) throw mcpError('uiNotReady');
     addAiLog(instance.id, 'mcp.log.stopTasks');
     const stopped = await taskControlService.stop(instance.id);
-    return stopped
-      ? { stopped: true }
-      : { stopped: false, note: '已发送停止请求，任务尚未完全停止，可稍后用 get_run_status 确认' };
+    return stopped ? { stopped: true } : { stopped: false, note: i18n.t('mcp.notes.stopPending') };
   },
 
   get_run_status: (args) => {
@@ -603,6 +619,8 @@ const handlers: Record<string, Handler> = {
     return {
       tab_id: instance.id,
       running: instance.isRunning,
+      // 由 MCP 发起、仍在连接设备/加载资源的启动
+      starting: startingTabIds.has(instance.id),
       connected: state.instanceConnectionStatus[instance.id] === 'Connected',
       tasks: instance.selectedTasks
         .filter((task) => runStatus[task.id] && runStatus[task.id] !== 'idle')
@@ -632,7 +650,7 @@ async function handleRequest(request: BridgeRequest) {
   const handler = handlers[request.op];
   let response: { id: number; ok: boolean; data?: unknown; error?: string };
   try {
-    if (!handler) throw new Error(`未知操作: ${request.op}`);
+    if (!handler) throw mcpError('unknownOp', { op: request.op });
     const data = await handler(request.args ?? {});
     response = { id: request.id, ok: true, data: data ?? null };
   } catch (err) {
@@ -649,6 +667,13 @@ async function handleRequest(request: BridgeRequest) {
   }
 }
 
+/** 把当前界面语言的 MCP 文本（instructions、工具标题/描述、参数说明、后端错误）推送给后端 */
+async function pushMcpTexts() {
+  const { invoke } = await import('@tauri-apps/api/core');
+  const texts = i18n.t('mcp.server', { returnObjects: true });
+  await invoke('mcp_set_texts', { texts });
+}
+
 /** 注册 MCP 请求监听，返回取消函数（仅桌面端） */
 export async function initMcpBridge(): Promise<(() => void) | null> {
   if (!isTauri()) return null;
@@ -657,8 +682,19 @@ export async function initMcpBridge(): Promise<(() => void) | null> {
   const unlisten = await listen<BridgeRequest>('mcp-request', (event) => {
     void handleRequest(event.payload);
   });
+
+  // 切换界面语言后重新推送；已连接的客户端在重连后生效
+  const onLanguageChanged = () => {
+    pushMcpTexts().catch((err) => log.warn('[mcp] 推送 MCP 文本失败:', err));
+  };
+  i18n.on('languageChanged', onLanguageChanged);
+  await pushMcpTexts().catch((err) => log.warn('[mcp] 推送 MCP 文本失败:', err));
+
   await invoke('mcp_bridge_ready');
-  return unlisten;
+  return () => {
+    unlisten();
+    i18n.off('languageChanged', onLanguageChanged);
+  };
 }
 
 /** 同步 MCP 开关到后端（即时生效） */

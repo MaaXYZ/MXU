@@ -16,6 +16,8 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::oneshot;
 
+use super::texts;
+
 /// 前端监听的事件名
 const REQUEST_EVENT: &str = "mcp-request";
 /// 主窗口 label（与 tauri.conf.json 保持一致）
@@ -73,7 +75,11 @@ impl McpBridge {
     /// 向前端发送请求并等待结果
     pub async fn call(&self, op: &str, args: Value, timeout: Duration) -> Result<Value, String> {
         if !self.frontend_ready.load(Ordering::Relaxed) {
-            return Err("MXU 界面尚未就绪，请稍后重试".to_string());
+            return Err(texts::error(
+                "uiNotReady",
+                "MXU 界面尚未就绪，请稍后重试",
+                &[],
+            ));
         }
 
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
@@ -89,15 +95,19 @@ impl McpBridge {
             BridgeRequest { id, op, args },
         ) {
             self.remove_pending(id);
-            return Err(format!("发送请求到 MXU 界面失败: {}", e));
+            return Err(texts::error(
+                "sendFailed",
+                "发送请求到 MXU 界面失败：{error}",
+                &[("error", &e.to_string())],
+            ));
         }
 
         match tokio::time::timeout(timeout, rx).await {
             Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err("MXU 界面未返回结果".to_string()),
+            Ok(Err(_)) => Err(texts::error("noResult", "MXU 界面未返回结果", &[])),
             Err(_) => {
                 self.remove_pending(id);
-                Err(format!("等待 MXU 界面响应超时（{} 秒）", timeout.as_secs()))
+                Err(timeout_error(op, timeout))
             }
         }
     }
@@ -121,9 +131,30 @@ impl McpBridge {
         let result = if response.ok {
             Ok(response.data)
         } else {
-            Err(response.error.unwrap_or_else(|| "未知错误".to_string()))
+            Err(response
+                .error
+                .unwrap_or_else(|| texts::error("unknownError", "未知错误", &[])))
         };
         let _ = sender.send(result);
+    }
+}
+
+/// 超时提示：启动与写操作可能已在界面侧继续执行，提示 AI 先确认状态再重试
+fn timeout_error(op: &str, timeout: Duration) -> String {
+    let seconds = timeout.as_secs().to_string();
+    let params = [("seconds", seconds.as_str())];
+    match op {
+        "start_tasks" => texts::error(
+            "timeoutStart",
+            "等待启动结果超时（{seconds} 秒）：启动可能仍在进行，请用 get_run_status 查看状态，不要直接重试",
+            &params,
+        ),
+        "add_task" | "update_task" | "remove_task" | "stop_tasks" => texts::error(
+            "timeoutWrite",
+            "等待 MXU 界面响应超时（{seconds} 秒）：操作可能已经执行，请先用 get_task_list 或 get_run_status 确认后再决定是否重试",
+            &params,
+        ),
+        _ => texts::error("timeout", "等待 MXU 界面响应超时（{seconds} 秒）", &params),
     }
 }
 

@@ -19,6 +19,43 @@ export interface OptionContext {
   resolveText: (text: string | undefined) => string | undefined;
   controllerName?: string;
   resourceName?: string;
+  /** 翻译错误信息（key 对应语言包 mcp.errors.*）；不传时使用内置中文 */
+  translate?: (key: string, params: Record<string, string | number>) => string;
+}
+
+/** 错误信息的内置中文（与语言包 zh-CN 的 mcp.errors 保持一致） */
+const DEFAULT_MESSAGES: Record<string, string> = {
+  optionNotFoundForDescribe:
+    '任务没有选项 "{{key}}"，请先不带 option_key 调用 describe_task 查看选项列表',
+  optionIncompatible: '选项 "{{key}}" 不适用于当前控制器/资源',
+  optionNotFound: '任务没有选项 "{{key}}"，可用选项：{{valid}}',
+  noSettableOptions: '任务没有可设置的选项',
+  inputNeedsObject: '选项 "{{key}}" 需要传入 { 字段名: 值 } 对象',
+  inputFieldNotFound: '选项 "{{key}}" 没有字段 "{{name}}"，可用字段：{{valid}}',
+  inputFieldNotString: '选项 "{{key}}" 的字段 "{{name}}" 需要传入字符串',
+  inputFieldInvalid:
+    '选项 "{{key}}" 的字段 "{{name}}" 的值 "{{value}}" 不符合格式要求（正则：{{verify}}）',
+  inputFieldInvalidWithHint:
+    '选项 "{{key}}" 的字段 "{{name}}" 的值 "{{value}}" 不符合格式要求：{{hint}}（正则：{{verify}}）',
+  switchInvalid: '选项 "{{key}}" 是开关，取值只能是 "Yes" 或 "No"',
+  checkboxNeedsArray: '选项 "{{key}}" 是多选，需要传入取值名称数组，可选：{{valid}}',
+  casesInvalid: '选项 "{{key}}" 没有取值 {{invalid}}，可选：{{valid}}',
+  checkboxMin: '选项 "{{key}}" 至少需要选择 {{count}} 项',
+  checkboxMax: '选项 "{{key}}" 最多只能选择 {{count}} 项',
+  selectInvalid: '选项 "{{key}}" 没有取值 "{{value}}"，可选：{{valid}}',
+};
+
+function message(
+  ctx: OptionContext,
+  key: string,
+  params: Record<string, string | number> = {},
+): Error {
+  const text = ctx.translate
+    ? ctx.translate(key, params)
+    : (DEFAULT_MESSAGES[key] ?? key).replace(/\{\{(\w+)\}\}/g, (_, name) =>
+        String(params[name] ?? ''),
+      );
+  return new Error(text);
 }
 
 export interface McpCaseDescription {
@@ -248,12 +285,10 @@ export function describeSingleOption(
   const reachable = collectReachableKeys(optionKeys, allOptions);
   const def = allOptions[optionKey];
   if (!reachable.has(optionKey) || !def) {
-    throw new Error(
-      `任务没有选项 "${optionKey}"，请先不带 option_key 调用 describe_task 查看选项列表`,
-    );
+    throw message(ctx, 'optionNotFoundForDescribe', { key: optionKey });
   }
   if (isOptionIncompatible(def, ctx)) {
-    throw new Error(`选项 "${optionKey}" 不适用于当前控制器/资源`);
+    throw message(ctx, 'optionIncompatible', { key: optionKey });
   }
   const state: DescribeState = {
     allOptions,
@@ -299,19 +334,21 @@ function convertFields(
   ctx: OptionContext,
 ): Record<string, string> {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-    throw new Error(`选项 "${key}" 需要传入 { 字段名: 值 } 对象`);
+    throw message(ctx, 'inputNeedsObject', { key });
   }
   const validNames = inputs.map((i) => i.name);
   const values = { ...base };
   for (const [name, val] of Object.entries(raw as Record<string, unknown>)) {
     const inputDef = inputs.find((i) => i.name === name);
     if (!inputDef) {
-      throw new Error(`选项 "${key}" 没有字段 "${name}"，可用字段：${listNames(validNames)}`);
+      throw message(ctx, 'inputFieldNotFound', { key, name, valid: listNames(validNames) });
     }
     if (typeof val !== 'string' && typeof val !== 'number' && typeof val !== 'boolean') {
-      throw new Error(`选项 "${key}" 的字段 "${name}" 需要传入字符串`);
+      throw message(ctx, 'inputFieldNotString', { key, name });
     }
     const str = String(val);
+    // 密码在输出中被打码；AI 原样传回打码值时保留已保存的密码，避免被占位符覆盖
+    if (inputDef.password && str === MASKED_VALUE) continue;
     if (inputDef.verify) {
       let matched = true;
       try {
@@ -322,11 +359,10 @@ function convertFields(
       if (!matched) {
         // 带上项目配置的格式提示（与界面显示一致），便于 AI 理解如何修正
         const hint = ctx.resolveText(inputDef.pattern_msg);
-        throw new Error(
-          `选项 "${key}" 的字段 "${name}" 的值 "${str}" 不符合格式要求` +
-            (hint ? `：${hint}` : '') +
-            `（正则：${inputDef.verify}）`,
-        );
+        const params = { key, name, value: str, verify: inputDef.verify };
+        throw hint
+          ? message(ctx, 'inputFieldInvalidWithHint', { ...params, hint })
+          : message(ctx, 'inputFieldInvalid', params);
       }
     }
     values[name] = str;
@@ -361,7 +397,7 @@ function convertValue(
     if (raw === false || (typeof raw === 'string' && SWITCH_NO.includes(raw))) {
       return { type: 'switch', value: false };
     }
-    throw new Error(`选项 "${key}" 是开关，取值只能是 "Yes" 或 "No"`);
+    throw message(ctx, 'switchInvalid', { key });
   }
 
   const caseNames =
@@ -369,27 +405,29 @@ function convertValue(
 
   if (def.type === 'checkbox') {
     if (!Array.isArray(raw) || raw.some((v) => typeof v !== 'string')) {
-      throw new Error(`选项 "${key}" 是多选，需要传入取值名称数组，可选：${listNames(caseNames)}`);
+      throw message(ctx, 'checkboxNeedsArray', { key, valid: listNames(caseNames) });
     }
     const invalid = (raw as string[]).filter((v) => !caseNames.includes(v));
     if (invalid.length > 0) {
-      throw new Error(
-        `选项 "${key}" 没有取值 ${listNames(invalid)}，可选：${listNames(caseNames)}`,
-      );
+      throw message(ctx, 'casesInvalid', {
+        key,
+        invalid: listNames(invalid),
+        valid: listNames(caseNames),
+      });
     }
     const selected = [...new Set(raw as string[])];
     if (def.min_count !== undefined && selected.length < def.min_count) {
-      throw new Error(`选项 "${key}" 至少需要选择 ${def.min_count} 项`);
+      throw message(ctx, 'checkboxMin', { key, count: def.min_count });
     }
     if (def.max_count !== undefined && selected.length > def.max_count) {
-      throw new Error(`选项 "${key}" 最多只能选择 ${def.max_count} 项`);
+      throw message(ctx, 'checkboxMax', { key, count: def.max_count });
     }
     return { type: 'checkbox', caseNames: selected };
   }
 
   // select
   if (typeof raw !== 'string' || !caseNames.includes(raw)) {
-    throw new Error(`选项 "${key}" 没有取值 "${String(raw)}"，可选：${listNames(caseNames)}`);
+    throw message(ctx, 'selectInvalid', { key, value: String(raw), valid: listNames(caseNames) });
   }
   return { type: 'select', caseName: raw };
 }
@@ -446,15 +484,13 @@ export function convertMcpOptions({
   for (const [key, raw] of Object.entries(input)) {
     if (!reachable.has(key)) {
       const valid = [...reachable].filter((k) => !isOptionIncompatible(allOptions[k], ctx));
-      throw new Error(
-        valid.length > 0
-          ? `任务没有选项 "${key}"，可用选项：${listNames(valid)}`
-          : `任务没有可设置的选项`,
-      );
+      throw valid.length > 0
+        ? message(ctx, 'optionNotFound', { key, valid: listNames(valid) })
+        : message(ctx, 'noSettableOptions');
     }
     const def = allOptions[key];
     if (isOptionIncompatible(def, ctx)) {
-      throw new Error(`选项 "${key}" 不适用于当前控制器/资源`);
+      throw message(ctx, 'optionIncompatible', { key });
     }
     const base = defaults[key];
     const inputBase = base && (base.type === 'input' || base.type === 'hotkey') ? base.values : {};

@@ -6,15 +6,19 @@ use std::time::Duration;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
-    CallToolResult, ContentBlock as Content, Implementation, ServerCapabilities, ServerConfig,
+    CallToolResult, ContentBlock as Content, Implementation, ListToolsResult,
+    PaginatedRequestParams, ServerCapabilities, ServerConfig, Tool,
 };
 use rmcp::schemars::{self, JsonSchema};
+use rmcp::service::RequestContext;
+use rmcp::RoleServer;
 use rmcp::{tool, tool_handler, tool_router, ErrorData, ServerHandler};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use super::bridge::McpBridge;
 use super::screen;
+use super::texts;
 use crate::commands::app_config::AppConfigState;
 use crate::commands::types::MaaState;
 
@@ -400,7 +404,11 @@ impl MxuMcpServer {
             Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
         };
         let Some(instance_id) = resolved.get("tab_id").and_then(|v| v.as_str()) else {
-            return Ok(CallToolResult::error(vec![Content::text("无法解析标签页")]));
+            return Ok(CallToolResult::error(vec![Content::text(texts::error(
+                "tabResolveFailed",
+                "无法解析标签页",
+                &[],
+            ))]));
         };
 
         Ok(
@@ -412,6 +420,46 @@ impl MxuMcpServer {
     }
 }
 
+/// 参数说明在语言包 `params` 中的 key（同名参数在不同工具里含义不同时单独区分）
+fn param_text_key(tool: &str, param: &str) -> String {
+    match (tool, param) {
+        ("add_task", "options") => "options_add".into(),
+        ("update_task", "options") => "options_update".into(),
+        ("add_task", "enabled") => "enabled_add".into(),
+        ("update_task", "enabled") => "enabled_update".into(),
+        ("start_tasks", "task_id") => "task_id_start".into(),
+        _ => param.into(),
+    }
+}
+
+/// 用当前界面语言替换工具的标题、描述与参数说明；没有翻译时保留代码中的中文
+fn localize_tool(mut tool: Tool) -> Tool {
+    let name = tool.name.to_string();
+    if let Some(title) = texts::get(&["tools", &name, "title"]) {
+        if let Some(annotations) = tool.annotations.as_mut() {
+            annotations.title = Some(title.clone());
+        }
+        tool.title = Some(title);
+    }
+    if let Some(description) = texts::get(&["tools", &name, "description"]) {
+        tool.description = Some(description.into());
+    }
+
+    let mut schema = (*tool.input_schema).clone();
+    if let Some(Value::Object(properties)) = schema.get_mut("properties") {
+        for (param, definition) in properties.iter_mut() {
+            let Some(text) = texts::get(&["params", &param_text_key(&name, param)]) else {
+                continue;
+            };
+            if let Value::Object(definition) = definition {
+                definition.insert("description".into(), Value::String(text));
+            }
+        }
+    }
+    tool.input_schema = Arc::new(schema);
+    tool
+}
+
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for MxuMcpServer {
     fn get_info(&self) -> ServerConfig {
@@ -419,6 +467,24 @@ impl ServerHandler for MxuMcpServer {
             .with_server_info(
                 Implementation::new("mxu", self.version.clone()).with_title(self.display_title()),
             )
-            .with_instructions(INSTRUCTIONS)
+            .with_instructions(texts::get(&["instructions"]).unwrap_or_else(|| INSTRUCTIONS.into()))
+    }
+
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, ErrorData> {
+        let tools = self
+            .tool_router
+            .list_all()
+            .into_iter()
+            .map(localize_tool)
+            .collect();
+        Ok(ListToolsResult::with_all_items(tools))
+    }
+
+    fn get_tool(&self, name: &str) -> Option<Tool> {
+        self.tool_router.get(name).cloned().map(localize_tool)
     }
 }

@@ -2000,6 +2000,16 @@ function App() {
             <Suspense fallback={null}>
               <LazyDashboardView onClose={closeDashboardWithAnimation} />
             </Suspense>
+            {/*
+              中控台不显示 Toolbar，但仍需挂载它注册的启动/停止逻辑
+              （全局快捷键、托盘、定时任务、MCP），与设置页的做法一致。
+            */}
+            <div className="hidden">
+              <Toolbar
+                showAddPanel={showAddTaskPanel}
+                onToggleAddPanel={() => setShowAddTaskPanel(!showAddTaskPanel)}
+              />
+            </div>
           </div>
         ) : isMobile ? (
           /* 移动端竖屏布局：单列纵向堆叠 */

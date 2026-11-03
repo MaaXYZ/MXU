@@ -7,6 +7,7 @@
 pub mod bridge;
 mod screen;
 mod server;
+pub mod texts;
 
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};

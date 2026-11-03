@@ -208,3 +208,34 @@ test('describeOptions：超过 50 项的取值列表默认不展开，describeSi
 
   assert.throws(() => describeSingleOption('Nope', ['Fill'], opts, ctx), /没有选项 "Nope"/);
 });
+
+test('convertMcpOptions：传回打码后的密码时保留已保存的密码', () => {
+  const current = {
+    ...initializeAllOptionValues(optionKeys, allOptions),
+    ...convert({ AutoUse: 'Yes', Account: { user: 'alice', password: 'secret' } }),
+  };
+  // AI 把 get_task_list 返回的（已打码）对象原样传回，同时修改 user
+  const changed = convertMcpOptions({
+    optionKeys,
+    allOptions,
+    defaults: current,
+    input: { Account: { user: 'bob', password: MASKED_VALUE } },
+    ctx,
+  });
+  assert.deepEqual(changed.Account, { type: 'input', values: { user: 'bob', password: 'secret' } });
+});
+
+test('message：传入 translate 时使用翻译后的错误信息', () => {
+  const translated = { ...ctx, translate: (key: string) => `T:${key}` };
+  assert.throws(
+    () =>
+      convertMcpOptions({
+        optionKeys,
+        allOptions,
+        defaults: {},
+        input: { Stage: 'C' },
+        ctx: translated,
+      }),
+    /^Error: T:selectInvalid$/,
+  );
+});
