@@ -165,7 +165,7 @@ mod tests {
         let coordinator = std::sync::Arc::clone(&instance.run_completion);
         let _permit = coordinator.acquire_start();
         assert!(instance.is_running()); // Startup itself counts as running.
-        instance.prepare_submission().unwrap(); // Must inspect true Tasker idle.
+        instance.prepare_submission(false).unwrap(); // Must inspect true Tasker idle.
         assert!(!instance.stop_in_progress);
         assert!(instance.stop_started_at.is_none());
         assert!(instance.task_run_state.pending_task_ids.is_empty());
@@ -183,6 +183,126 @@ mod tests {
             ),
             Some(true)
         );
+    }
+
+    #[test]
+    fn resetting_an_active_queue_is_rejected_without_losing_old_tasks() {
+        let mut instance = InstanceRuntime::default();
+        instance.task_ids = vec![1, 2];
+        instance.task_run_state.pending_task_ids = vec![1, 2];
+        instance.task_results.insert(1, true);
+        instance.task_run_state.overall_status = Some("Running".to_string());
+        instance.run_completion.reset();
+        let generation = instance.run_completion.generation();
+
+        assert_eq!(
+            instance.prepare_submission_for(true, true).unwrap_err(),
+            "TASK_QUEUE_ALREADY_RUNNING"
+        );
+        assert_eq!(instance.task_ids, [1, 2]);
+        assert_eq!(instance.task_run_state.pending_task_ids, [1, 2]);
+        assert_eq!(instance.task_results.get(&1), Some(&true));
+        assert_eq!(instance.queue_result(), None);
+        assert_eq!(instance.run_completion.generation(), generation);
+
+        // An explicit append belongs to the same run and retains earlier IDs.
+        instance.prepare_submission_for(true, false).unwrap();
+        instance.task_run_state.pending_task_ids.push(3);
+        instance.task_results.insert(3, true);
+        assert_eq!(instance.queue_result(), None);
+        instance.task_results.insert(2, false);
+        assert_eq!(instance.queue_result(), Some(false));
+        assert_eq!(instance.run_completion.generation(), generation);
+
+        instance.stop_in_progress = true;
+        assert_eq!(
+            instance.prepare_submission_for(true, false).unwrap_err(),
+            "TASKER_STOPPING"
+        );
+        assert_eq!(instance.task_run_state.pending_task_ids, [1, 2, 3]);
+    }
+
+    #[test]
+    fn empty_and_rejected_submissions_complete_without_framework_callbacks() {
+        for rejected in [false, true] {
+            let mut instance = InstanceRuntime::default();
+            let coordinator = std::sync::Arc::clone(&instance.run_completion);
+            let startup = coordinator.acquire_start();
+            instance.prepare_submission(false).unwrap();
+            // No post_task succeeded, so there is no terminal event to wait for.
+            instance.submission_failed = rejected;
+            let result = instance.queue_result().unwrap();
+            assert_eq!(result, !rejected);
+            let (_, completion) = instance.begin_completion(result).unwrap();
+            assert!(instance.is_running());
+            assert!(instance.begin_completion(result).is_none());
+            drop(startup);
+            let events = std::cell::RefCell::new(Vec::new());
+            completion.finish_when_idle(
+                || false,
+                || events.borrow_mut().push("cleanup"),
+                || events.borrow_mut().push("completed"),
+            );
+            assert!(!instance.is_running());
+            assert_eq!(*events.borrow(), ["cleanup", "completed"]);
+            assert_eq!(
+                instance.task_run_state.overall_status.as_deref(),
+                Some(if rejected { "Failed" } else { "Succeeded" })
+            );
+        }
+    }
+
+    #[test]
+    fn rejected_posts_make_a_partially_submitted_queue_fail_after_the_rest_finish() {
+        let mut instance = InstanceRuntime::default();
+        instance.prepare_submission(false).unwrap();
+        instance.task_run_state.pending_task_ids.push(7);
+        instance.submission_failed = true;
+        assert_eq!(instance.queue_result(), None);
+        instance.task_results.insert(7, true);
+        assert_eq!(instance.queue_result(), Some(false));
+        // Failure does not leak into a later run.
+        instance.prepare_submission(false).unwrap();
+        assert!(!instance.submission_failed);
+    }
+
+    #[test]
+    fn cancellation_can_finish_without_any_terminal_task_callback() {
+        let mut instance = InstanceRuntime::default();
+        instance.prepare_submission(false).unwrap();
+        instance.task_run_state.pending_task_ids = vec![1, 2];
+        instance.stop_in_progress = true;
+        let (_, completion) = instance.begin_completion(false).unwrap();
+        assert!(instance.is_running());
+        assert_eq!(
+            instance.task_run_state.overall_status.as_deref(),
+            Some("Failed")
+        );
+        completion.finish_when_idle(|| false, || {}, || {});
+        assert!(!instance.is_running());
+        assert!(!completion.begin());
+    }
+
+    #[test]
+    fn cancellation_before_tasker_setup_is_not_cleared_by_preparation() {
+        let mut instance = InstanceRuntime::default();
+        let completion = std::sync::Arc::clone(&instance.run_completion);
+        let startup = completion.acquire_start();
+        assert!(completion.cancel_submission());
+        instance.stop_in_progress = true;
+        let (_, finishing) = instance.begin_completion(false).unwrap();
+        assert_eq!(
+            instance.prepare_submission(true).unwrap_err(),
+            "TASKER_STOPPING"
+        );
+        assert!(instance.stop_in_progress);
+        assert!(instance.tasker.is_none());
+        drop(startup);
+        finishing.finish_when_idle(|| false, || {}, || {});
+        let _next = completion.acquire_start();
+        instance.prepare_submission(true).unwrap();
+        assert!(!instance.stop_in_progress);
+        assert!(!completion.submission_cancelled());
     }
 
     #[test]
@@ -284,15 +404,28 @@ pub struct InstanceRuntime {
     pub run_completion: Arc<super::run_completion::RunCompletion>,
     /// MaaTaskId → succeeded；不依赖可选的 UI selected_task_id 映射。
     pub task_results: HashMap<i64, bool>,
+    /// A rejected post_task is part of this queue's result even without an ID.
+    pub submission_failed: bool,
 }
 
 impl InstanceRuntime {
     /// Start a new framework queue after idle, including raw tasks and appends
     /// admitted only after the previous completion worker finished.
-    pub fn prepare_submission(&mut self) -> Result<(), String> {
-        if self.tasker.as_ref().is_some_and(|tasker| tasker.running()) {
+    pub fn prepare_submission(&mut self, reset_state: bool) -> Result<(), String> {
+        let running = self.tasker.as_ref().is_some_and(|tasker| tasker.running());
+        self.prepare_submission_for(running, reset_state)
+    }
+
+    fn prepare_submission_for(&mut self, running: bool, reset_state: bool) -> Result<(), String> {
+        if self.run_completion.submission_cancelled() {
+            return Err("TASKER_STOPPING".to_string());
+        }
+        if running {
             if self.stop_in_progress {
-                return Err("Tasker is stopping".to_string());
+                return Err("TASKER_STOPPING".to_string());
+            }
+            if reset_state {
+                return Err("TASK_QUEUE_ALREADY_RUNNING".to_string());
             }
             return Ok(());
         }
@@ -300,12 +433,36 @@ impl InstanceRuntime {
         self.stop_started_at = None;
         self.task_ids.clear();
         self.task_results.clear();
+        self.submission_failed = false;
         self.task_run_state.pending_task_ids.clear();
         self.task_run_state.mappings.clear();
         self.task_run_state.current_task_index = 0;
+        self.run_completion.reset();
         // Keep prior selected-task statuses visible; they do not determine when
         // this new framework queue finishes.
         Ok(())
+    }
+
+    pub fn queue_result(&self) -> Option<bool> {
+        super::run_completion::task_queue_result(
+            &self.task_run_state.pending_task_ids,
+            &self.task_results,
+        )
+        .map(|succeeded| succeeded && !self.submission_failed && !self.stop_in_progress)
+    }
+
+    /// Record the terminal result even when no Tasker callback can arrive (an
+    /// empty/rejected submission or cancellation before the first task starts).
+    pub fn begin_completion(
+        &mut self,
+        succeeded: bool,
+    ) -> Option<(Option<Tasker>, Arc<super::run_completion::RunCompletion>)> {
+        self.task_run_state.overall_status =
+            Some(if succeeded { "Succeeded" } else { "Failed" }.to_string());
+        self.task_ids.clear();
+        self.run_completion
+            .begin()
+            .then(|| (self.tasker.clone(), Arc::clone(&self.run_completion)))
     }
 
     /// Tasker idle alone is insufficient while the last callback is handing off
@@ -318,6 +475,7 @@ impl InstanceRuntime {
 
 impl Drop for InstanceRuntime {
     fn drop(&mut self) {
+        self.run_completion.retire();
         // 断开并销毁所有 agent
         for client in &self.agent_clients {
             let _ = client.disconnect();

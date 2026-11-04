@@ -1,12 +1,14 @@
 //! Coordinate task completion, Agent cleanup and the next submission.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 
 /// None while any framework task is pending; otherwise whether all succeeded.
+/// An empty submitted queue is already terminal and has no callback to wait for.
 /// UI-selected task IDs are optional and must not affect queue completion.
 pub fn task_queue_result(task_ids: &[i64], results: &HashMap<i64, bool>) -> Option<bool> {
-    if task_ids.is_empty() || task_ids.iter().any(|id| !results.contains_key(id)) {
+    if task_ids.iter().any(|id| !results.contains_key(id)) {
         return None;
     }
     Some(task_ids.iter().all(|id| results[id]))
@@ -14,7 +16,10 @@ pub fn task_queue_result(task_ids: &[i64], results: &HashMap<i64, bool>) -> Opti
 
 #[derive(Default)]
 struct CompletionState {
+    generation: u64,
     starting: bool,
+    submitting: bool,
+    cancelled: bool,
     pending: bool,
     completed: bool,
 }
@@ -23,6 +28,7 @@ struct CompletionState {
 pub struct RunCompletion {
     state: Mutex<CompletionState>,
     changed: Condvar,
+    retired: AtomicBool,
 }
 
 /// Own the whole startup operation, including asynchronous Agent registration.
@@ -33,26 +39,79 @@ impl Drop for StartPermit {
     fn drop(&mut self) {
         let mut state = self.0.state.lock().unwrap_or_else(|e| e.into_inner());
         state.starting = false;
+        state.submitting = false;
         self.0.changed.notify_all();
     }
 }
 
 impl RunCompletion {
+    /// Instance IDs can be reused. Its old worker must never publish completion
+    /// for the replacement (which would also clear the replacement's run-once tasks).
+    pub fn retire(&self) {
+        self.retired.store(true, Ordering::Release);
+    }
+
     pub fn acquire_start(self: &Arc<Self>) -> StartPermit {
+        self.acquire(None).expect("unconditional start permit")
+    }
+
+    /// A queued stop owns only the run observed when it was requested. If a
+    /// submission won the permit first, it must not lose its newly added Agents.
+    pub fn acquire_generation(self: &Arc<Self>, generation: u64) -> Option<StartPermit> {
+        self.acquire(Some(generation))
+    }
+
+    fn acquire(self: &Arc<Self>, generation: Option<u64>) -> Option<StartPermit> {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        while state.pending || state.starting {
+        loop {
+            if generation.is_some_and(|generation| generation != state.generation) {
+                return None;
+            }
+            if !state.pending && !state.starting {
+                break;
+            }
             state = self.changed.wait(state).unwrap_or_else(|e| e.into_inner());
         }
         state.starting = true;
-        StartPermit(Arc::clone(self))
+        state.submitting = generation.is_none();
+        if state.submitting {
+            state.cancelled = false;
+            state.completed = false;
+        }
+        Some(StartPermit(Arc::clone(self)))
     }
 
-    /// Called while holding the instance lock, just before submitting new tasks.
-    pub fn reset(&self) {
+    /// Cancel an admitted submission even before its first framework task exists.
+    /// An explicit Agent cleanup permit is not a submission to cancel.
+    pub fn cancel_submission(&self) -> bool {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.submitting {
+            state.cancelled = true;
+        }
+        state.submitting
+    }
+
+    pub fn submission_cancelled(&self) -> bool {
         self.state
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .completed = false;
+            .cancelled
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .generation
+    }
+
+    /// Called under the instance lock and start permit when opening an idle queue,
+    /// before any asynchronous Agent registration. Appends keep this generation.
+    pub fn reset(&self) {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.generation = state.generation.wrapping_add(1);
+        state.completed = false;
+        self.changed.notify_all();
     }
 
     /// Schedule at most one cleanup worker for each submitted run.
@@ -92,7 +151,9 @@ impl RunCompletion {
         state.completed = true;
         // Publish completion before releasing a waiting new run. State queries
         // see idle only after Agent cleanup and the final notification are done.
-        notify();
+        if !self.retired.load(Ordering::Acquire) {
+            notify();
+        }
         self.changed.notify_all();
     }
 }
@@ -213,6 +274,89 @@ mod tests {
     }
 
     #[test]
+    fn delayed_agent_stop_cannot_take_a_later_runs_permit() {
+        let completion = Arc::new(RunCompletion::default());
+        completion.reset();
+        let observed_generation = completion.generation();
+        assert!(completion.begin());
+        let waiting = Arc::clone(&completion);
+        let (requested, request_seen) = mpsc::channel();
+        let (resume, resumed) = mpsc::channel();
+        let stop = thread::spawn(move || {
+            requested.send(()).unwrap();
+            // Pause a stop after it snapshots the old run. A new submit can
+            // win the non-FIFO permit while this request is descheduled.
+            resumed.recv().unwrap();
+            waiting.acquire_generation(observed_generation).is_some()
+        });
+        request_seen.recv().unwrap();
+        completion.finish_when_idle(|| false, || {}, || {});
+        let next = completion.acquire_start();
+        completion.reset();
+        assert!(completion.begin());
+        drop(next);
+        resume.send(()).unwrap();
+        assert!(!stop.join().unwrap());
+        completion.finish_when_idle(|| false, || {}, || {});
+        assert!(completion
+            .acquire_generation(completion.generation())
+            .is_some());
+    }
+
+    #[test]
+    fn stop_during_agent_startup_cancels_only_that_submission() {
+        let completion = Arc::new(RunCompletion::default());
+        let startup = completion.acquire_start();
+        assert!(completion.cancel_submission());
+        assert!(completion.submission_cancelled());
+        assert!(completion.begin());
+        let finishing = Arc::clone(&completion);
+        let (events, received) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            finishing.finish_when_idle(|| false, || {}, || events.send("completed").unwrap());
+        });
+        assert!(received.recv_timeout(Duration::from_millis(50)).is_err());
+        drop(startup);
+        received.recv_timeout(Duration::from_secs(1)).unwrap();
+        worker.join().unwrap();
+        let next = completion.acquire_start();
+        assert!(!completion.submission_cancelled());
+        drop(next);
+        // Stopping already idle Agents must not cancel a later task submission.
+        let cleanup = completion
+            .acquire_generation(completion.generation())
+            .unwrap();
+        assert!(!completion.cancel_submission());
+        drop(cleanup);
+    }
+
+    #[test]
+    fn a_destroyed_instances_worker_cannot_publish_for_a_reused_id() {
+        let completion = Arc::new(RunCompletion::default());
+        assert!(completion.begin());
+        let events = std::cell::RefCell::new(Vec::new());
+        completion.finish_when_idle(
+            || false,
+            || {
+                events.borrow_mut().push("cleanup");
+                // Destruction can happen during slow Agent disconnect/reaping.
+                completion.retire();
+            },
+            || events.borrow_mut().push("completed"),
+        );
+        assert_eq!(*events.borrow(), ["cleanup"]);
+        assert!(!completion.is_pending());
+        let replacement = Arc::new(RunCompletion::default());
+        assert!(replacement.begin());
+        replacement.finish_when_idle(
+            || false,
+            || {},
+            || events.borrow_mut().push("new-completed"),
+        );
+        assert_eq!(*events.borrow(), ["cleanup", "new-completed"]);
+    }
+
+    #[test]
     fn framework_terminal_events_finish_queues_without_ui_selected_task_ids() {
         // Single /tasks/run request with selected_task_id omitted.
         let mut results = HashMap::new();
@@ -231,6 +375,6 @@ mod tests {
         assert_eq!(task_queue_result(&[41, 42], &results), Some(false));
         results.insert(42, true);
         assert_eq!(task_queue_result(&[41, 42], &results), Some(true));
-        assert_eq!(task_queue_result(&[], &results), None);
+        assert_eq!(task_queue_result(&[], &results), Some(true));
     }
 }

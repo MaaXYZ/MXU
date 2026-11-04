@@ -590,13 +590,11 @@ pub async fn start_tasks_impl(
         debug!("[start_tasks] Acquiring instances lock...");
         let mut instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
         debug!("[start_tasks] Instances lock acquired");
-        let instance = instances
-            .get_mut(&instance_id)
-            .ok_or("Instance not found")?;
+        let instance = instances.get_mut(&instance_id).ok_or("INSTANCE_REPLACED")?;
         if !Arc::ptr_eq(&instance.run_completion, &completion) {
-            return Err("Instance replaced during startup".to_string());
+            return Err("INSTANCE_REPLACED".to_string());
         }
-        instance.prepare_submission()?;
+        instance.prepare_submission(reset_state)?;
         debug!("[start_tasks] Instance found: {}", instance_id);
 
         let res = instance
@@ -771,7 +769,7 @@ pub async fn start_tasks_impl(
             };
             if !attached {
                 stop_agent_resources(new_clients, new_children);
-                return Err("Instance replaced during Agent startup".to_string());
+                return Err("INSTANCE_REPLACED".to_string());
             }
 
             info!(
@@ -801,6 +799,7 @@ pub async fn start_tasks_impl(
     // 持锁提交，确保任务开始回调不会早于遥测元数据登记
     let mut telemetry_posting = super::telemetry::begin_posting(&instance_id);
     let task_ids_ret;
+    let completion_to_schedule;
     {
         // 初始化/追加后端 TaskRunState（单一真相来源）并缓存 task_ids
         debug!(
@@ -808,11 +807,14 @@ pub async fn start_tasks_impl(
             reset_state
         );
         let mut instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
-        let instance = instances
-            .get_mut(&instance_id)
-            .ok_or("Instance not found")?;
+        let instance = instances.get_mut(&instance_id).ok_or("INSTANCE_REPLACED")?;
         if !Arc::ptr_eq(&instance.run_completion, &completion) {
-            return Err("Instance replaced during startup".to_string());
+            return Err("INSTANCE_REPLACED".to_string());
+        }
+        // Stop may arrive while Agent registration is awaiting a child process,
+        // even when the previous tasks have already become idle.
+        if instance.stop_in_progress || completion.submission_cancelled() {
+            return Err("TASKER_STOPPING".to_string());
         }
         if reset_state {
             // 首批：重置任务运行状态
@@ -824,7 +826,6 @@ pub async fn start_tasks_impl(
             state.pending_task_ids.clear();
             state.current_task_index = 0;
         }
-        instance.run_completion.reset();
         for (idx, task) in tasks.iter().enumerate() {
             debug!("[start_tasks] Preparing task {}: entry={}", idx, task.entry);
 
@@ -859,8 +860,18 @@ pub async fn start_tasks_impl(
                         idx, job.id
                     );
                 }
-                Err(_e) => {
-                    warn!("[start_tasks] Failed to post task: {}", task.entry);
+                Err(error) => {
+                    warn!(
+                        "[start_tasks] Failed to post task {}: {}",
+                        task.entry, error
+                    );
+                    instance.submission_failed = true;
+                    if let Some(selected_id) = &task.selected_task_id {
+                        instance
+                            .task_run_state
+                            .statuses
+                            .insert(selected_id.clone(), "failed".to_string());
+                    }
                 }
             }
         }
@@ -877,6 +888,9 @@ pub async fn start_tasks_impl(
         } else {
             instance.task_ids.extend(task_ids);
         }
+        completion_to_schedule = instance
+            .queue_result()
+            .and_then(|succeeded| instance.begin_completion(succeeded));
         debug!("[start_tasks] TaskRunState updated");
     }
     // 提交完成，释放遥测状态锁（后续有 await，不能继续持有）
@@ -884,6 +898,9 @@ pub async fn start_tasks_impl(
 
     // 通知所有客户端：任务已启动，需刷新运行时状态
     super::utils::emit_state_changed(&app, &instance_id, "task-started");
+    if let Some((tasker, completion)) = completion_to_schedule {
+        super::utils::schedule_run_completion(maa_state, &app, &instance_id, tasker, completion);
+    }
 
     info!(
         "[start_tasks] start_tasks_impl completed successfully, returning {} task_ids",
@@ -926,22 +943,23 @@ pub async fn maa_start_tasks(
 pub fn stop_agent_impl(maa_state: &Arc<MaaState>, instance_id: &str) -> Result<(), String> {
     info!("stop_agent_impl called for instance: {}", instance_id);
 
-    let completion = {
+    let (completion, generation) = {
         let instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
-        Arc::clone(
-            &instances
-                .get(instance_id)
-                .ok_or("Instance not found")?
-                .run_completion,
+        let instance = instances.get(instance_id).ok_or("INSTANCE_REPLACED")?;
+        (
+            Arc::clone(&instance.run_completion),
+            instance.run_completion.generation(),
         )
     };
-    let _stop_permit = completion.acquire_start();
+    let Some(_stop_permit) = completion.acquire_generation(generation) else {
+        return Ok(()); // The observed run already finished; leave newer Agents alone.
+    };
 
     let (clients, children) = {
         let mut instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
-        let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;
+        let instance = instances.get_mut(instance_id).ok_or("INSTANCE_REPLACED")?;
         if !Arc::ptr_eq(&instance.run_completion, &completion) {
-            return Err("Instance replaced during Agent cleanup".to_string());
+            return Err("INSTANCE_REPLACED".to_string());
         }
 
         (

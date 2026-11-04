@@ -80,7 +80,7 @@ pub fn handle_task_callback(
     };
 
     let mut completion = None;
-    let all_done = {
+    {
         let mut instances = match maa_state.instances.lock() {
             Ok(g) => g,
             Err(_) => return,
@@ -89,6 +89,10 @@ pub fn handle_task_callback(
             Some(i) => i,
             None => return,
         };
+        // Old/duplicate events from a removed queue must not mutate a new run.
+        if !instance.task_run_state.pending_task_ids.contains(&task_id) {
+            return;
+        }
         if !is_started {
             instance.task_results.insert(task_id, is_succeeded);
         }
@@ -102,7 +106,6 @@ pub fn handle_task_callback(
             if let Some(selected_id) = state.mappings.get(&task_id).cloned() {
                 state.statuses.insert(selected_id, "running".to_string());
             }
-            false // 未完成
         } else {
             // 任务成功或失败
             let status_str = if is_succeeded { "succeeded" } else { "failed" };
@@ -112,28 +115,11 @@ pub fn handle_task_callback(
 
             // selected_task_id is optional in both HTTP APIs. Framework task IDs,
             // rather than UI status mappings, determine whether the queue finished.
-            let result = super::run_completion::task_queue_result(
-                &state.pending_task_ids,
-                &instance.task_results,
-            );
-            // post_stop can cancel queued tasks without a terminal callback for each.
-            // The worker still waits for true framework idle before reporting completion.
+            let result = instance.queue_result();
             let all_completed = result.is_some() || instance.stop_in_progress;
-
             if all_completed {
-                let has_failed = instance.stop_in_progress || result == Some(false);
-                state.overall_status =
-                    Some(if has_failed { "Failed" } else { "Succeeded" }.to_string());
-                instance.task_ids.clear();
-                if instance.run_completion.begin() {
-                    completion = Some((
-                        instance.tasker.clone(),
-                        Arc::clone(&instance.run_completion),
-                    ));
-                }
+                completion = instance.begin_completion(result == Some(true));
             }
-
-            all_completed
         }
     }; // 锁在此处释放
 
@@ -143,56 +129,71 @@ pub fn handle_task_callback(
     } else {
         super::telemetry::on_task_finished(instance_id, task_id, is_succeeded);
     }
-    if all_done {
-        super::telemetry::on_run_finished(instance_id);
-    }
-
     // 通知前端刷新状态
     emit_state_changed(app, instance_id, "task-progress");
     if let Some((tasker, completion)) = completion {
-        let maa_state = Arc::clone(maa_state);
-        let app = app.clone();
-        let instance_id = instance_id.to_string();
-        // 回调返回后框架才能进入真正的 idle。不要在框架分发线程同步 disconnect，
-        // 也不要依赖前端 300ms 后恰好能读到 idle 的一次快照。
-        std::thread::spawn(move || {
-            completion.finish_when_idle(
-                || {
-                    tasker.as_ref().is_some_and(|tasker| tasker.running())
-                        || maa_state.instances.lock().ok().is_some_and(|instances| {
-                            instances.get(&instance_id).is_some_and(|instance| {
-                                Arc::ptr_eq(&instance.run_completion, &completion)
-                                    && instance
-                                        .tasker
-                                        .as_ref()
-                                        .is_some_and(|tasker| tasker.running())
-                            })
-                        })
-                },
-                || {
-                    // No startup can acquire its permit while completion is pending.
-                    // Take all Agents only now: a previously admitted append may have
-                    // registered more Agents before submitting its additional tasks.
-                    let agents = maa_state.instances.lock().ok().and_then(|mut instances| {
-                        instances.get_mut(&instance_id).and_then(|instance| {
-                            // A removed/recreated instance with the same ID belongs
-                            // to a different completion coordinator.
-                            Arc::ptr_eq(&instance.run_completion, &completion).then(|| {
-                                (
-                                    std::mem::take(&mut instance.agent_clients),
-                                    std::mem::take(&mut instance.agent_children),
-                                )
-                            })
-                        })
-                    });
-                    if let Some((clients, children)) = agents {
-                        super::maa_agent::stop_agent_resources(clients, children);
-                    }
-                },
-                || emit_state_changed(&app, &instance_id, "tasks-completed"),
-            );
-        });
+        schedule_run_completion(maa_state, app, instance_id, tasker, completion);
     }
+}
+
+/// Every terminal path shares the same idle/cleanup/notification barrier. Called
+/// only after releasing the instance and telemetry locks; begin() owns the worker.
+pub(super) fn schedule_run_completion(
+    maa_state: &Arc<MaaState>,
+    app: &AppHandle,
+    instance_id: &str,
+    tasker: Option<maa_framework::tasker::Tasker>,
+    completion: Arc<super::run_completion::RunCompletion>,
+) {
+    let maa_state = Arc::clone(maa_state);
+    let app = app.clone();
+    let instance_id = instance_id.to_string();
+    // The framework can become idle only after its callback returns. Never
+    // disconnect synchronously on the callback dispatch thread.
+    std::thread::spawn(move || {
+        completion.finish_when_idle(
+            || {
+                tasker.as_ref().is_some_and(|tasker| tasker.running())
+                    || maa_state.instances.lock().ok().is_some_and(|instances| {
+                        instances.get(&instance_id).is_some_and(|instance| {
+                            Arc::ptr_eq(&instance.run_completion, &completion)
+                                && instance
+                                    .tasker
+                                    .as_ref()
+                                    .is_some_and(|tasker| tasker.running())
+                        })
+                    })
+            },
+            || {
+                // Start permits are blocked while completion is pending. An
+                // already admitted append finishes registering before idle.
+                let agents = maa_state.instances.lock().ok().and_then(|mut instances| {
+                    instances.get_mut(&instance_id).and_then(|instance| {
+                        Arc::ptr_eq(&instance.run_completion, &completion).then(|| {
+                            (
+                                std::mem::take(&mut instance.agent_clients),
+                                std::mem::take(&mut instance.agent_children),
+                                instance.stop_in_progress,
+                                instance.queue_result() == Some(true),
+                            )
+                        })
+                    })
+                });
+                if let Some((clients, children, cancelled, succeeded)) = agents {
+                    // Finish telemetry after the startup permit: a cancellation
+                    // during Agent registration can precede on_run_start. Never
+                    // take its RUNS lock while holding the instance lock.
+                    if cancelled {
+                        super::telemetry::on_run_cancelled(&instance_id);
+                    } else {
+                        super::telemetry::on_run_finished(&instance_id, succeeded);
+                    }
+                    super::maa_agent::stop_agent_resources(clients, children);
+                }
+            },
+            || emit_state_changed(&app, &instance_id, "tasks-completed"),
+        );
+    });
 }
 
 /// 发送配置变更事件（双通道：WS 浏览器客户端 + Tauri WebView）

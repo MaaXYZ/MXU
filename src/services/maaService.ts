@@ -17,12 +17,21 @@ import type {
 } from '@/types/maa';
 import { loggers } from '@/utils/logger';
 import { redactSecretsInText } from '@/utils/passwordOptionValues';
+import { localizeTaskError } from '@/utils/taskErrors';
 import { isTauri } from '@/utils/paths';
 import i18n from '@/i18n';
 import { apiDelete, apiGet, apiPost, apiPut, getApiBase } from '@/utils/backendApi';
 import * as wsService from '@/services/wsService';
 
 const log = loggers.maa;
+
+async function taskOperation<T>(call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (error) {
+    throw localizeTaskError(error, (key) => i18n.t(key));
+  }
+}
 
 function localizeControllerError(error: unknown): unknown {
   const message = error instanceof Error ? error.message : String(error);
@@ -442,20 +451,23 @@ export const maaService = {
       pipelineOverride,
     );
     if (!isTauri()) {
-      const result = await apiPost<{ taskIds: number[] }>(
-        `/maa/instances/${instanceId}/tasks/run`,
-        [{ entry, pipeline_override: pipelineOverride, selected_task_id: selectedTaskId }],
+      const result = await taskOperation(() =>
+        apiPost<{ taskIds: number[] }>(`/maa/instances/${instanceId}/tasks/run`, [
+          { entry, pipeline_override: pipelineOverride, selected_task_id: selectedTaskId },
+        ]),
       );
       const taskId = result.taskIds[0] ?? 0;
       log.info('任务已提交 (HTTP), taskId:', taskId);
       return taskId;
     }
-    const taskId = await invoke<number>('maa_run_task', {
-      instanceId,
-      entry,
-      pipelineOverride,
-      selectedTaskId: selectedTaskId ?? null,
-    });
+    const taskId = await taskOperation(() =>
+      invoke<number>('maa_run_task', {
+        instanceId,
+        entry,
+        pipelineOverride,
+        selectedTaskId: selectedTaskId ?? null,
+      }),
+    );
     log.info('任务已提交, taskId:', taskId);
     return taskId;
   },
@@ -665,30 +677,31 @@ export const maaService = {
       );
     }
     if (!isTauri()) {
-      const result = await apiPost<{ taskIds: number[] }>(
-        `/maa/instances/${instanceId}/tasks/start`,
-        {
+      const result = await taskOperation(() =>
+        apiPost<{ taskIds: number[] }>(`/maa/instances/${instanceId}/tasks/start`, {
           tasks,
           agent_configs: agentConfigs && agentConfigs.length > 0 ? agentConfigs : null,
           cwd: cwd || null,
           tcp_compat_mode: tcpCompatMode || false,
           pi_envs: agentConfigs && agentConfigs.length > 0 && piEnvs ? piEnvs : null,
           controller_info: controllerInfo ?? null,
-        },
+        }),
       );
       log.info('任务已提交 (HTTP), taskIds:', result.taskIds);
       return result.taskIds;
     }
     const hasAgent = (agentConfigs?.length ?? 0) > 0;
-    const taskIds = await invoke<number[]>('maa_start_tasks', {
-      instanceId,
-      tasks,
-      agentConfigs: hasAgent ? agentConfigs : null,
-      cwd: cwd || '.',
-      tcpCompatMode: tcpCompatMode || false,
-      piEnvs: hasAgent && piEnvs ? piEnvs : null,
-      controllerInfo: controllerInfo ?? null,
-    });
+    const taskIds = await taskOperation(() =>
+      invoke<number[]>('maa_start_tasks', {
+        instanceId,
+        tasks,
+        agentConfigs: hasAgent ? agentConfigs : null,
+        cwd: cwd || '.',
+        tcpCompatMode: tcpCompatMode || false,
+        piEnvs: hasAgent && piEnvs ? piEnvs : null,
+        controllerInfo: controllerInfo ?? null,
+      }),
+    );
     log.info('任务已提交, taskIds:', taskIds);
     return taskIds;
   },
@@ -700,11 +713,11 @@ export const maaService = {
   async stopAgent(instanceId: string): Promise<void> {
     log.info('停止 Agent, 实例:', instanceId);
     if (!isTauri()) {
-      await apiPost(`/maa/instances/${instanceId}/agent/stop`, {});
+      await taskOperation(() => apiPost(`/maa/instances/${instanceId}/agent/stop`, {}));
       log.info('停止 Agent 成功 (HTTP)');
       return;
     }
-    await invoke('maa_stop_agent', { instanceId });
+    await taskOperation(() => invoke('maa_stop_agent', { instanceId }));
     log.info('停止 Agent 成功');
   },
 

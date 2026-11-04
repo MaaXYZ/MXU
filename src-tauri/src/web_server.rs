@@ -1009,7 +1009,7 @@ async fn handle_stop_task(
     State(state): State<WebState>,
     axum::extract::Path(instance_id): axum::extract::Path<String>,
 ) -> impl IntoResponse {
-    match stop_task_impl(&state.maa_state, &instance_id) {
+    match stop_task_impl(&state.app_handle, &state.maa_state, &instance_id) {
         Ok(()) => {
             emit_state_changed(&state.app_handle, &instance_id, "task-stopped");
             Json(serde_json::json!({ "ok": true })).into_response()

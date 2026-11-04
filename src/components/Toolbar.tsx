@@ -13,6 +13,7 @@ import {
 import { useAppStore } from '@/stores/appStore';
 import { isTaskCompatible } from '@/stores/helpers';
 import { maaService } from '@/services/maaService';
+import { preservesTaskRun } from '@/utils/taskErrors';
 import { buildTaskOptionSummary } from '@/services/telemetryService';
 import { collectPasswordPlaintextsFromRunnableTasks } from '@/utils/passwordOptionValues';
 import clsx from 'clsx';
@@ -1308,6 +1309,12 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
           });
         }
 
+        if (preservesTaskRun(err)) {
+          const backendStates = await maaService.getAllStates();
+          if (backendStates) useAppStore.getState().restoreBackendStates(backendStates);
+          return false;
+        }
+
         const failedAgentConfigs = normalizeAgentConfigs(projectInterface?.agent);
         if (failedAgentConfigs && failedAgentConfigs.length > 0) {
           for (let i = 0; i < failedAgentConfigs.length; i++) {
@@ -1323,11 +1330,8 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               }),
             });
           }
-          try {
-            await maaService.stopAgent(targetId);
-          } catch {
-            // 忽略停止 agent 的错误
-          }
+          // Startup rolls back its own Agents in the backend. A later cleanup
+          // RPC cannot safely identify which run this failed request owned.
         }
 
         updateInstance(targetId, { isRunning: false });

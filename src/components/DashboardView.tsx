@@ -25,6 +25,7 @@ import {
 import clsx from 'clsx';
 import { useAppStore } from '@/stores/appStore';
 import { maaService } from '@/services/maaService';
+import { preservesTaskRun } from '@/utils/taskErrors';
 import { buildTaskOptionSummary } from '@/services/telemetryService';
 import { collectPasswordPlaintextsFromRunnableTasks } from '@/utils/passwordOptionValues';
 import { ContextMenu, useContextMenu, type MenuItem } from './ContextMenu';
@@ -412,14 +413,17 @@ function InstanceCard({ instanceId, instanceName, isActive, onSelect }: Instance
           setIsStarting(false);
         } catch (err) {
           log.error(`[${instanceName}] 任务启动异常:`, err);
-          const failedAgentConfigs = normalizeAgentConfigs(projectInterface?.agent);
-          if (failedAgentConfigs && failedAgentConfigs.length > 0) {
-            try {
-              await maaService.stopAgent(instanceId);
-            } catch {
-              // 忽略
-            }
+          addLog(instanceId, {
+            type: 'error',
+            message: `${t('taskList.autoConnect.startFailed')}: ${err instanceof Error ? err.message : String(err)}`,
+          });
+          if (preservesTaskRun(err)) {
+            const backendStates = await maaService.getAllStates();
+            if (backendStates) useAppStore.getState().restoreBackendStates(backendStates);
+            setIsStarting(false);
+            return;
           }
+          // Backend startup owns rollback; do not stop a later client's run.
           updateInstance(instanceId, { isRunning: false });
           setInstanceTaskStatus(instanceId, 'Failed');
           setInstanceCurrentTaskId(instanceId, null);

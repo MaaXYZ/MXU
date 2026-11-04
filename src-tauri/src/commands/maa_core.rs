@@ -743,6 +743,11 @@ pub fn destroy_instance_impl(state: &Arc<MaaState>, instance_id: &str) -> Result
 
     let cleanup_config = {
         let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
+        if let Some(instance) = instances.get(instance_id) {
+            // Invalidate under the map lock, even if destruction later moves
+            // outside it and another request immediately reuses this ID.
+            instance.run_completion.retire();
+        }
         let old_config = instances
             .get(instance_id)
             .and_then(|inst| inst.controller_config.clone());
@@ -1325,11 +1330,11 @@ pub fn run_task_impl(
     let _start_permit = completion.acquire_start();
 
     let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
-    let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;
+    let instance = instances.get_mut(instance_id).ok_or("INSTANCE_REPLACED")?;
     if !Arc::ptr_eq(&instance.run_completion, &completion) {
-        return Err("Instance replaced during task submission".to_string());
+        return Err("INSTANCE_REPLACED".to_string());
     }
-    instance.prepare_submission()?;
+    instance.prepare_submission(false)?;
 
     let resource = instance.resource.as_ref().ok_or("Resource not loaded")?;
     let controller = instance
@@ -1389,7 +1394,6 @@ pub fn run_task_impl(
         return Err("Tasker not initialized even after rebuild".to_string());
     }
 
-    instance.run_completion.reset();
     let job = tasker
         .post_task(entry, pipeline_override)
         .map_err(|e| e.to_string())?;
@@ -1472,48 +1476,56 @@ pub fn maa_get_task_status(
 
 /// 停止任务
 /// 停止任务的内部实现（可从 Tauri 命令和 HTTP 处理器共享调用）
-pub fn stop_task_impl(state: &MaaState, instance_id: &str) -> Result<(), String> {
-    let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
-    let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;
-    let tasker = instance.tasker.as_ref().ok_or("Tasker not created")?;
+pub fn stop_task_impl(
+    app: &tauri::AppHandle,
+    state: &Arc<MaaState>,
+    instance_id: &str,
+) -> Result<(), String> {
+    let completion = {
+        let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
+        let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;
+        let submitting = instance.run_completion.cancel_submission();
+        let tasker = instance.tasker.as_ref();
+        let running = tasker.is_some_and(|tasker| tasker.running());
 
-    // Agent cleanup is part of the instance's running state, but posting a new
-    // framework stop job after Tasker idle would race the final idle notification.
-    if !tasker.running() {
-        instance.stop_in_progress = false;
-        instance.stop_started_at = None;
-        return Ok(());
-    }
-
-    if instance.stop_in_progress {
-        let elapsed = instance
-            .stop_started_at
-            .map(|t| t.elapsed())
-            .unwrap_or(Duration::from_secs(0));
-        if elapsed < Duration::from_millis(500) {
+        // Cleanup counts as running for UI queries, but must not post a new
+        // framework stop job once its Tasker is idle.
+        if !running && !submitting {
+            if tasker.is_none() {
+                return Err("Tasker not created".to_string());
+            }
             return Ok(());
         }
-    }
 
-    instance.stop_in_progress = true;
-    instance.stop_started_at = Some(Instant::now());
-    instance.task_ids.clear();
+        if instance.stop_in_progress {
+            let elapsed = instance
+                .stop_started_at
+                .map(|t| t.elapsed())
+                .unwrap_or(Duration::from_secs(0));
+            if elapsed < Duration::from_millis(500) {
+                return Ok(());
+            }
+        }
 
-    // 将剩余 pending 任务标记为 failed，更新整体状态
-    {
-        let state = &mut instance.task_run_state;
-        for status in state.statuses.values_mut() {
+        // Schedule cleanup even when all queued jobs are cancelled before they
+        // start, since that path need not emit a Tasker.Task terminal callback.
+        if running {
+            tasker.unwrap().post_stop().map_err(|e| e.to_string())?;
+        }
+        instance.stop_in_progress = true;
+        instance.stop_started_at = Some(Instant::now());
+        for status in instance.task_run_state.statuses.values_mut() {
             if status == "pending" || status == "running" {
                 *status = "failed".to_string();
             }
         }
-        state.overall_status = Some("Failed".to_string());
+        instance.begin_completion(false)
+    };
+
+    // Telemetry and Agent cleanup run after the submission permit is released.
+    if let Some((tasker, completion)) = completion {
+        super::utils::schedule_run_completion(state, app, instance_id, tasker, completion);
     }
-
-    // 遥测：用户取消，以 cancelled 结束当前运行的 Transaction（幂等，仅首次生效）
-    super::telemetry::on_run_cancelled(instance_id);
-
-    tasker.post_stop().map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -1523,7 +1535,7 @@ pub fn maa_stop_task(
     state: State<Arc<MaaState>>,
     instance_id: String,
 ) -> Result<(), String> {
-    let result = stop_task_impl(&state, &instance_id);
+    let result = stop_task_impl(&app, &state, &instance_id);
     if result.is_ok() {
         super::utils::emit_state_changed(&app, &instance_id, "task-stopped");
     }
