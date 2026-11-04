@@ -353,7 +353,8 @@ pub fn run() {
             commands::tray::update_tray_icon,
             commands::tray::update_tray_tooltip,
             // 配置同步命令（WebUI 实时同步）
-            commands::app_config::notify_config_changed,
+            commands::app_config::get_config_snapshot,
+            commands::app_config::save_config_snapshot,
             commands::app_config::take_config_recovery_notice,
             // 系统通知命令
             commands::notification::send_system_notification,

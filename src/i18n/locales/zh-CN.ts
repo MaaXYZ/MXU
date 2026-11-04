@@ -767,6 +767,12 @@ export default {
 
   // 配置自愈提示
   config: {
+    draftExportFailed: '导出未同步配置失败，草稿已保留，请重试。',
+    syncReloadFailed: '无法读取主机配置，更改已保留在本地，重新同步后才能保存。',
+    retrySync: '重新同步',
+    unsavedDraft: '有未同步的配置更改，已保留为本地草稿。可导出后对照恢复。',
+    exportUnsavedDraft: '导出未同步配置',
+    syncConflict: '配置已在其他客户端更新或同步失败，正在重新加载主机配置。请确认后重新编辑。',
     recoveredFromBackup: '配置文件已损坏，已自动恢复到 {{time}} 的备份',
     recoveryFailed: '配置文件已损坏且没有可用备份，已重置为默认配置',
   },

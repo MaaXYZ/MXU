@@ -7,6 +7,8 @@
  */
 
 import { createLogger } from '@/utils/logger';
+import { suspendConfigSync } from '@/services/configService';
+import type { ConfigChangedEvent } from '@/utils/configSync';
 
 const log = createLogger('wsService');
 
@@ -28,7 +30,7 @@ export interface WsAgentOutputPayload {
 export type WsMessage =
   | { type: 'maa-callback'; payload: WsMaaCallbackPayload }
   | { type: 'maa-agent-output'; payload: WsAgentOutputPayload }
-  | { type: 'config-changed'; payload: undefined }
+  | { type: 'config-changed'; payload: ConfigChangedEvent }
   | { type: 'state-changed'; payload: { instance_id: string; kind: string } };
 
 // ============================================================================
@@ -37,7 +39,7 @@ export type WsMessage =
 
 type MaaCallbackHandler = (message: string, details: string) => void;
 type AgentOutputHandler = (instanceId: string, stream: string, line: string) => void;
-type ConfigChangedHandler = () => void;
+type ConfigChangedHandler = (event: ConfigChangedEvent | undefined) => void;
 type StateChangedHandler = (instanceId: string, kind: string) => void;
 type ConnectionStatusHandler = (connected: boolean) => void;
 
@@ -133,6 +135,7 @@ function onOpen() {
 
   if (hasEverConnected && !currentlyConnected) {
     log.info('后端恢复，刷新页面以重新同步状态');
+    suspendConfigSync();
     window.location.reload();
     return;
   }
@@ -141,6 +144,7 @@ function onOpen() {
 }
 
 function onClose(event: CloseEvent) {
+  suspendConfigSync();
   ws = null;
   currentlyConnected = false;
   if (!stopped) {
@@ -176,7 +180,7 @@ function onMessage(event: MessageEvent) {
       );
       break;
     case 'config-changed':
-      configChangedHandlers.forEach((h) => h());
+      configChangedHandlers.forEach((h) => h(msg.payload));
       break;
     case 'state-changed':
       stateChangedHandlers.forEach((h) => h(msg.payload.instance_id, msg.payload.kind));

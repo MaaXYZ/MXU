@@ -2648,6 +2648,11 @@ export function flushConfig(): MxuConfig | null {
   return generateConfig();
 }
 
+/** 同步暂停期间仅用于保留可恢复草稿，不能据此直接写回后端。 */
+export function captureConfigForDraft(): MxuConfig | null {
+  return useAppStore.getState().projectInterface?.name ? generateConfig() : null;
+}
+
 /**
  * 取消待执行的防抖保存并立即执行一次保存。
  * 供 beforeunload 等需要确保最新状态落盘的场景使用。

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import {
   useAppStore,
-  flushConfig,
+  captureConfigForDraft,
   flushSaveConfig,
   type DownloadProgress,
   type UpdateInfo,
@@ -22,10 +22,16 @@ import type { BadPathType } from '@/components';
 import {
   autoLoadInterface,
   loadConfig,
+  readConfigSnapshot,
+  configSnapshotChanged,
+  acceptConfigSnapshot,
+  preserveUnsavedConfig,
+  getUnsavedConfigDrafts,
+  downloadConfigDraft,
   loadConfigFromStorage,
-  consumeSelfSave,
-  consumeConfigRecoveryNotice,
-  markSelfSave,
+  isOwnConfigChange,
+  suspendConfigSync,
+  saveConfigForUnload,
   resolveI18nText,
   checkAndPrepareDownload,
   maaService,
@@ -33,6 +39,7 @@ import {
   stopInstanceTasksAndExitApp,
 } from '@/services';
 import type { ConfigRecoveryNotice } from '@/services';
+import type { ConfigChangedEvent } from '@/utils/configSync';
 import { clearIconDataUrlCache, loadIconAsDataUrl } from '@/services/contentResolver';
 import * as wsService from '@/services/wsService';
 import { initMcpBridge, syncMcpEnabled } from '@/services/mcpBridge';
@@ -62,10 +69,10 @@ async function getGlobalShortcut() {
   return _globalShortcutModule;
 }
 import { loggers } from '@/utils/logger';
-import { setBackendPort, getApiBase, apiGet } from '@/utils/backendApi';
+import { setBackendPort, getApiBase } from '@/utils/backendApi';
 import { getAllLogsFromBackend } from '@/utils/logStdout';
 import { useMaaCallbackLogger, useMaaAgentLogger } from '@/utils/useMaaCallbackLogger';
-import { getInterfaceLangKey } from '@/i18n';
+import i18n, { getInterfaceLangKey } from '@/i18n';
 import { applyTheme, resolveThemeMode, registerCustomAccent, clearCustomAccents } from '@/themes';
 import { Toaster, toast } from 'sonner';
 import { loadWebUIAppearance, loadWebUILayout } from '@/services/appearanceStorage';
@@ -713,6 +720,19 @@ function App() {
       // 加载用户配置（mxu-{项目名}.json）- 从数据目录加载
       const projectName = result.interface.name;
       let config = await loadConfig(result.dataPath, projectName);
+      for (const draft of getUnsavedConfigDrafts(projectName)) {
+        toast.warning(t('config.unsavedDraft'), {
+          duration: Infinity,
+          action: {
+            label: t('config.exportUnsavedDraft'),
+            onClick: () => {
+              void downloadConfigDraft(draft, projectName).catch(() =>
+                toast.error(i18n.t('config.draftExportFailed')),
+              );
+            },
+          },
+        });
+      }
 
       // loadConfig 已保证返回结构有效，这里再兜一层，避免任何路径把非法值传到下游
       if (!isValidMxuConfig(config)) {
@@ -720,9 +740,7 @@ function App() {
         config = defaultConfig;
       }
 
-      // 配置损坏自愈提示。Rust 侧在启动早期就会先尝试修复磁盘上的文件，
-      // 前端读盘时也可能自行触发，两侧的通知都取走后只提示一次。
-      const tsRecovery = consumeConfigRecoveryNotice();
+      // 配置读写统一由后端负责，自愈提示也从后端取走一次。
       let backendRecovery: ConfigRecoveryNotice | null = null;
       if (isTauri()) {
         try {
@@ -733,7 +751,7 @@ function App() {
           log.debug('获取后端配置自愈通知失败:', err);
         }
       }
-      const recovery = tsRecovery ?? backendRecovery;
+      const recovery = backendRecovery;
       if (recovery?.kind === 'restored') {
         toast.warning(t('config.recoveredFromBackup', { time: recovery.backupTime ?? '' }));
       } else if (recovery?.kind === 'reset') {
@@ -1257,28 +1275,13 @@ function App() {
   // beforeunload：刷新/关闭前强制保存一次配置，防止防抖窗口内的修改丢失
   useEffect(() => {
     const handleBeforeUnload = () => {
+      const config = captureConfigForDraft();
+      const projectName = useAppStore.getState().projectInterface?.name;
+      if (config && projectName) preserveUnsavedConfig(config, projectName);
       if (isTauri()) {
-        // Tauri 环境：取消防抖、立即同步触发保存
         flushSaveConfig();
-      } else {
-        // 浏览器环境：优先用 sendBeacon，失败时回退 keepalive fetch
-        const config = flushConfig();
-        if (!config) return;
-        const payload = JSON.stringify(config);
-        const url = `${getApiBase()}/config`;
-        const blob = new Blob([payload], { type: 'application/json' });
-        markSelfSave();
-        const sent = navigator.sendBeacon?.(url, blob) ?? false;
-        if (!sent) {
-          void fetch(url, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: payload,
-            keepalive: true,
-          }).catch(() => {
-            // 页面即将关闭，此处无法可靠恢复，静默忽略即可
-          });
-        }
+      } else if (config && projectName) {
+        saveConfigForUnload(config, projectName);
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -1290,37 +1293,83 @@ function App() {
   useEffect(() => {
     let cleanup: (() => void) | undefined;
 
-    const handleConfigChanged = async () => {
-      if (consumeSelfSave()) {
-        log.debug('跳过本客户端自身触发的 config-changed');
+    let syncRequest = 0;
+    const handleConfigChanged = async (event?: ConfigChangedEvent) => {
+      const current = useAppStore.getState();
+      if (isOwnConfigChange(event) || (!current.configPersistenceReady && syncRequest === 0))
         return;
-      }
-      log.info('收到 config-changed（来自其他客户端），重新拉取配置...');
+      const projectName = current.projectInterface?.name;
+      const localConfig = captureConfigForDraft();
+      let draft =
+        localConfig && projectName ? preserveUnsavedConfig(localConfig, projectName) : null;
+      const request = ++syncRequest;
+      suspendConfigSync();
+      useAppStore.getState().setConfigPersistenceReady(false);
+      log.info('重新拉取后端配置...');
       try {
-        if (isTauri()) {
-          const pi = useAppStore.getState().projectInterface;
-          const dataPath = useAppStore.getState().dataPath;
-          const config = await loadConfig(dataPath, pi?.name);
-          if (config) {
-            useAppStore.getState().importConfig(config);
-            log.info('配置已从磁盘重新同步');
+        const state = useAppStore.getState();
+        const snapshot = await readConfigSnapshot();
+        if (request !== syncRequest) return;
+        if (configSnapshotChanged(snapshot)) {
+          // 读取快照期间用户仍可能编辑；在真正替换 UI 状态前保留最新那份。
+          const latestConfig = captureConfigForDraft();
+          if (
+            latestConfig &&
+            projectName &&
+            (draft || JSON.stringify(latestConfig) !== JSON.stringify(localConfig))
+          ) {
+            draft = preserveUnsavedConfig(latestConfig, projectName);
           }
-        } else {
-          const config = await apiGet<import('@/types/config').MxuConfig>('/config');
-          if (config) {
-            useAppStore.getState().importConfig(config);
-            log.info('配置已从后端重新同步');
+          state.importConfig(snapshot.config);
+          if (draft && projectName) {
+            const recoveryDraft = draft;
+            toast.warning(i18n.t('config.unsavedDraft'), {
+              duration: Infinity,
+              action: {
+                label: i18n.t('config.exportUnsavedDraft'),
+                onClick: () => {
+                  void downloadConfigDraft(recoveryDraft, projectName).catch(() =>
+                    toast.error(i18n.t('config.draftExportFailed')),
+                  );
+                },
+              },
+            });
           }
         }
-        // importConfig 会重置 isRunning，需立即从后端刷新真实状态
-        const backendStates = await maaService.getAllStates();
-        if (backendStates) {
-          useAppStore.getState().restoreBackendStates(backendStates);
+        acceptConfigSnapshot(snapshot);
+        useAppStore.getState().setConfigPersistenceReady(true);
+        flushSaveConfig();
+        // 运行态刷新是独立的尽力同步；失败不能令配置一直无法保存。
+        try {
+          const backendStates = await maaService.getAllStates();
+          if (request === syncRequest && backendStates)
+            useAppStore.getState().restoreBackendStates(backendStates);
+        } catch (err) {
+          log.warn('配置同步后的运行态刷新失败:', err);
         }
       } catch (err) {
         log.warn('重新拉取配置失败:', err);
+        toast.error(i18n.t('config.syncReloadFailed'), {
+          action: {
+            label: i18n.t('config.retrySync'),
+            onClick: () => {
+              void handleConfigChanged();
+            },
+          },
+        });
       }
     };
+
+    const handleSyncError = () => {
+      toast.error(i18n.t('config.syncConflict'));
+      void handleConfigChanged();
+    };
+    window.addEventListener('config-sync-error', handleSyncError);
+    // 手机浏览器可能冻结页面且延后派发 WS 消息，恢复可见时先拉取主机快照。
+    const handleVisibility = () => {
+      if (!isTauri() && document.visibilityState === 'visible') void handleConfigChanged();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
 
     if (isTauri()) {
       let cancelled = false;
@@ -1328,7 +1377,9 @@ function App() {
       void (async () => {
         try {
           const { listen } = await import('@tauri-apps/api/event');
-          const dispose = await listen('config-changed-external', handleConfigChanged);
+          const dispose = await listen<ConfigChangedEvent>('config-changed-external', (event) => {
+            void handleConfigChanged(event.payload);
+          });
           if (cancelled) {
             dispose();
             return;
@@ -1347,7 +1398,12 @@ function App() {
       cleanup = unlisten;
     }
 
-    return () => cleanup?.();
+    return () => {
+      syncRequest++;
+      cleanup?.();
+      window.removeEventListener('config-sync-error', handleSyncError);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, []);
 
   // 监听 state-changed 事件（后端状态变更后通知刷新，包含任务进度更新）

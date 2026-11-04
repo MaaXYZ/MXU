@@ -763,6 +763,12 @@ export default {
 
   // 設定自我修復提示
   config: {
+    draftExportFailed: '匯出未同步設定失敗，草稿已保留，請重試。',
+    syncReloadFailed: '無法讀取主機設定，變更已保留在本機，重新同步後才能儲存。',
+    retrySync: '重新同步',
+    unsavedDraft: '有未同步的設定變更，已保留為本機草稿。可匯出後對照還原。',
+    exportUnsavedDraft: '匯出未同步設定',
+    syncConflict: '設定已在其他用戶端更新或同步失敗，正在重新載入主機設定。請確認後重新編輯。',
     recoveredFromBackup: '設定檔已損壞，已自動還原到 {{time}} 的備份',
     recoveryFailed: '設定檔已損壞且沒有可用的備份，已重設為預設設定',
   },
