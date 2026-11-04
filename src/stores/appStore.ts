@@ -577,11 +577,13 @@ export const useAppStore = create<AppState>()(
     // 任务操作
     addTaskToInstance: (instanceId, task, options) => {
       const pi = get().projectInterface;
-      if (!pi) return;
+      if (!pi) return '';
 
-      // 递归初始化所有选项（包括嵌套选项）
-      const optionValues =
-        task.option && pi.option ? initializeAllOptionValues(task.option, pi.option) : {};
+      // 递归初始化所有选项（包括嵌套选项），再合并调用方指定的值
+      const optionValues = {
+        ...(task.option && pi.option ? initializeAllOptionValues(task.option, pi.option) : {}),
+        ...options?.optionValues,
+      };
 
       // 判断新任务是否有选项或描述（用于决定是否展开）
       const hasOptions = !!(task.option && task.option.length > 0);
@@ -591,7 +593,7 @@ export const useAppStore = create<AppState>()(
       const newTask: SelectedTask = {
         id: generateId(),
         taskName: task.name,
-        enabled: true,
+        enabled: options?.enabled ?? true,
         optionValues,
         expanded: shouldExpand, // 有选项或描述的任务自动展开
       };
@@ -611,6 +613,8 @@ export const useAppStore = create<AppState>()(
         lastAddedTaskId: newTask.id, // 记录最近添加的任务 ID
         animatingTaskIds: [...state.animatingTaskIds, newTask.id], // 加入动画列表
       }));
+
+      return newTask.id;
     },
 
     // v2.3.0: 应用预设配置到实例
@@ -701,6 +705,7 @@ export const useAppStore = create<AppState>()(
         expanded?: boolean;
         customName?: string;
         switchOverrides?: Record<string, boolean>;
+        optionValues?: Record<string, OptionValue>;
       },
     ) => {
       // 从注册表获取特殊任务定义
@@ -748,6 +753,8 @@ export const useAppStore = create<AppState>()(
           optionValues[optionKey] = { type: 'hotkey', values };
         }
       }
+
+      Object.assign(optionValues, taskOptions?.optionValues);
 
       const newTask: SelectedTask = {
         id: generateId(),
@@ -1545,6 +1552,7 @@ export const useAppStore = create<AppState>()(
         allowLanAccess: config.settings.allowLanAccess ?? false,
         webServerEnabled: config.settings.webServerEnabled ?? true,
         webServerPort: config.settings.webServerPort ?? 12701,
+        mcpEnabled: config.settings.mcpEnabled ?? false,
         autoStartInstanceId: config.settings.autoStartInstanceId,
         autoRunOnLaunch: config.settings.autoRunOnLaunch ?? false,
         autoStartRemovedInstanceName: config.settings.autoStartRemovedInstanceName,
@@ -2068,6 +2076,10 @@ export const useAppStore = create<AppState>()(
     webServerPort: 12701,
     setWebServerPort: (port) => set({ webServerPort: port }),
 
+    // MCP 服务开关（默认 false，即时生效）
+    mcpEnabled: false,
+    setMcpEnabled: (enabled) => set({ mcpEnabled: enabled }),
+
     // 后端真实 OS/架构（运行时从后端获取，不持久化；用于控制器平台过滤、更新资产匹配等）
     backendOS: '',
     backendArch: '',
@@ -2520,6 +2532,7 @@ function generateConfig(): MxuConfig {
           allowLanAccess: state.allowLanAccess,
           webServerEnabled: state.webServerEnabled,
           webServerPort: state.webServerPort,
+          mcpEnabled: state.mcpEnabled,
           autoStartInstanceId: state.autoStartInstanceId,
           autoRunOnLaunch: state.autoRunOnLaunch,
           autoStartRemovedInstanceName: state.autoStartRemovedInstanceName,
@@ -2601,6 +2614,7 @@ useAppStore.subscribe(
     allowLanAccess: state.allowLanAccess,
     webServerEnabled: state.webServerEnabled,
     webServerPort: state.webServerPort,
+    mcpEnabled: state.mcpEnabled,
     autoStartInstanceId: state.autoStartInstanceId,
     autoRunOnLaunch: state.autoRunOnLaunch,
     autoStartRemovedInstanceName: state.autoStartRemovedInstanceName,

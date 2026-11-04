@@ -169,11 +169,18 @@ export interface AppState {
   getActiveInstance: () => Instance | null;
 
   // 任务操作
+  /** 添加任务到实例，返回新任务 ID（projectInterface 未加载时返回空字符串） */
   addTaskToInstance: (
     instanceId: string,
     task: { name: string; option?: string[]; description?: string },
-    options?: { prepend?: boolean },
-  ) => void;
+    options?: {
+      prepend?: boolean;
+      /** 覆盖默认选项值（在默认值初始化之后合并） */
+      optionValues?: Record<string, OptionValue>;
+      /** 是否勾选，默认 true */
+      enabled?: boolean;
+    },
+  ) => string;
   /** v2.3.0: 应用预设配置到实例 */
   applyPreset: (instanceId: string, presetName: string) => void;
   /** v2.3.0: 跳过预设选择（本次会话内该实例不再显示预设选择界面） */
@@ -196,6 +203,8 @@ export interface AppState {
       customName?: string;
       /** 覆盖 switch 选项的初始值（key 为选项 key，value 为 boolean） */
       switchOverrides?: Record<string, boolean>;
+      /** 覆盖默认选项值（在默认值初始化之后合并） */
+      optionValues?: Record<string, OptionValue>;
     },
   ) => string;
   removeTaskFromInstance: (instanceId: string, taskId: string) => void;
@@ -423,6 +432,10 @@ export interface AppState {
   /** Web 服务器监听端口（默认 12701，重启生效） */
   webServerPort: number;
   setWebServerPort: (port: number) => void;
+
+  /** MCP 服务是否启用（默认 false，即时生效，依赖 Web 服务器） */
+  mcpEnabled: boolean;
+  setMcpEnabled: (enabled: boolean) => void;
 
   /** 后端真实 OS（运行时从后端获取，'' = 未知；用于控制器平台过滤、更新资产匹配等，不持久化） */
   backendOS: string;

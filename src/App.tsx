@@ -35,6 +35,7 @@ import {
 import type { ConfigRecoveryNotice } from '@/services';
 import { clearIconDataUrlCache, loadIconAsDataUrl } from '@/services/contentResolver';
 import * as wsService from '@/services/wsService';
+import { initMcpBridge, syncMcpEnabled } from '@/services/mcpBridge';
 import {
   downloadUpdate,
   getUpdateSavePath,
@@ -1807,6 +1808,33 @@ function App() {
     };
   }, [hotkeys?.globalEnabled, hotkeys?.startTasks, hotkeys?.stopTasks]);
 
+  // MCP 前端桥：处理后端转发的 MCP 工具请求（仅桌面端）
+  useEffect(() => {
+    if (!isTauri()) return;
+
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    initMcpBridge()
+      .then((fn) => {
+        if (disposed) fn?.();
+        else unlisten = fn;
+      })
+      .catch((err) => log.warn('注册 MCP 前端桥失败:', err));
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+
+  // 配置加载完成后，把 MCP 开关同步到后端（后端启动时也会从配置文件读取一次）
+  const mcpEnabled = useAppStore((s) => s.mcpEnabled);
+  const configPersistenceReady = useAppStore((s) => s.configPersistenceReady);
+  useEffect(() => {
+    if (!isTauri() || !configPersistenceReady) return;
+    syncMcpEnabled(mcpEnabled).catch((err) => log.warn('同步 MCP 开关失败:', err));
+  }, [mcpEnabled, configPersistenceReady]);
+
   // 监听托盘菜单事件（开始/停止任务）
   useEffect(() => {
     if (!isTauri()) return;
@@ -2047,6 +2075,16 @@ function App() {
             <Suspense fallback={null}>
               <LazyDashboardView onClose={closeDashboardWithAnimation} />
             </Suspense>
+            {/*
+              中控台不显示 Toolbar，但仍需挂载它注册的启动/停止逻辑
+              （全局快捷键、托盘、定时任务、MCP），与设置页的做法一致。
+            */}
+            <div className="hidden">
+              <Toolbar
+                showAddPanel={showAddTaskPanel}
+                onToggleAddPanel={() => setShowAddTaskPanel(!showAddTaskPanel)}
+              />
+            </div>
           </div>
         ) : isMobile ? (
           /* 移动端竖屏布局：单列纵向堆叠 */
