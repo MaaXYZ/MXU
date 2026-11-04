@@ -23,7 +23,12 @@ test('preview persistence, fallback recovery, legacy migration and storage-denie
   const events = new EventTarget();
   Object.assign(globalThis, {
     window: Object.assign(events, {
-      location: { host: 'localhost', protocol: 'http:', hostname: 'localhost' },
+      location: {
+        href: 'http://localhost/',
+        host: 'localhost',
+        protocol: 'http:',
+        hostname: 'localhost',
+      },
     }),
     localStorage: storage,
   });
@@ -153,6 +158,7 @@ test('a failed initial WS handshake reloads a fresh snapshot on its first succes
   Object.assign(globalThis, {
     window: Object.assign(new EventTarget(), {
       location: {
+        href: 'http://localhost/',
         host: 'localhost',
         protocol: 'http:',
         hostname: 'localhost',
