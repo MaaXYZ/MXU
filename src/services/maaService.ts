@@ -22,11 +22,15 @@ import i18n from '@/i18n';
 import { apiDelete, apiGet, apiPost, apiPut, getApiBase } from '@/utils/backendApi';
 import * as wsService from '@/services/wsService';
 import { dispatchMaaCallback, type MaaCallbackHandler } from '@/utils/maaCallbackRouting';
+import { ControllerConnectionSupersededError } from '@/utils/controllerErrors';
 
 const log = loggers.maa;
 
 function localizeControllerError(error: unknown): unknown {
   const message = error instanceof Error ? error.message : String(error);
+  if (message.includes('CONTROLLER_CONNECTION_SUPERSEDED')) {
+    return new ControllerConnectionSupersededError(i18n.t('controller.connectionSuperseded'));
+  }
   if (message.includes('MACOS_PERMISSIONS_REQUIRED')) {
     return new Error(i18n.t('controller.macosPermissionsRequired'));
   }

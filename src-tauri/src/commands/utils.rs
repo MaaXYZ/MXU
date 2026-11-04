@@ -69,6 +69,7 @@ pub fn handle_task_callback(
     maa_state: &Arc<MaaState>,
     app: &AppHandle,
     instance_id: &str,
+    lifetime: &super::callback_lifecycle::CallbackGuard,
     message: &str,
     details: &str,
 ) {
@@ -98,6 +99,9 @@ pub fn handle_task_callback(
             Some(i) => i,
             None => return,
         };
+        if !instance.callback_lifetime.is_current(lifetime) {
+            return;
+        }
         let state = &mut instance.task_run_state;
 
         if is_started {

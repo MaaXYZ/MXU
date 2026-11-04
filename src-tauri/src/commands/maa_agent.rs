@@ -613,12 +613,17 @@ pub async fn start_tasks_impl(
             let app_handle = app.clone();
             let maa_state_for_sink = Arc::clone(maa_state);
             let inst_id_for_sink = instance_id.clone();
+            let lifetime = instance.callback_lifetime.clone();
             t.add_sink(move |msg, detail| {
+                if !lifetime.is_active() {
+                    return;
+                }
                 // 先更新后端 TaskRunState（单一真相来源）
                 handle_task_callback(
                     &maa_state_for_sink,
                     &app_handle,
                     &inst_id_for_sink,
+                    &lifetime,
                     msg,
                     detail,
                 );
@@ -632,7 +637,11 @@ pub async fn start_tasks_impl(
             debug!("[start_tasks] Adding tasker context sink...");
             let app_handle = app.clone();
             let inst_id_for_ctx_sink = instance_id.clone();
+            let lifetime = instance.callback_lifetime.clone();
             t.add_context_sink(move |msg, detail| {
+                if !lifetime.is_active() {
+                    return;
+                }
                 // 遥测：把失败节点挂到任务 Span 下，形成失败链路
                 super::telemetry::on_node_event(&inst_id_for_ctx_sink, msg, detail);
                 emit_callback_event(&app_handle, &inst_id_for_ctx_sink, msg, detail);

@@ -13,6 +13,7 @@ import {
 import { useAppStore } from '@/stores/appStore';
 import { isTaskCompatible } from '@/stores/helpers';
 import { maaService } from '@/services/maaService';
+import { ControllerConnectionSupersededError } from '@/utils/controllerErrors';
 import { buildTaskOptionSummary } from '@/services/telemetryService';
 import { collectPasswordPlaintextsFromRunnableTasks } from '@/utils/passwordOptionValues';
 import clsx from 'clsx';
@@ -57,6 +58,7 @@ import { PermissionModal } from './toolbar/PermissionModal';
 import { ScheduleButton } from './toolbar/ScheduleButton';
 import {
   startGlobalCallbackListener,
+  waitForCtrlResult,
   waitForResResult,
 } from '@/components/connection/callbackCache';
 import { scheduleService } from '@/services/scheduleService';
@@ -65,7 +67,6 @@ import { taskStartService, type TaskStartOptions } from '@/services/taskStartSer
 import { taskControlService } from '@/services/taskControlService';
 import { isTaskSelectedForRun, filterTasksForRun } from '@/utils/taskRunFilter';
 import { isTauri } from '@/utils/paths';
-import { onStateChanged } from '@/services/wsService';
 import { buildPiEnvVars } from '@/utils/piEnv';
 import {
   formatCheckboxCountViolation,
@@ -970,125 +971,17 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               await waitWithStopCheck(2000, targetId);
             }
 
-            // 提前注册回调收集器，await 完成后再发起连接，避免竞态
-            const collectedCallbacks: Array<{ message: string; details: { ctrl_id?: number } }> =
-              [];
-            const unsubscribe = await maaService.onCallback((message, details) => {
-              if (
-                message === 'Controller.Action.Succeeded' ||
-                message === 'Controller.Action.Failed'
-              ) {
-                collectedCallbacks.push({ message, details });
-              }
-            });
-
-            let ctrlId: number;
-            try {
-              ctrlId = await maaService.connectController(targetId, config);
-            } catch (err) {
-              unsubscribe();
-              throw err;
-            }
-
-            // 注册 ctrl_id 与设备名/类型的映射
+            // Start the cache before posting, including native/synthetic callbacks
+            // which can arrive before connectController returns its operation ID.
+            await startGlobalCallbackListener();
+            const ctrlId = await maaService.connectController(targetId, config);
             registerCtrlIdName(targetId, ctrlId, deviceName, targetType);
-
-            // 等待连接完成（同时监听 maa-callback 和 state-changed 两条路径）
-            connectResult = await new Promise<boolean>((resolve) => {
-              let resolved = false;
-
-              const handleSuccess = () => {
-                if (resolved) return;
-                resolved = true;
-                clearTimeout(timeout);
-                unsubscribe();
-                unlistenCb?.();
-                unlistenState?.();
-                setInstanceConnectionStatus(targetId, 'Connected');
-                resolve(true);
-              };
-
-              const handleFailure = () => {
-                if (resolved) return;
-                resolved = true;
-                clearTimeout(timeout);
-                unsubscribe();
-                unlistenCb?.();
-                unlistenState?.();
-                resolve(false);
-              };
-
-              const timeout = setTimeout(() => {
-                if (!resolved) {
-                  log.warn(`实例 ${targetInstance.name}: 连接超时`);
-                  handleFailure();
-                }
-              }, 30000);
-
-              // 路径 1：继续监听新的 maa-callback（Controller.Action.Succeeded/Failed）
-              let unlistenCb: (() => void) | undefined;
-              // 路径 2：监听 state-changed（兜底：后端已广播 connected 但 Action.Succeeded 可能因竞态丢失）
-              // Tauri 桌面端走 app.emit() → listen()，WebSocket 端走 wsService
-              let unlistenState: (() => void) | undefined;
-
-              // 检查已收集的回调（注册监听器在 connectController 之前已完成）
-              const match = collectedCallbacks.find((cb) => cb.details.ctrl_id === ctrlId);
-              if (match) {
-                if (match.message === 'Controller.Action.Succeeded') {
-                  handleSuccess();
-                } else {
-                  handleFailure();
-                }
-                return;
-              }
-
-              maaService
-                .onCallback((message, details) => {
-                  if (resolved) return;
-                  if (details.ctrl_id !== ctrlId) return;
-                  if (message === 'Controller.Action.Succeeded') {
-                    handleSuccess();
-                  } else if (message === 'Controller.Action.Failed') {
-                    handleFailure();
-                  }
-                })
-                .then((cb) => {
-                  if (!resolved) {
-                    unlistenCb = cb;
-                  } else {
-                    cb();
-                  }
-                })
-                .catch((err) => {
-                  log.error(`实例 ${targetInstance.name}: 注册 maa-callback 监听失败:`, err);
-                  handleFailure();
-                });
-              const handleStateChanged = (instanceId: string, kind: string) => {
-                if (resolved) return;
-                if (instanceId === targetId && kind === 'connected') {
-                  log.info(`实例 ${targetInstance.name}: 通过 state-changed 兜底判定连接成功`);
-                  handleSuccess();
-                }
-              };
-
-              if (isTauri()) {
-                import('@tauri-apps/api/event')
-                  .then(({ listen }) =>
-                    listen<{ instance_id: string; kind: string }>('state-changed', (event) =>
-                      handleStateChanged(event.payload.instance_id, event.payload.kind),
-                    ),
-                  )
-                  .then((dispose) => {
-                    if (resolved) dispose();
-                    else unlistenState = dispose;
-                  })
-                  .catch((err) => {
-                    log.warn('注册 state-changed 监听失败:', err);
-                  });
-              } else {
-                unlistenState = onStateChanged(handleStateChanged);
-              }
-            });
+            // A state-changed notification belongs to the instance, not this request.
+            // Only this globally unique action ID can complete this connection.
+            connectResult = (await waitForCtrlResult(ctrlId)) === 'succeeded';
+            if (connectResult) {
+              setInstanceConnectionStatus(targetId, 'Connected');
+            }
           }
 
           if (!connectResult) {
@@ -1288,6 +1181,20 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
         return true;
       } catch (err) {
         log.error(`实例 ${targetInstance.name}: 任务启动异常:`, err);
+
+        if (err instanceof ControllerConnectionSupersededError) {
+          // A later connection or recreated instance owns this ID. Do not stop its
+          // Agent or overwrite its task state while handling the old request.
+          try {
+            const states = await maaService.getAllStates();
+            if (states) {
+              useAppStore.getState().restoreBackendStates(states, { skipRunningState: true });
+            }
+          } catch (syncError) {
+            log.warn('Failed to refresh state after a superseded connection:', syncError);
+          }
+          return false;
+        }
 
         const errMsg = err instanceof Error ? err.message : String(err);
         const cancelled = errMsg === PRE_ACTION_CANCELLED_ERROR;

@@ -308,6 +308,10 @@ pub struct AllInstanceStates {
 /// 实例运行时状态（持有 MaaFramework 对象句柄）
 #[derive(Default)]
 pub struct InstanceRuntime {
+    /// Invalidates late callbacks when an instance ID is destroyed and recreated.
+    pub callback_lifetime: super::callback_lifecycle::CallbackGuard,
+    /// Identifies the latest controller connection request for this instance.
+    pub controller_request: super::callback_lifecycle::CallbackGuard,
     pub resource: Option<Resource>,
     pub controller: Option<Controller>,
     /// 此实例订阅的控制器事件。独立保存句柄，以便池条目替换后仍能解除旧订阅。
@@ -329,6 +333,8 @@ pub struct InstanceRuntime {
 
 impl Drop for InstanceRuntime {
     fn drop(&mut self) {
+        self.callback_lifetime.cancel();
+        self.controller_request.cancel();
         // 断开并销毁所有 agent
         for client in &self.agent_clients {
             let _ = client.disconnect();
@@ -447,6 +453,7 @@ impl ControllerEventSubscribers {
 pub struct ControllerPoolEntry {
     pub controller: Controller,
     pub subscribers: Arc<ControllerEventSubscribers>,
+    pub connection_id: i64,
 }
 
 /// MaaFramework 运行时状态
@@ -459,6 +466,7 @@ pub struct MaaState {
     pub pre_action_stop_requests: Mutex<HashSet<String>>,
     /// Controller 连接池：相同配置的 Controller 复用同一个 MaaControllerHandle
     pub controller_pool: Mutex<HashMap<ControllerConfig, ControllerPoolEntry>>,
+    pub controller_connection_gates: super::callback_lifecycle::ConnectionGates<ControllerConfig>,
     /// 缓存的 ADB 设备列表（全局共享，避免重复搜索）
     pub cached_adb_devices: Mutex<Vec<AdbDevice>>,
     /// 缓存的 Win32 窗口列表（全局共享）

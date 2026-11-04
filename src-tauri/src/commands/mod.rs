@@ -18,6 +18,7 @@ pub mod types;
 pub mod utils;
 
 pub mod app_config;
+mod callback_lifecycle;
 pub mod download;
 pub mod file_ops;
 pub mod maa_agent;

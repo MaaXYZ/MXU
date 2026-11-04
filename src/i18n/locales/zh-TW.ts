@@ -412,6 +412,7 @@ export default {
     connected: '已連接',
     disconnected: '未連接',
     connectionFailed: '連接失敗',
+    connectionSuperseded: '實例已移除或已發起新的連線，原連線請求已取消。',
     refreshDevices: '重新整理裝置',
     refreshWindows: '重新整理視窗',
     refresh: '重新整理裝置',

@@ -428,6 +428,8 @@ export default {
     connected: '接続済み',
     disconnected: '未接続',
     connectionFailed: '接続に失敗しました',
+    connectionSuperseded:
+      'インスタンスが削除されたか、新しい接続が要求されたため、元の接続要求はキャンセルされました。',
     refreshDevices: 'デバイスを更新',
     refreshWindows: 'ウィンドウを更新',
     refresh: 'デバイスを更新',
