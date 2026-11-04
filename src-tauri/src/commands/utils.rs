@@ -6,6 +6,7 @@ use super::types::{MaaCallbackEvent, MaaState, StateChangedEvent};
 use crate::ws_broadcast::{WsBroadcast, WsEvent};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::thread;
 use tauri::{AppHandle, Emitter, Manager};
 
 /// 发送回调事件到前端（Tauri WebView + WebSocket 浏览器客户端）
@@ -142,13 +143,21 @@ pub fn handle_task_callback(
     if all_done {
         emit_state_changed(app, instance_id, "tasks-completed");
 
-        // 实例内全部任务结束后清理旧 agent，避免 agent 进程跨轮累积
-        if let Err(e) = super::maa_agent::stop_agent_impl(maa_state, instance_id) {
-            log::warn!(
-                "[handle_task_callback] Failed to stop agents after tasks completed: {}",
-                e
-            );
-        }
+        // 实例内全部任务结束后清理旧 agent，避免 agent 进程跨轮累积。
+        // 挪到后台线程执行：disconnect 会同步等待 agent 收尾完成
+        // （ShutDownResponse，可达数秒），而本回调运行在框架事件分发
+        // 线程上，阻塞它会卡住后续所有事件。收尾顺序由 disconnect
+        // 内部保证，mem::take 幂等，无需额外延迟或守卫。
+        let maa_state = Arc::clone(maa_state);
+        let instance_id = instance_id.to_string();
+        thread::spawn(move || {
+            if let Err(e) = super::maa_agent::stop_agent_impl(&maa_state, &instance_id) {
+                log::warn!(
+                    "[handle_task_callback] Failed to stop agents after tasks completed: {}",
+                    e
+                );
+            }
+        });
     }
 }
 
