@@ -18,8 +18,8 @@ const ZIP_EOCD_BYTES: u64 = 22;
 const ZIP_CENTRAL_DIR_FIXED_BYTES: u64 = 46;
 /// 保留最近 N 次导出（含本次），多余的会在每次导出完成后清理。
 const MAX_EXPORTS_TO_KEEP: usize = 10;
-/// 需要随日志一起清空的调试产物子目录（内容由 MaaFW 的 save_on_error / save_draw 写入）。
-const DEBUG_ARTIFACT_DIRS: [&str; 2] = ["on_error", "vision"];
+/// 需要随日志一起清空的调试产物子目录。
+const DEBUG_ARTIFACT_DIRS: [&str; 3] = ["on_error", "vision", "screencap"];
 /// 日志目录名（位于应用数据目录下）。
 const DEBUG_DIR: &str = "debug";
 /// 日志导出产物目录名，与 `debug/` 同级，避免下次导出把上次的产物扫进去。
@@ -85,6 +85,18 @@ where
 {
     use std::fs::File;
 
+    // Unix 文件名可以包含反斜杠；解压器仍可能将其当作路径分隔符。
+    let archive_name = archive_name.replace('\\', "/");
+    if !is_safe_archive_name(&archive_name)
+        || !std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_file())
+    {
+        log::warn!(
+            "Skipping unsafe or non-regular export entry: {}",
+            archive_name
+        );
+        return false;
+    }
+
     let mut file = match File::open(path) {
         Ok(f) => f,
         Err(e) => {
@@ -93,7 +105,7 @@ where
         }
     };
 
-    if let Err(e) = zip.start_file(archive_name, options) {
+    if let Err(e) = zip.start_file(&archive_name, options) {
         log::warn!("创建 zip 条目失败 {}: {}", archive_name, e);
         return false;
     }
@@ -148,25 +160,51 @@ fn normalize_archive_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
-fn collect_files_recursively(dir: &Path, archive_prefix: &str) -> Result<Vec<ExportEntry>, String> {
-    if !dir.exists() || !dir.is_dir() {
-        return Ok(Vec::new());
+fn is_safe_archive_name(name: &str) -> bool {
+    !name.is_empty()
+        && !name.contains(['\\', '\0', ':'])
+        && name
+            .split('/')
+            .all(|part| !part.is_empty() && part != "." && part != "..")
+}
+
+fn is_real_directory(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir())
+}
+
+/// Best-effort traversal: optional debug artifacts must not prevent log export.
+/// Read entry types without following symlinks, including the traversal root.
+fn collect_files_recursively(dir: &Path, archive_prefix: &str) -> Vec<ExportEntry> {
+    if !is_real_directory(dir) {
+        return Vec::new();
     }
 
     let mut files = Vec::new();
     let mut stack = vec![dir.to_path_buf()];
 
     while let Some(current_dir) = stack.pop() {
-        let entries = std::fs::read_dir(&current_dir)
-            .map_err(|e| format!("读取目录失败 [{}]: {}", current_dir.display(), e))?;
+        let entries = match std::fs::read_dir(&current_dir) {
+            Ok(entries) => entries,
+            Err(error) => {
+                log::warn!(
+                    "Skipping unreadable export directory [{}]: {}",
+                    current_dir.display(),
+                    error
+                );
+                continue;
+            }
+        };
 
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_dir() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_dir() {
                 stack.push(path);
                 continue;
             }
-            if !path.is_file() {
+            if !file_type.is_file() {
                 continue;
             }
 
@@ -184,6 +222,11 @@ fn collect_files_recursively(dir: &Path, archive_prefix: &str) -> Result<Vec<Exp
                 )
             };
 
+            if !is_safe_archive_name(&archive_name) {
+                log::warn!("Skipping unsafe export path: {}", archive_name);
+                continue;
+            }
+
             files.push(ExportEntry {
                 source_path: path,
                 archive_name,
@@ -192,7 +235,7 @@ fn collect_files_recursively(dir: &Path, archive_prefix: &str) -> Result<Vec<Exp
     }
 
     files.sort_by(|a, b| a.archive_name.cmp(&b.archive_name));
-    Ok(files)
+    files
 }
 
 fn is_image_file(path: &Path) -> bool {
@@ -228,14 +271,14 @@ fn collect_debug_subdir_files(
     let mut files = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
-        if !path.is_dir() {
+        if !entry.file_type().is_ok_and(|file_type| file_type.is_dir()) {
             continue;
         }
         let Some(dir_name) = path.file_name().map(|n| n.to_string_lossy().to_string()) else {
             continue;
         };
 
-        for export in collect_files_recursively(&path, &dir_name)? {
+        for export in collect_files_recursively(&path, &dir_name) {
             if has_extension(&export.source_path, extensions) {
                 files.push(export);
             }
@@ -307,6 +350,9 @@ pub fn get_data_dir() -> Result<String, String> {
 ///
 /// 保留根目录只是为了不改动既有目录结构；MaaFW 写调试产物前会自建父目录，缺失也不会写入失败。
 fn clear_dir_contents(dir: &Path) -> u64 {
+    if !is_real_directory(dir) {
+        return 0;
+    }
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(e) => {
@@ -338,6 +384,9 @@ fn clear_dir_contents(dir: &Path) -> u64 {
 /// 活动文件 `mxu-tauri.log` 同样跳过：日志插件全程握着它，删掉后写入会进已删除句柄。
 /// 已关闭的轮转文件 `mxu-tauri_*.log` 仍删除。只删文件不回收空目录，避免改动既有目录结构。
 fn remove_log_files_recursively(dir: &Path, exclude_file_name: Option<&str>) -> u64 {
+    if !is_real_directory(dir) {
+        return 0;
+    }
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(e) => {
@@ -349,14 +398,17 @@ fn remove_log_files_recursively(dir: &Path, exclude_file_name: Option<&str>) -> 
     let mut deleted = 0_u64;
     for entry in entries.flatten() {
         let path = entry.path();
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
 
-        if path.is_dir() {
+        if file_type.is_dir() {
             deleted =
                 deleted.saturating_add(remove_log_files_recursively(&path, exclude_file_name));
             continue;
         }
 
-        if !path.is_file() {
+        if !file_type.is_file() {
             continue;
         }
 
@@ -382,14 +434,14 @@ fn remove_log_files_recursively(dir: &Path, exclude_file_name: Option<&str>) -> 
 
 /// `clear_log_files` 的可测核心，接收具体目录而不依赖应用数据目录。
 fn clear_log_dirs(debug_dir: &Path, exports_dir: &Path, exclude_file_name: Option<&str>) -> u64 {
-    let mut deleted = remove_log_files_recursively(debug_dir, exclude_file_name);
+    let mut deleted = 0_u64;
 
-    for dir_name in DEBUG_ARTIFACT_DIRS {
-        let artifact_dir = debug_dir.join(dir_name);
-        if !artifact_dir.is_dir() {
-            continue;
+    if is_real_directory(debug_dir) {
+        deleted = remove_log_files_recursively(debug_dir, exclude_file_name);
+        for dir_name in DEBUG_ARTIFACT_DIRS {
+            let artifact_dir = debug_dir.join(dir_name);
+            deleted = deleted.saturating_add(clear_dir_contents(&artifact_dir));
         }
-        deleted = deleted.saturating_add(clear_dir_contents(&artifact_dir));
     }
 
     if exports_dir.is_dir() {
@@ -399,7 +451,7 @@ fn clear_log_dirs(debug_dir: &Path, exports_dir: &Path, exclude_file_name: Optio
     deleted
 }
 
-/// 递归删除 debug 目录（含所有子目录）中的 .log 文件，清空 on_error/、vision/ 内的调试产物
+/// 递归删除 debug 目录（含所有子目录）中的 .log 文件，清空 on_error/、vision/、screencap/ 内的调试产物
 /// 以及 debug_exports/ 下的日志导出产物（保留这几个目录本身）。
 /// 可选择排除一个当前正在使用的前端日志文件。活动文件 `mxu-tauri.log` 始终保留。
 /// 返回删除的文件与产物总数。
@@ -543,7 +595,7 @@ pub fn set_executable(file_path: String) -> Result<(), String> {
 
 /// 从指定目录收集图片，按 mtime 从新到旧排序。不做任何大小截断。
 fn collect_debug_images(dir: &Path, archive_prefix: &str) -> Vec<ExportEntry> {
-    if !dir.exists() || !dir.is_dir() {
+    if !is_real_directory(dir) {
         return Vec::new();
     }
     let rd = match std::fs::read_dir(dir) {
@@ -560,7 +612,12 @@ fn collect_debug_images(dir: &Path, archive_prefix: &str) -> Vec<ExportEntry> {
         }
     };
 
-    let mut images: Vec<_> = rd.flatten().filter(|e| is_image_file(&e.path())).collect();
+    let mut images: Vec<_> = rd
+        .flatten()
+        .filter(|e| {
+            e.file_type().is_ok_and(|file_type| file_type.is_file()) && is_image_file(&e.path())
+        })
+        .collect();
 
     images.sort_by(|a, b| {
         let time_a = a.metadata().and_then(|m| m.modified()).ok();
@@ -581,6 +638,24 @@ fn collect_debug_images(dir: &Path, archive_prefix: &str) -> Vec<ExportEntry> {
         });
     }
     entries
+}
+
+fn collect_export_images(debug_dir: &Path) -> Vec<ExportEntry> {
+    if !is_real_directory(debug_dir) {
+        return Vec::new();
+    }
+    let mut images = collect_debug_images(&debug_dir.join("on_error"), "on_error");
+    images.extend(collect_debug_images(&debug_dir.join("vision"), "vision"));
+    // Screencap 的 filename 可包含子目录；保留相对路径，避免同名截图覆盖。
+    images.extend(
+        collect_files_recursively(&debug_dir.join("screencap"), "screencap")
+            .into_iter()
+            .filter(|entry| is_image_file(&entry.source_path)),
+    );
+    images.sort_by_cached_key(|entry| {
+        std::cmp::Reverse(entry.source_path.metadata().and_then(|m| m.modified()).ok())
+    });
+    images
 }
 
 /// 导出日志文件为分卷 zip 压缩包目录
@@ -610,7 +685,7 @@ fn export_logs_blocking(
     let data_dir = get_app_data_dir()?;
     let debug_dir = data_dir.join(DEBUG_DIR);
 
-    if !debug_dir.exists() {
+    if !is_real_directory(&debug_dir) {
         return Err("日志目录不存在".to_string());
     }
 
@@ -654,31 +729,19 @@ fn export_logs_blocking(
     regular_entries.sort_by(|a, b| a.archive_name.cmp(&b.archive_name));
 
     let config_dir = data_dir.join("config");
-    regular_entries.extend(collect_files_recursively(&config_dir, "config")?);
+    regular_entries.extend(collect_files_recursively(&config_dir, "config"));
     regular_entries.extend(collect_debug_subdir_files(
         &debug_dir,
         &["log", "json", "dmp"],
     )?);
 
     // ─── 2. 收集图片（on_error + vision + screencap，按 mtime 新→旧） ───
-    let on_error_images = collect_debug_images(&debug_dir.join("on_error"), "on_error");
-    let vision_images = collect_debug_images(&debug_dir.join("vision"), "vision");
-    // Screencap 的自定义 filename 可包含子目录；只收集其目录内的 PNG / JPEG，
-    // 保留相对路径，避免不同子目录中的同名截图互相覆盖。
-    let mut screencap_images =
-        collect_files_recursively(&debug_dir.join("screencap"), "screencap")?;
-    screencap_images.retain(|entry| is_image_file(&entry.source_path));
-    screencap_images.sort_by_cached_key(|entry| {
-        std::cmp::Reverse(entry.source_path.metadata().and_then(|m| m.modified()).ok())
-    });
+    let images = collect_export_images(&debug_dir);
 
-    // ─── 3. 合并入卷条目：先 regular，再 on_error，再 vision，最后 screencap ───
-    // 图片按 mtime 新→旧排在尾部，保证最近的崩溃图一定落在 part01.zip。
+    // ─── 3. 合并入卷条目：先 regular，再所有按 mtime 新→旧排列的图片 ───
     let mut all_entries: Vec<ExportEntry> = Vec::new();
     all_entries.extend(regular_entries);
-    all_entries.extend(on_error_images);
-    all_entries.extend(vision_images);
-    all_entries.extend(screencap_images);
+    all_entries.extend(images);
 
     let total_entries = all_entries.len();
     if total_entries == 0 {
@@ -858,4 +921,213 @@ fn parse_export_timestamp(dir_name: &str) -> Option<String> {
     }
     // 形状校验通过 ⇒ 全是 ASCII，from_utf8 必然成功
     Some(std::str::from_utf8(tail).ok()?.to_string())
+}
+
+#[cfg(test)]
+mod export_review_tests {
+    use super::*;
+    use std::fs;
+    use std::io::Cursor;
+
+    struct TestDir(PathBuf);
+
+    impl TestDir {
+        fn new() -> Self {
+            static NEXT: AtomicU64 = AtomicU64::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "mxu-export-review-{}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+                NEXT.fetch_add(1, Ordering::Relaxed),
+            ));
+            fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+
+        fn write(&self, name: &str) -> PathBuf {
+            let path = self.0.join(name);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, b"fixture").unwrap();
+            path
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn zip_writer_rejects_portable_path_traversal() {
+        let dir = TestDir::new();
+        let source = dir.write("source.png");
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        for name in [
+            "../outside.png",
+            "screencap/a/../../outside.png",
+            r"screencap\..\..\outside.png",
+            "/absolute.png",
+            r"C:\absolute.png",
+            "a\0b.png",
+        ] {
+            assert!(
+                !add_file_to_zip(&mut writer, &source, name, options),
+                "{name:?}"
+            );
+        }
+        assert!(add_file_to_zip(
+            &mut writer,
+            &source,
+            "screencap/nested/frame.png",
+            options
+        ));
+        let mut archive = zip::ZipArchive::new(writer.finish().unwrap()).unwrap();
+        assert_eq!(archive.len(), 1);
+        assert_eq!(
+            archive.by_index(0).unwrap().name(),
+            "screencap/nested/frame.png"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unix_backslash_filenames_cannot_create_parent_zip_paths() {
+        let dir = TestDir::new();
+        dir.write(r"screencap/..\..\outside.png");
+        dir.write("screencap/nested/frame.png");
+        let entries = collect_files_recursively(&dir.0.join("screencap"), "screencap");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].archive_name, "screencap/nested/frame.png");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinks_never_export_or_clear_their_targets() {
+        use std::os::unix::fs::symlink;
+        let dir = TestDir::new();
+        let outside = TestDir::new();
+        let secret = outside.write("secret.png");
+        outside.write("outside.log");
+        dir.write("debug/screencap/frame.png");
+        let screencap = dir.0.join("debug/screencap");
+        symlink(&outside.0, screencap.join("external-dir")).unwrap();
+        symlink(&secret, screencap.join("linked.png")).unwrap();
+        symlink(&screencap, screencap.join("loop")).unwrap();
+        let entries = collect_export_images(&dir.0.join("debug"));
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].archive_name, "screencap/frame.png");
+        symlink(&outside.0, dir.0.join("debug/vision")).unwrap();
+        assert!(collect_debug_images(&dir.0.join("debug/vision"), "vision").is_empty());
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        assert!(!add_file_to_zip(
+            &mut writer,
+            &screencap.join("linked.png"),
+            "linked.png",
+            zip::write::SimpleFileOptions::default()
+        ));
+        clear_log_dirs(&dir.0.join("debug"), &dir.0.join("debug_exports"), None);
+        assert!(secret.exists());
+        assert!(outside.0.join("outside.log").exists());
+        assert!(collect_export_images(&dir.0.join("debug")).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_optional_subdirectory_does_not_abort_collection() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TestDir::new();
+        dir.write("screencap/visible.png");
+        dir.write("screencap/blocked/hidden.png");
+        let blocked = dir.0.join("screencap/blocked");
+        fs::set_permissions(&blocked, fs::Permissions::from_mode(0)).unwrap();
+        let denied = fs::read_dir(&blocked).is_err();
+        let entries = collect_files_recursively(&dir.0.join("screencap"), "screencap");
+        fs::set_permissions(&blocked, fs::Permissions::from_mode(0o700)).unwrap();
+        if denied {
+            assert_eq!(entries.len(), 1);
+            assert_eq!(entries[0].archive_name, "screencap/visible.png");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn linked_debug_root_is_not_exported_or_cleared() {
+        use std::os::unix::fs::symlink;
+        let dir = TestDir::new();
+        let outside = TestDir::new();
+        let screenshot = outside.write("screencap/frame.png");
+        let error = outside.write("on_error/error.png");
+        let log = outside.write("outside.log");
+        symlink(&outside.0, dir.0.join("debug")).unwrap();
+        assert!(!is_real_directory(&dir.0.join("debug")));
+        assert!(collect_export_images(&dir.0.join("debug")).is_empty());
+        assert_eq!(
+            clear_log_dirs(&dir.0.join("debug"), &dir.0.join("debug_exports"), None),
+            0
+        );
+        assert!(screenshot.exists());
+        assert!(error.exists());
+        assert!(log.exists());
+    }
+
+    #[test]
+    fn clear_removes_screencap_artifacts_but_keeps_active_logs() {
+        let dir = TestDir::new();
+        dir.write("debug/screencap/nested/frame.png");
+        dir.write("debug/screencap/top.JPG");
+        let active = dir.write("debug/mxu-tauri.log");
+        let current = dir.write("debug/current.log");
+        dir.write("debug/old.log");
+        let ordinary = dir.write("debug/other/keep.png");
+        clear_log_dirs(
+            &dir.0.join("debug"),
+            &dir.0.join("debug_exports"),
+            Some("current.log"),
+        );
+        assert!(active.exists());
+        assert!(current.exists());
+        assert!(ordinary.exists());
+        assert!(!dir.0.join("debug/old.log").exists());
+        assert_eq!(
+            fs::read_dir(dir.0.join("debug/screencap")).unwrap().count(),
+            0
+        );
+    }
+
+    #[test]
+    fn image_order_is_newest_first_across_all_artifact_directories() {
+        use std::fs::{File, FileTimes};
+        use std::time::{Duration, UNIX_EPOCH};
+        let dir = TestDir::new();
+        for (name, seconds) in [
+            ("on_error/old.png", 100),
+            ("vision/middle.jpg", 200),
+            ("screencap/nested/new.PNG", 300),
+        ] {
+            let path = dir.write(name);
+            File::options()
+                .write(true)
+                .open(path)
+                .unwrap()
+                .set_times(FileTimes::new().set_modified(UNIX_EPOCH + Duration::from_secs(seconds)))
+                .unwrap();
+        }
+        let images = collect_export_images(&dir.0);
+        assert_eq!(
+            images
+                .iter()
+                .map(|entry| entry.archive_name.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "screencap/nested/new.PNG",
+                "vision/middle.jpg",
+                "on_error/old.png"
+            ]
+        );
+    }
 }
