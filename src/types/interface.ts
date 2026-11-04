@@ -139,7 +139,6 @@ export function normalizeAgentConfigs(
 
 export type ControllerType =
   | 'Adb'
-  | 'IOS'
   | 'Win32'
   | 'MacOS'
   | 'WlRoots'
@@ -166,12 +165,6 @@ export interface ControllerItem extends ControllerDisplayOptions {
   /** v2.3.0: 控制器级的选项配置 */
   option?: string[];
   adb?: Record<string, unknown>;
-  ios?: {
-    udid?: string;
-    connection?: 'Auto' | 'USB' | 'WiFi';
-    config?: Record<string, unknown>;
-    screencap?: string;
-  };
   win32?: Win32Config;
   macos?: MacOSConfig;
   wlroots?: WlRootsConfig;
@@ -392,7 +385,6 @@ export type OptionValue =
 
 // 保存的设备信息（运行时使用）
 export interface SavedDeviceInfo {
-  iosUdid?: string;
   adbDeviceName?: string;
   /** ADB 设备地址，用于优先恢复连接；旧配置仍可按名称匹配 */
   adbDeviceAddress?: string;

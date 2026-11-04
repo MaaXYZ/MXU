@@ -120,7 +120,6 @@ export function buildDesktopWindowControllerConfig(
 
 const WORKSTATION_UNLOCK_REQUIREMENT: Record<ControllerType, boolean> = {
   Adb: false,
-  IOS: false,
   Win32: true,
   MacOS: false,
   WlRoots: false,

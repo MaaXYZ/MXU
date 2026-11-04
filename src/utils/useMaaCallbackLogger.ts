@@ -180,8 +180,6 @@ function inferCtrlInfoFromInstance(
     return { type: 'window', name: savedDevice?.windowName };
   } else if (controller.type === 'Adb') {
     return { type: 'device', name: savedDevice?.adbDeviceName };
-  } else if (controller.type === 'IOS') {
-    return { type: 'device', name: controller.ios?.udid || savedDevice?.iosUdid };
   } else if (controller.type === 'WlRoots') {
     return { type: 'device', name: savedDevice?.wlrSocketPath };
   } else if (controller.type === 'Linux') {

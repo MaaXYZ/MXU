@@ -13,19 +13,6 @@ export interface AdbDevice {
   config: string;
 }
 
-export interface IosDevice {
-  udid: string;
-  name: string;
-  state: string;
-}
-export interface IosControllerConfig extends ControllerDisplayOptions {
-  type: 'IOS';
-  udid: string;
-  connection_method: number;
-  screencap_methods: string;
-  config: string;
-}
-
 /** Win32 窗口信息 */
 export interface Win32Window {
   handle: number;
@@ -107,7 +94,6 @@ export interface GamepadControllerConfig extends ControllerDisplayOptions {
 
 /** 控制器配置 */
 export type ControllerConfig =
-  | IosControllerConfig
   | AdbControllerConfig
   | Win32ControllerConfig
   | MacOSControllerConfig

@@ -1,4 +1,3 @@
-import { IosDevicePicker } from './IosDevicePicker';
 import { getControllerDisplayOptions } from '@/utils/controllerDisplay';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -528,15 +527,6 @@ export function DeviceSelector({
         return controllerType;
     }
   };
-
-  if (controllerDef.type === 'IOS')
-    return (
-      <IosDevicePicker
-        controller={controllerDef}
-        instanceId={instanceId}
-        onConnectionChange={onConnectionChange}
-      />
-    );
 
   return (
     <div className="space-y-3">

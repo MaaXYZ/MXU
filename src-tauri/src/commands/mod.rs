@@ -22,7 +22,6 @@ pub mod controller_display;
 pub mod download;
 pub mod file_ops;
 pub mod focus;
-pub mod ios;
 pub mod log_secrets;
 pub mod maa_agent;
 pub mod maa_core;

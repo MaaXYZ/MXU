@@ -1,6 +1,4 @@
 import { PiIcon, PiDescription } from './PiContent';
-import { IosDevicePicker } from './IosDevicePicker';
-import { buildIosControllerConfig } from '@/utils/iosController';
 import { getControllerDisplayOptions } from '@/utils/controllerDisplay';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -92,8 +90,7 @@ export function ConnectionPanel() {
 
   // 设备相关状态
   const [isSearching, setIsSearching] = useState(false);
-  const [locallyConnecting, setIsConnecting] = useState(false);
-  const isConnecting = locallyConnecting || storedConnectionStatus === 'Connecting';
+  const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [deviceError, setDeviceError] = useState<string | null>(null);
   const [selectedAdbDevice, setSelectedAdbDevice] = useState<AdbDevice | null>(null);
@@ -647,10 +644,7 @@ export function ConnectionPanel() {
       let deviceName = '';
       let targetType: 'device' | 'window' = 'device';
 
-      if (controllerType === 'IOS' && currentController) {
-        config = buildIosControllerConfig(currentController, activeInstance?.savedDevice?.iosUdid);
-        deviceName = config.udid;
-      } else if (controllerType === 'Adb' && selectedAdbDevice) {
+      if (controllerType === 'Adb' && selectedAdbDevice) {
         config = {
           type: 'Adb',
           adb_path: selectedAdbDevice.adb_path,
@@ -1376,8 +1370,6 @@ export function ConnectionPanel() {
 
   // 判断是否可以连接
   const canConnect = () => {
-    if (controllerType === 'IOS')
-      return !!(currentController?.ios?.udid || activeInstance?.savedDevice?.iosUdid);
     if (controllerType === 'Adb') return !!selectedAdbDevice;
     if (isDesktopWindowController) return !!selectedWindow;
     if (controllerType === 'WlRoots') return !!selectedWlrootsSocket;
@@ -1411,16 +1403,6 @@ export function ConnectionPanel() {
     // 获取设备显示文本（优先显示具体设备名）
     const getDeviceStatusText = () => {
       const savedDevice = activeInstance?.savedDevice;
-      if (controllerType === 'IOS') {
-        return truncateText(
-          currentController?.ios?.udid ||
-            savedDevice?.iosUdid ||
-            (currentController
-              ? getControllerDisplayName(currentController)
-              : t('controller.disconnected')),
-          12,
-        );
-      }
       if (savedDevice?.adbDeviceName) {
         return truncateText(savedDevice.adbDeviceName, 6);
       }
@@ -1462,7 +1444,6 @@ export function ConnectionPanel() {
       const s = activeInstance?.savedDevice;
       if (!s) return false;
       return (
-        (controllerType === 'IOS' && s.iosUdid) ||
         s.adbDeviceName ||
         s.windowName ||
         (controllerType === 'WlRoots' && s.wlrSocketPath) ||
@@ -1679,14 +1660,6 @@ export function ConnectionPanel() {
                   )}
                 />
               </div>
-            )}
-
-            {controllerType === 'IOS' && currentController && activeInstanceId && (
-              <IosDevicePicker
-                controller={currentController}
-                instanceId={activeInstanceId}
-                disabled={isRunning}
-              />
             )}
 
             {/* PlayCover 地址输入和连接按钮 */}

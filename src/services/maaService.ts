@@ -5,7 +5,6 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import type {
   AdbDevice,
-  IosDevice,
   Win32Window,
   GamescopeInstance,
   ControllerConfig,
@@ -28,15 +27,7 @@ const log = loggers.maa;
 
 export function localizeControllerError(error: unknown): unknown {
   const message = error instanceof Error ? error.message : String(error);
-  for (const code of [
-    'IOS_MAAFW_UNAVAILABLE',
-    'IOS_UDID_REQUIRED',
-    'IOS_CONFIG_INVALID',
-    'IOS_CREATE_FAILED',
-    'IOS_DISCOVERY_FAILED',
-    'PI_DISPLAY_OPTIONS_INVALID',
-    'PI_DISPLAY_OPTIONS_UNSUPPORTED',
-  ]) {
+  for (const code of ['PI_DISPLAY_OPTIONS_INVALID', 'PI_DISPLAY_OPTIONS_UNSUPPORTED']) {
     if (message.includes(code)) return new Error(i18n.t(`pi.${code}`));
   }
 
@@ -127,15 +118,6 @@ export interface SelfStopRequestedEvent {
 
 /** MaaFramework 服务 */
 export const maaService = {
-  async findIosDevices(connection = 0, config = '{}'): Promise<IosDevice[]> {
-    try {
-      return isTauri()
-        ? await invoke('maa_find_ios_devices', { connection, config })
-        : await apiPost('/maa/ios-devices', { connection, config });
-    } catch (error) {
-      throw localizeControllerError(error);
-    }
-  },
   async pendingFocus(): Promise<
     {
       request_id: string;

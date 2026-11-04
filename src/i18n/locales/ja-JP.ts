@@ -1,16 +1,5 @@
 export default {
   pi: {
-    IOS_UDID_REQUIRED: 'iPhone/iPad を選択するか UDID を入力してください。',
-    IOS_MAAFW_UNAVAILABLE:
-      'この MaaFramework には iOS API が含まれていません。iOS モジュールを有効にした新しいリソースパッケージを使用してください。',
-    IOS_CONFIG_INVALID:
-      'iOS コントローラーの設定が無効です。接続とキャプチャ方式を確認してください。',
-    IOS_CREATE_FAILED:
-      'iOS コントローラーを作成できません。xdb Server、デバイスのペアリングと DDI の準備を確認してください。',
-    IOS_DISCOVERY_FAILED:
-      'iOS デバイスを検索できません。xdb Server が動作しているか確認してください。',
-    iosUdid: 'iPhone / iPad UDID',
-    iosSearch: 'iOS デバイスを検索',
     PI_DISPLAY_OPTIONS_INVALID: '拡大縮小方式は一つだけ指定し、サイズは正の整数にしてください。',
     PI_DISPLAY_OPTIONS_UNSUPPORTED:
       'この MaaFramework は選択したキャプチャ方式に対応していません。リソースパッケージを更新してください。',

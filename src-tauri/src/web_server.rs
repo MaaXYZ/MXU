@@ -248,10 +248,6 @@ pub async fn start_web_server(
         .route("/maa/initialized", get(handle_get_maa_initialized))
         // Maa 设备扫描
         .route("/maa/devices", get(handle_get_adb_devices))
-        .route(
-            "/maa/ios-devices",
-            axum::routing::post(handle_get_ios_devices),
-        )
         .route("/maa/windows", get(handle_get_win32_windows))
         .route("/maa/wlroots-sockets", get(handle_get_wlroots_sockets))
         .route(
@@ -1436,36 +1432,4 @@ async fn handle_acknowledge_focus(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> impl IntoResponse {
     Json(serde_json::json!({ "acknowledged": crate::commands::focus::acknowledge_focus(id) }))
-}
-
-#[derive(serde::Deserialize)]
-struct IosDiscoveryRequest {
-    connection: Option<i32>,
-    config: Option<String>,
-}
-async fn handle_get_ios_devices(
-    State(state): State<WebState>,
-    Json(body): Json<IosDiscoveryRequest>,
-) -> impl IntoResponse {
-    let result = tokio::task::spawn_blocking(move || {
-        crate::commands::ios::find_devices(
-            &state.maa_state,
-            body.connection.unwrap_or(0),
-            &body.config.unwrap_or_else(|| "{}".into()),
-        )
-    })
-    .await;
-    match result {
-        Ok(Ok(devices)) => Json(devices).into_response(),
-        Ok(Err(error)) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": error })),
-        )
-            .into_response(),
-        Err(error) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": error.to_string() })),
-        )
-            .into_response(),
-    }
 }

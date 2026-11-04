@@ -72,22 +72,6 @@ pub struct GamescopeInstance {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(tag = "type")]
 pub enum ControllerConfig {
-    IOS {
-        udid: String,
-        #[serde(default)]
-        connection_method: i32,
-        screencap_methods: String,
-        #[serde(default)]
-        config: String,
-        #[serde(default)]
-        display_short_side: Option<i32>,
-        #[serde(default)]
-        display_long_side: Option<i32>,
-        #[serde(default)]
-        display_expand: Option<[i32; 2]>,
-        #[serde(default)]
-        display_raw: Option<bool>,
-    },
     Adb {
         adb_path: String,
         address: String,
@@ -207,14 +191,7 @@ pub enum ControllerConfig {
 impl ControllerConfig {
     pub fn display_options(&self) -> super::controller_display::DisplayOptions {
         match self {
-            Self::IOS {
-                display_short_side,
-                display_long_side,
-                display_expand,
-                display_raw,
-                ..
-            }
-            | Self::Adb {
+            Self::Adb {
                 display_short_side,
                 display_long_side,
                 display_expand,

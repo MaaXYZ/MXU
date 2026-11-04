@@ -264,7 +264,6 @@ pub fn run() {
             commands::maa_core::maa_get_version,
             commands::maa_core::maa_check_version,
             commands::maa_core::maa_find_adb_devices,
-            commands::ios::maa_find_ios_devices,
             commands::maa_core::maa_find_win32_windows,
             commands::maa_core::maa_find_wlroots_sockets,
             commands::maa_core::maa_find_gamescope_instances,

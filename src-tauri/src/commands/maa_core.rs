@@ -849,25 +849,6 @@ pub async fn connect_controller_impl(
         );
 
         let controller = match &config {
-            ControllerConfig::IOS {
-                udid,
-                connection_method,
-                screencap_methods,
-                config,
-                ..
-            } => {
-                let methods = screencap_methods
-                    .parse::<u64>()
-                    .map_err(|_| "IOS_CONFIG_INVALID")?;
-                super::ios::create(
-                    &state_arc,
-                    udid,
-                    methods,
-                    *connection_method,
-                    if config.is_empty() { "{}" } else { config },
-                )?
-            }
-
             ControllerConfig::Adb {
                 adb_path,
                 address,

@@ -1,4 +1,3 @@
-import { buildIosControllerConfig } from '@/utils/iosController';
 import { getControllerDisplayOptions } from '@/utils/controllerDisplay';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -787,10 +786,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
           let deviceName = '';
           let targetType: 'device' | 'window' = 'device';
 
-          if (controllerType === 'IOS' && controller) {
-            config = buildIosControllerConfig(controller, savedDevice?.iosUdid);
-            deviceName = config.udid;
-          } else if (canUseSavedDevice && savedDevice && controllerType) {
+          if (canUseSavedDevice && savedDevice && controllerType) {
             // 有保存的设备配置，地址优先匹配，兼容旧配置按名称匹配
             log.info(`实例 ${targetInstance.name}: 自动连接已保存的设备...`);
             onPhaseChange?.('searching');
