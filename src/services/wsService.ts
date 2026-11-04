@@ -7,6 +7,9 @@
  */
 
 import { createLogger } from '@/utils/logger';
+import { suspendConfigSync } from '@/services/configService';
+import type { ConfigChangedEvent } from '@/utils/configSync';
+import { getWebSocketUrl } from '@/utils/backendApi';
 
 const log = createLogger('wsService');
 
@@ -29,7 +32,7 @@ export interface WsAgentOutputPayload {
 export type WsMessage =
   | { type: 'maa-callback'; payload: WsMaaCallbackPayload }
   | { type: 'maa-agent-output'; payload: WsAgentOutputPayload }
-  | { type: 'config-changed'; payload: undefined }
+  | { type: 'config-changed'; payload: ConfigChangedEvent }
   | { type: 'state-changed'; payload: { instance_id: string; kind: string } };
 
 // ============================================================================
@@ -38,7 +41,7 @@ export type WsMessage =
 
 type MaaCallbackHandler = (message: string, details: string, instanceId?: string | null) => void;
 type AgentOutputHandler = (instanceId: string, stream: string, line: string) => void;
-type ConfigChangedHandler = () => void;
+type ConfigChangedHandler = (event: ConfigChangedEvent | undefined) => void;
 type StateChangedHandler = (instanceId: string, kind: string) => void;
 type ConnectionStatusHandler = (connected: boolean) => void;
 
@@ -50,8 +53,6 @@ let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectDelay = 1000;
 let stopped = false;
-/** 后端实际监听端口（由 setServerPort 注入） */
-let serverPort: number | null = null;
 
 const maaCallbackHandlers = new Set<MaaCallbackHandler>();
 const agentOutputHandlers = new Set<AgentOutputHandler>();
@@ -78,39 +79,6 @@ function notifyConnectionStatus(connected: boolean, force = false) {
 }
 
 // ============================================================================
-// WebSocket URL 推算
-// ============================================================================
-
-/**
- * 设置后端 Web 服务器的实际端口（由 App 初始化时从 /api/interface 获取）。
- * 设置后 WS 将直连该端口而非走 Vite proxy，避免端口不一致导致连接失败。
- */
-export function setServerPort(port: number): void {
-  serverPort = port;
-  log.info('WebSocket 目标端口已设置:', port);
-}
-
-function getWsUrl(): string {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-
-  // 已探测到后端端口：直连（tauri 生产模式下 tauri://localhost 相对路径不可用）
-  if (serverPort && serverPort > 0) {
-    const hostname = window.location.hostname || '127.0.0.1';
-    return `${protocol}//${hostname}:${serverPort}/api/ws`;
-  }
-
-  // 正常情况：通过 Nginx 反向代理
-  if (window.location.host) {
-    return `${protocol}//${window.location.host}/api/ws`;
-  }
-
-  // Fallback：直连后端
-  const hostname = window.location.hostname || '127.0.0.1';
-  const port = serverPort || 12701;
-  return `${protocol}//${hostname}:${port}/api/ws`;
-}
-
-// ============================================================================
 // 连接管理
 // ============================================================================
 
@@ -132,16 +100,20 @@ function onOpen() {
   log.info('WebSocket 已连接');
   reconnectDelay = 1000;
 
-  if (hasEverConnected && !currentlyConnected) {
+  const recovered = (hasEverConnected || hasUnexpectedDisconnect) && !currentlyConnected;
+  // 先通知订阅者拉取快照；草稿存储失败时用户可能取消下面的页面刷新。
+  notifyConnectionStatus(true);
+
+  if (recovered) {
     log.info('后端恢复，刷新页面以重新同步状态');
+    suspendConfigSync();
     window.location.reload();
     return;
   }
-
-  notifyConnectionStatus(true);
 }
 
 function onClose(event: CloseEvent) {
+  suspendConfigSync();
   ws = null;
   currentlyConnected = false;
   if (!stopped) {
@@ -179,7 +151,7 @@ function onMessage(event: MessageEvent) {
       );
       break;
     case 'config-changed':
-      configChangedHandlers.forEach((h) => h());
+      configChangedHandlers.forEach((h) => h(msg.payload));
       break;
     case 'state-changed':
       stateChangedHandlers.forEach((h) => h(msg.payload.instance_id, msg.payload.kind));
@@ -200,7 +172,7 @@ export function connect(): void {
   }
 
   stopped = false;
-  const url = getWsUrl();
+  const url = getWebSocketUrl();
   log.info('连接 WebSocket:', url);
 
   ws = new WebSocket(url);

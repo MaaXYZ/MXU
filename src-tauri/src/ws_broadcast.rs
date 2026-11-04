@@ -30,7 +30,7 @@ pub enum WsEvent {
 
     /// 配置被某个客户端修改，其它客户端需重新拉取
     #[serde(rename = "config-changed")]
-    ConfigChanged,
+    ConfigChanged { client_id: String, revision: String },
 
     /// Maa 实例状态变更（连接状态、任务状态等）
     #[serde(rename = "state-changed")]

@@ -168,15 +168,21 @@ pub fn handle_task_callback(
 
 /// 发送配置变更事件（双通道：WS 浏览器客户端 + Tauri WebView）
 ///
-/// 各客户端收到后应重新拉取配置并 `importConfig`（需配合 `consumeSelfSave` 跳过自身触发）。
-pub fn emit_config_changed(app: &AppHandle) {
+/// 发送方 ID 用于准确跳过自身通知，避免按事件到达顺序误吞其它客户端的更新。
+pub fn emit_config_changed(app: &AppHandle, client_id: &str, revision: &str) {
     // 广播到所有 WebSocket 客户端
     if let Some(ws) = app.try_state::<Arc<WsBroadcast>>() {
-        ws.send(WsEvent::ConfigChanged);
+        ws.send(WsEvent::ConfigChanged {
+            client_id: client_id.to_string(),
+            revision: revision.to_string(),
+        });
     }
 
     // 发送到 Tauri WebView
-    if let Err(e) = app.emit("config-changed-external", ()) {
+    if let Err(e) = app.emit(
+        "config-changed-external",
+        serde_json::json!({ "client_id": client_id, "revision": revision }),
+    ) {
         log::error!("Failed to emit config-changed-external: {}", e);
     }
 }
