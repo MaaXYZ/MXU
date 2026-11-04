@@ -215,6 +215,23 @@ pub async fn start_web_server(
 
     // API 路由
     let api_routes = Router::new()
+        .route("/focus/pending", get(handle_pending_focus))
+        .route(
+            "/focus/:id/ack",
+            axum::routing::post(handle_acknowledge_focus),
+        )
+        .route(
+            "/log-secrets",
+            axum::routing::post(handle_register_log_secrets),
+        )
+        .route(
+            "/maa/instances/:id/pretask",
+            axum::routing::post(handle_run_pretask),
+        )
+        .route(
+            "/maa/instances/:id/pretask/stop",
+            axum::routing::post(handle_stop_pretask),
+        )
         // 配置 & 接口
         .route("/interface", get(handle_get_interface))
         .route(
@@ -231,6 +248,10 @@ pub async fn start_web_server(
         .route("/maa/initialized", get(handle_get_maa_initialized))
         // Maa 设备扫描
         .route("/maa/devices", get(handle_get_adb_devices))
+        .route(
+            "/maa/ios-devices",
+            axum::routing::post(handle_get_ios_devices),
+        )
         .route("/maa/windows", get(handle_get_win32_windows))
         .route("/maa/wlroots-sockets", get(handle_get_wlroots_sockets))
         .route(
@@ -1334,6 +1355,116 @@ async fn handle_restart_as_admin(State(state): State<WebState>) -> impl IntoResp
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": e })),
+        )
+            .into_response(),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct SecretRequest {
+    secrets: Vec<String>,
+}
+async fn handle_register_log_secrets(Json(body): Json<SecretRequest>) -> impl IntoResponse {
+    crate::commands::log_secrets::register(&body.secrets);
+    Json(serde_json::json!({ "ok": true }))
+}
+
+#[derive(serde::Deserialize)]
+struct PretaskRequest {
+    program: String,
+    #[serde(default)]
+    args: Vec<String>,
+    cwd: Option<String>,
+}
+async fn handle_run_pretask(
+    State(state): State<WebState>,
+    axum::extract::Path(instance_id): axum::extract::Path<String>,
+    Json(body): Json<PretaskRequest>,
+) -> impl IntoResponse {
+    let cwd = body.cwd.or_else(|| {
+        state
+            .app_config
+            .base_path
+            .lock()
+            .ok()
+            .map(|path| path.clone())
+    });
+    match crate::commands::system::run_pretask_impl(
+        state.app_handle,
+        &state.maa_state,
+        instance_id,
+        body.program,
+        body.args,
+        cwd,
+    )
+    .await
+    {
+        Ok(code) => Json(serde_json::json!({ "exitCode": code })).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": crate::commands::log_secrets::redact(&error) })),
+        )
+            .into_response(),
+    }
+}
+#[derive(serde::Deserialize)]
+struct PretaskStopRequest {
+    stop: bool,
+}
+async fn handle_stop_pretask(
+    State(state): State<WebState>,
+    axum::extract::Path(instance_id): axum::extract::Path<String>,
+    Json(body): Json<PretaskStopRequest>,
+) -> impl IntoResponse {
+    let mut requests = state
+        .maa_state
+        .pre_action_stop_requests
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if body.stop {
+        requests.insert(instance_id);
+    } else {
+        requests.remove(&instance_id);
+    }
+    Json(serde_json::json!({ "ok": true }))
+}
+
+async fn handle_pending_focus() -> impl IntoResponse {
+    Json(crate::commands::focus::pending_focus())
+}
+async fn handle_acknowledge_focus(
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> impl IntoResponse {
+    Json(serde_json::json!({ "acknowledged": crate::commands::focus::acknowledge_focus(id) }))
+}
+
+#[derive(serde::Deserialize)]
+struct IosDiscoveryRequest {
+    connection: Option<i32>,
+    config: Option<String>,
+}
+async fn handle_get_ios_devices(
+    State(state): State<WebState>,
+    Json(body): Json<IosDiscoveryRequest>,
+) -> impl IntoResponse {
+    let result = tokio::task::spawn_blocking(move || {
+        crate::commands::ios::find_devices(
+            &state.maa_state,
+            body.connection.unwrap_or(0),
+            &body.config.unwrap_or_else(|| "{}".into()),
+        )
+    })
+    .await;
+    match result {
+        Ok(Ok(devices)) => Json(devices).into_response(),
+        Ok(Err(error)) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": error.to_string() })),
         )
             .into_response(),
     }

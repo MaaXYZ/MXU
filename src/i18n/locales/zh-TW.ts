@@ -1,4 +1,17 @@
 export default {
+  pi: {
+    IOS_UDID_REQUIRED: '請選擇 iPhone/iPad 裝置或輸入 UDID。',
+    IOS_MAAFW_UNAVAILABLE: '目前的 MaaFramework 未包含 iOS 介面，請使用啟用 iOS 模組的新版資源包。',
+    IOS_CONFIG_INVALID: 'iOS 控制器設定無效，請檢查連線和截圖方式。',
+    IOS_CREATE_FAILED: '無法建立 iOS 控制器，請檢查 xdb Server、裝置配對和 DDI 準備狀態。',
+    IOS_DISCOVERY_FAILED: '搜尋 iOS 裝置失敗，請檢查 xdb Server 是否執行。',
+    iosUdid: 'iPhone / iPad UDID',
+    iosSearch: '搜尋 iOS 裝置',
+    PI_DISPLAY_OPTIONS_INVALID: '請只設定一種截圖縮放模式，並使用正整數尺寸。',
+    PI_DISPLAY_OPTIONS_UNSUPPORTED: '目前的 MaaFramework 不支援此截圖模式，請更新資源包。',
+  },
+  focus: { title: '專案資訊', confirmFailed: '確認失敗，請重試。' },
+
   // 通用
   common: {
     confirm: '確定',

@@ -333,6 +333,8 @@ const HOTKEY_KEY_MAP: Record<string, Record<string, number>> = {
 
 // Linux 控制器复用 WlRoots 的 evdev 键码表（use_win32_vk_code=false 时）
 HOTKEY_KEY_MAP.Linux = HOTKEY_KEY_MAP.WlRoots;
+// MaaIOSController 的按键接口使用 Android keycode。
+HOTKEY_KEY_MAP.IOS = HOTKEY_KEY_MAP.Adb;
 
 /**
  * 将单个按键名（如 "A"、"F1"、"Ctrl"）转换为指定控制器类型的虚拟键码。
@@ -398,8 +400,20 @@ const collectOptionOverrides = (
     // v2.3.0: checkbox 多选类型，按 cases 定义顺序合并所有选中的 case
     const selectedNames = new Set(optionValue.caseNames);
     for (const caseDef of optionDef.cases) {
-      if (selectedNames.has(caseDef.name) && caseDef.pipeline_override) {
+      if (!selectedNames.has(caseDef.name)) continue;
+      if (caseDef.pipeline_override) {
         overrides.push(caseDef.pipeline_override as Record<string, unknown>);
+      }
+      for (const nestedKey of caseDef.option ?? []) {
+        collectOptionOverrides(
+          nestedKey,
+          optionValues,
+          overrides,
+          allOptions,
+          controllerName,
+          resourceName,
+          controllerType,
+        );
       }
     }
   } else if (

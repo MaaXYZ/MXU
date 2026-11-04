@@ -1,4 +1,20 @@
 export default {
+  pi: {
+    IOS_UDID_REQUIRED: 'iPhone/iPad를 선택하거나 UDID를 입력하세요.',
+    IOS_MAAFW_UNAVAILABLE:
+      '현재 MaaFramework에 iOS API가 없습니다. iOS 모듈을 포함한 최신 리소스 패키지를 사용하세요.',
+    IOS_CONFIG_INVALID: 'iOS 컨트롤러 설정이 올바르지 않습니다. 연결 및 캡처 방식을 확인하세요.',
+    IOS_CREATE_FAILED:
+      'iOS 컨트롤러를 생성하지 못했습니다. xdb Server, 장치 페어링 및 DDI 준비 상태를 확인하세요.',
+    IOS_DISCOVERY_FAILED: 'iOS 장치를 검색하지 못했습니다. xdb Server가 실행 중인지 확인하세요.',
+    iosUdid: 'iPhone / iPad UDID',
+    iosSearch: 'iOS 장치 검색',
+    PI_DISPLAY_OPTIONS_INVALID: '크기 조정 방식을 하나만 지정하고 양의 정수 크기를 사용하세요.',
+    PI_DISPLAY_OPTIONS_UNSUPPORTED:
+      '현재 MaaFramework가 선택한 캡처 방식을 지원하지 않습니다. 리소스 패키지를 업데이트하세요.',
+  },
+  focus: { title: '프로젝트 알림', confirmFailed: '확인하지 못했습니다. 다시 시도하세요.' },
+
   // 공통
   common: {
     confirm: '확인',

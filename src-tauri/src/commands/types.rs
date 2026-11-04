@@ -72,6 +72,22 @@ pub struct GamescopeInstance {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(tag = "type")]
 pub enum ControllerConfig {
+    IOS {
+        udid: String,
+        #[serde(default)]
+        connection_method: i32,
+        screencap_methods: String,
+        #[serde(default)]
+        config: String,
+        #[serde(default)]
+        display_short_side: Option<i32>,
+        #[serde(default)]
+        display_long_side: Option<i32>,
+        #[serde(default)]
+        display_expand: Option<[i32; 2]>,
+        #[serde(default)]
+        display_raw: Option<bool>,
+    },
     Adb {
         adb_path: String,
         address: String,
@@ -80,6 +96,12 @@ pub enum ControllerConfig {
         config: String,
         #[serde(default)]
         display_short_side: Option<i32>,
+        #[serde(default)]
+        display_long_side: Option<i32>,
+        #[serde(default)]
+        display_expand: Option<[i32; 2]>,
+        #[serde(default)]
+        display_raw: Option<bool>,
     },
     Win32 {
         handle: u64,
@@ -88,6 +110,12 @@ pub enum ControllerConfig {
         keyboard_method: u64,
         #[serde(default)]
         display_short_side: Option<i32>,
+        #[serde(default)]
+        display_long_side: Option<i32>,
+        #[serde(default)]
+        display_expand: Option<[i32; 2]>,
+        #[serde(default)]
+        display_raw: Option<bool>,
     },
     MacOS {
         handle: u64,
@@ -95,6 +123,12 @@ pub enum ControllerConfig {
         input_method: u64,
         #[serde(default)]
         display_short_side: Option<i32>,
+        #[serde(default)]
+        display_long_side: Option<i32>,
+        #[serde(default)]
+        display_expand: Option<[i32; 2]>,
+        #[serde(default)]
+        display_raw: Option<bool>,
     },
     WlRoots {
         wlr_socket_path: String,
@@ -102,6 +136,12 @@ pub enum ControllerConfig {
         use_win32_vk_code: bool,
         #[serde(default)]
         display_short_side: Option<i32>,
+        #[serde(default)]
+        display_long_side: Option<i32>,
+        #[serde(default)]
+        display_expand: Option<[i32; 2]>,
+        #[serde(default)]
+        display_raw: Option<bool>,
     },
     Gamepad {
         handle: u64,
@@ -111,6 +151,12 @@ pub enum ControllerConfig {
         screencap_method: Option<u64>,
         #[serde(default)]
         display_short_side: Option<i32>,
+        #[serde(default)]
+        display_long_side: Option<i32>,
+        #[serde(default)]
+        display_expand: Option<[i32; 2]>,
+        #[serde(default)]
+        display_raw: Option<bool>,
     },
     PlayCover {
         address: String,
@@ -118,6 +164,12 @@ pub enum ControllerConfig {
         uuid: Option<String>,
         #[serde(default)]
         display_short_side: Option<i32>,
+        #[serde(default)]
+        display_long_side: Option<i32>,
+        #[serde(default)]
+        display_expand: Option<[i32; 2]>,
+        #[serde(default)]
+        display_raw: Option<bool>,
     },
     /// Linux 原生控制器（截图：Wlr/PipeWire，输入：Wlr/UInput/Libei）
     Linux {
@@ -143,7 +195,81 @@ pub enum ControllerConfig {
         use_win32_vk_code: Option<bool>,
         #[serde(default)]
         display_short_side: Option<i32>,
+        #[serde(default)]
+        display_long_side: Option<i32>,
+        #[serde(default)]
+        display_expand: Option<[i32; 2]>,
+        #[serde(default)]
+        display_raw: Option<bool>,
     },
+}
+
+impl ControllerConfig {
+    pub fn display_options(&self) -> super::controller_display::DisplayOptions {
+        match self {
+            Self::IOS {
+                display_short_side,
+                display_long_side,
+                display_expand,
+                display_raw,
+                ..
+            }
+            | Self::Adb {
+                display_short_side,
+                display_long_side,
+                display_expand,
+                display_raw,
+                ..
+            }
+            | Self::Win32 {
+                display_short_side,
+                display_long_side,
+                display_expand,
+                display_raw,
+                ..
+            }
+            | Self::MacOS {
+                display_short_side,
+                display_long_side,
+                display_expand,
+                display_raw,
+                ..
+            }
+            | Self::WlRoots {
+                display_short_side,
+                display_long_side,
+                display_expand,
+                display_raw,
+                ..
+            }
+            | Self::Gamepad {
+                display_short_side,
+                display_long_side,
+                display_expand,
+                display_raw,
+                ..
+            }
+            | Self::PlayCover {
+                display_short_side,
+                display_long_side,
+                display_expand,
+                display_raw,
+                ..
+            }
+            | Self::Linux {
+                display_short_side,
+                display_long_side,
+                display_expand,
+                display_raw,
+                ..
+            } => super::controller_display::DisplayOptions {
+                short: *display_short_side,
+                long: *display_long_side,
+                expand: *display_expand,
+                raw: *display_raw,
+            },
+        }
+    }
 }
 
 #[cfg(test)]
@@ -164,6 +290,9 @@ mod tests {
                 screencap_method: 1,
                 input_method: 2,
                 display_short_side: None,
+                display_long_side: None,
+                display_expand: None,
+                display_raw: None,
             }
         );
     }

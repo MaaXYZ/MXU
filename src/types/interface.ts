@@ -139,6 +139,7 @@ export function normalizeAgentConfigs(
 
 export type ControllerType =
   | 'Adb'
+  | 'IOS'
   | 'Win32'
   | 'MacOS'
   | 'WlRoots'
@@ -146,21 +147,31 @@ export type ControllerType =
   | 'PlayCover'
   | 'Gamepad';
 
-export interface ControllerItem {
+export interface ControllerDisplayOptions {
+  display_short_side?: number;
+  display_long_side?: number;
+  display_expand?: [number, number];
+  display_raw?: boolean;
+}
+
+export interface ControllerItem extends ControllerDisplayOptions {
   name: string;
   label?: string;
   description?: string;
   icon?: string;
   type: ControllerType;
-  display_short_side?: number;
-  display_long_side?: number;
-  display_raw?: boolean;
   permission_required?: boolean;
   /** v2.2.0: 额外的资源路径数组，在 resource.path 加载完成后加载 */
   attach_resource_path?: string[];
   /** v2.3.0: 控制器级的选项配置 */
   option?: string[];
   adb?: Record<string, unknown>;
+  ios?: {
+    udid?: string;
+    connection?: 'Auto' | 'USB' | 'WiFi';
+    config?: Record<string, unknown>;
+    screencap?: string;
+  };
   win32?: Win32Config;
   macos?: MacOSConfig;
   wlroots?: WlRootsConfig;
@@ -381,6 +392,7 @@ export type OptionValue =
 
 // 保存的设备信息（运行时使用）
 export interface SavedDeviceInfo {
+  iosUdid?: string;
   adbDeviceName?: string;
   /** ADB 设备地址，用于优先恢复连接；旧配置仍可按名称匹配 */
   adbDeviceAddress?: string;

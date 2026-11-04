@@ -1,3 +1,4 @@
+import type { ControllerDisplayOptions } from './interface';
 // MaaFramework 类型定义
 
 import { loggers } from '@/utils/logger';
@@ -9,6 +10,19 @@ export interface AdbDevice {
   address: string;
   screencap_methods: string; // u64 作为字符串传递，避免 JS 精度丢失
   input_methods: string; // u64 作为字符串传递
+  config: string;
+}
+
+export interface IosDevice {
+  udid: string;
+  name: string;
+  state: string;
+}
+export interface IosControllerConfig extends ControllerDisplayOptions {
+  type: 'IOS';
+  udid: string;
+  connection_method: number;
+  screencap_methods: string;
   config: string;
 }
 
@@ -27,44 +41,41 @@ export interface GamescopeInstance {
 }
 
 /** ADB 控制器配置 */
-export interface AdbControllerConfig {
+export interface AdbControllerConfig extends ControllerDisplayOptions {
   type: 'Adb';
   adb_path: string;
   address: string;
   screencap_methods: string; // u64 作为字符串传递
   input_methods: string; // u64 作为字符串传递
   config: string;
-  display_short_side?: number;
 }
 
 /** Win32 控制器配置 */
-export interface Win32ControllerConfig {
+export interface Win32ControllerConfig extends ControllerDisplayOptions {
   type: 'Win32';
   handle: number;
   screencap_method: number;
   mouse_method: number;
   keyboard_method: number;
-  display_short_side?: number;
 }
 
 /** macOS 原生窗口控制器配置 */
-export interface MacOSControllerConfig {
+export interface MacOSControllerConfig extends ControllerDisplayOptions {
   type: 'MacOS';
   handle: number;
   screencap_method: number;
   input_method: number;
-  display_short_side?: number;
 }
 
 /** WlRoots 控制器配置 (Linux) */
-export interface WlRootsControllerConfig {
+export interface WlRootsControllerConfig extends ControllerDisplayOptions {
   type: 'WlRoots';
   wlr_socket_path: string;
   use_win32_vk_code?: boolean;
 }
 
 /** Linux 原生控制器配置（截图：Wlr/PipeWire，输入：Wlr/UInput/Libei） */
-export interface LinuxControllerConfig {
+export interface LinuxControllerConfig extends ControllerDisplayOptions {
   type: 'Linux';
   screencap_method: number;
   input_method: number;
@@ -77,26 +88,26 @@ export interface LinuxControllerConfig {
   uinput_screen_height?: number;
   eis_socket_path?: string;
   use_win32_vk_code?: boolean;
-  display_short_side?: number;
 }
 
 /** PlayCover 控制器配置 (macOS) */
-export interface PlayCoverControllerConfig {
+export interface PlayCoverControllerConfig extends ControllerDisplayOptions {
   type: 'PlayCover';
   address: string;
   uuid?: string;
-  display_short_side?: number;
 }
 
 /** Gamepad 控制器配置 */
-export interface GamepadControllerConfig {
+export interface GamepadControllerConfig extends ControllerDisplayOptions {
   type: 'Gamepad';
   handle: number;
-  display_short_side?: number;
+  gamepad_type?: string;
+  screencap_method?: number;
 }
 
 /** 控制器配置 */
 export type ControllerConfig =
+  | IosControllerConfig
   | AdbControllerConfig
   | Win32ControllerConfig
   | MacOSControllerConfig

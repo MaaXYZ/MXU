@@ -1,3 +1,7 @@
+import { PiIcon, PiDescription } from './PiContent';
+import { IosDevicePicker } from './IosDevicePicker';
+import { buildIosControllerConfig } from '@/utils/iosController';
+import { getControllerDisplayOptions } from '@/utils/controllerDisplay';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -17,7 +21,7 @@ import {
   History,
 } from 'lucide-react';
 import clsx from 'clsx';
-import { maaService } from '@/services/maaService';
+import { maaService, controllerErrorMessage } from '@/services/maaService';
 import { useAppStore } from '@/stores/appStore';
 import { resolveI18nText } from '@/services/contentResolver';
 import { LinuxInputMethod, parseLinuxInputMethod } from '@/types/maa';
@@ -88,7 +92,8 @@ export function ConnectionPanel() {
 
   // 设备相关状态
   const [isSearching, setIsSearching] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [locallyConnecting, setIsConnecting] = useState(false);
+  const isConnecting = locallyConnecting || storedConnectionStatus === 'Connecting';
   const [isConnected, setIsConnected] = useState(false);
   const [deviceError, setDeviceError] = useState<string | null>(null);
   const [selectedAdbDevice, setSelectedAdbDevice] = useState<AdbDevice | null>(null);
@@ -580,7 +585,7 @@ export function ConnectionPanel() {
         }
       }
     } catch (err) {
-      setDeviceError(err instanceof Error ? err.message : t('controller.connectionFailed'));
+      setDeviceError(controllerErrorMessage(err));
     } finally {
       setIsSearching(false);
     }
@@ -642,7 +647,10 @@ export function ConnectionPanel() {
       let deviceName = '';
       let targetType: 'device' | 'window' = 'device';
 
-      if (controllerType === 'Adb' && selectedAdbDevice) {
+      if (controllerType === 'IOS' && currentController) {
+        config = buildIosControllerConfig(currentController, activeInstance?.savedDevice?.iosUdid);
+        deviceName = config.udid;
+      } else if (controllerType === 'Adb' && selectedAdbDevice) {
         config = {
           type: 'Adb',
           adb_path: selectedAdbDevice.adb_path,
@@ -650,7 +658,7 @@ export function ConnectionPanel() {
           screencap_methods: selectedAdbDevice.screencap_methods,
           input_methods: selectedAdbDevice.input_methods,
           config: selectedAdbDevice.config,
-          display_short_side: currentController?.display_short_side,
+          ...getControllerDisplayOptions(currentController),
         };
         deviceName = selectedAdbDevice.name || selectedAdbDevice.address;
         targetType = 'device';
@@ -668,6 +676,7 @@ export function ConnectionPanel() {
       } else if (controllerType === 'WlRoots' && selectedWlrootsSocket) {
         config = {
           type: 'WlRoots',
+          ...getControllerDisplayOptions(currentController),
           wlr_socket_path: selectedWlrootsSocket,
           use_win32_vk_code: currentController?.wlroots?.use_win32_vk_code ?? false,
         };
@@ -679,7 +688,7 @@ export function ConnectionPanel() {
         config = buildPlayCoverControllerConfig(
           playcoverAddress,
           currentController?.playcover?.uuid,
-          currentController?.display_short_side,
+          currentController,
         );
         deviceName = playcoverAddress;
         targetType = 'device';
@@ -691,7 +700,7 @@ export function ConnectionPanel() {
 
       await connectControllerInternal(config, deviceName, targetType);
     } catch (err) {
-      setDeviceError(err instanceof Error ? err.message : t('controller.connectionFailed'));
+      setDeviceError(controllerErrorMessage(err));
       setIsConnected(false);
       setInstanceConnectionStatus(instanceId, 'Disconnected');
       setIsConnecting(false);
@@ -912,12 +921,12 @@ export function ConnectionPanel() {
         screencap_methods: device.screencap_methods,
         input_methods: device.input_methods,
         config: device.config,
-        display_short_side: currentController?.display_short_side,
+        ...getControllerDisplayOptions(currentController),
       };
 
       await connectControllerInternal(config, device.name || device.address, 'device');
     } catch (err) {
-      setDeviceError(err instanceof Error ? err.message : t('controller.connectionFailed'));
+      setDeviceError(controllerErrorMessage(err));
       setIsConnected(false);
       setInstanceConnectionStatus(instanceId, 'Disconnected');
       setIsConnecting(false);
@@ -979,7 +988,7 @@ export function ConnectionPanel() {
         void fetchAndStoreProcessPath(win.handle);
       }
     } catch (err) {
-      setDeviceError(err instanceof Error ? err.message : t('controller.connectionFailed'));
+      setDeviceError(controllerErrorMessage(err));
       setIsConnected(false);
       setInstanceConnectionStatus(instanceId, 'Disconnected');
       setIsConnecting(false);
@@ -1015,13 +1024,14 @@ export function ConnectionPanel() {
 
       const config: ControllerConfig = {
         type: 'WlRoots',
+        ...getControllerDisplayOptions(currentController),
         wlr_socket_path: socketPath,
         use_win32_vk_code: currentController?.wlroots?.use_win32_vk_code ?? false,
       };
 
       await connectControllerInternal(config, socketPath, 'device');
     } catch (err) {
-      setDeviceError(err instanceof Error ? err.message : t('controller.connectionFailed'));
+      setDeviceError(controllerErrorMessage(err));
       setIsConnected(false);
       setInstanceConnectionStatus(instanceId, 'Disconnected');
       setIsConnecting(false);
@@ -1099,7 +1109,7 @@ export function ConnectionPanel() {
       );
       await connectControllerInternal(config, deviceName, 'device');
     } catch (err) {
-      setDeviceError(err instanceof Error ? err.message : t('controller.connectionFailed'));
+      setDeviceError(controllerErrorMessage(err));
       setIsConnected(false);
       setInstanceConnectionStatus(instanceId, 'Disconnected');
       setIsConnecting(false);
@@ -1228,7 +1238,7 @@ export function ConnectionPanel() {
         return;
       }
     } catch (err) {
-      setDeviceError(err instanceof Error ? err.message : t('controller.connectionFailed'));
+      setDeviceError(controllerErrorMessage(err));
     } finally {
       setIsSearching(false);
     }
@@ -1366,6 +1376,8 @@ export function ConnectionPanel() {
 
   // 判断是否可以连接
   const canConnect = () => {
+    if (controllerType === 'IOS')
+      return !!(currentController?.ios?.udid || activeInstance?.savedDevice?.iosUdid);
     if (controllerType === 'Adb') return !!selectedAdbDevice;
     if (isDesktopWindowController) return !!selectedWindow;
     if (controllerType === 'WlRoots') return !!selectedWlrootsSocket;
@@ -1399,6 +1411,16 @@ export function ConnectionPanel() {
     // 获取设备显示文本（优先显示具体设备名）
     const getDeviceStatusText = () => {
       const savedDevice = activeInstance?.savedDevice;
+      if (controllerType === 'IOS') {
+        return truncateText(
+          currentController?.ios?.udid ||
+            savedDevice?.iosUdid ||
+            (currentController
+              ? getControllerDisplayName(currentController)
+              : t('controller.disconnected')),
+          12,
+        );
+      }
       if (savedDevice?.adbDeviceName) {
         return truncateText(savedDevice.adbDeviceName, 6);
       }
@@ -1440,6 +1462,7 @@ export function ConnectionPanel() {
       const s = activeInstance?.savedDevice;
       if (!s) return false;
       return (
+        (controllerType === 'IOS' && s.iosUdid) ||
         s.adbDeviceName ||
         s.windowName ||
         (controllerType === 'WlRoots' && s.wlrSocketPath) ||
@@ -1596,7 +1619,7 @@ export function ConnectionPanel() {
                         }}
                         disabled={isConnecting || isSearching || isRunning}
                         className={clsx(
-                          'px-2 py-0.5 text-xs rounded-md transition-colors',
+                          'inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded-md transition-colors',
                           currentControllerName === controller.name
                             ? 'bg-accent text-white'
                             : 'bg-bg-tertiary text-text-secondary hover:bg-bg-hover',
@@ -1604,6 +1627,7 @@ export function ConnectionPanel() {
                             'opacity-50 cursor-not-allowed',
                         )}
                       >
+                        <PiIcon icon={controller.icon} />
                         {getControllerDisplayName(controller)}
                       </button>
                     );
@@ -1612,6 +1636,7 @@ export function ConnectionPanel() {
               </div>
             )}
 
+            <PiDescription source={currentController?.description} />
             {/* uinput 输入的屏幕分辨率 */}
             {isUinputInput && (
               <div className="flex gap-2">
@@ -1654,6 +1679,14 @@ export function ConnectionPanel() {
                   )}
                 />
               </div>
+            )}
+
+            {controllerType === 'IOS' && currentController && activeInstanceId && (
+              <IosDevicePicker
+                controller={currentController}
+                instanceId={activeInstanceId}
+                disabled={isRunning}
+              />
             )}
 
             {/* PlayCover 地址输入和连接按钮 */}
@@ -1937,6 +1970,7 @@ export function ConnectionPanel() {
                             {isIncompatible && (
                               <AlertCircle className="w-3.5 h-3.5 text-warning flex-shrink-0" />
                             )}
+                            <PiIcon icon={resource.icon} />
                             <span className="truncate">{getResourceDisplayName(resource)}</span>
                           </div>
                           {/* 描述或不兼容提示 */}
@@ -1945,7 +1979,7 @@ export function ConnectionPanel() {
                           ) : (
                             resource.description && (
                               <div className="text-xs text-text-muted truncate">
-                                {resolveI18nText(resource.description, translations)}
+                                <PiDescription source={resource.description} />
                               </div>
                             )
                           )}

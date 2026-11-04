@@ -1,3 +1,5 @@
+import { IosDevicePicker } from './IosDevicePicker';
+import { getControllerDisplayOptions } from '@/utils/controllerDisplay';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -239,7 +241,7 @@ export function DeviceSelector({
           screencap_methods: selectedAdbDevice.screencap_methods,
           input_methods: selectedAdbDevice.input_methods,
           config: selectedAdbDevice.config,
-          display_short_side: controllerDef.display_short_side,
+          ...getControllerDisplayOptions(controllerDef),
         };
       } else if (isDesktopWindowController && selectedWindow) {
         const desktopConfig = buildDesktopWindowControllerConfig(
@@ -253,6 +255,7 @@ export function DeviceSelector({
       } else if (controllerType === 'WlRoots' && selectedWlrootsSocket) {
         config = {
           type: 'WlRoots',
+          ...getControllerDisplayOptions(controllerDef),
           wlr_socket_path: selectedWlrootsSocket,
           use_win32_vk_code: controllerDef.wlroots?.use_win32_vk_code ?? false,
         };
@@ -260,7 +263,7 @@ export function DeviceSelector({
         config = {
           type: 'PlayCover',
           address: playcoverAddress,
-          display_short_side: controllerDef.display_short_side,
+          ...getControllerDisplayOptions(controllerDef),
         };
       } else {
         throw new Error('请先选择设备');
@@ -348,7 +351,7 @@ export function DeviceSelector({
         screencap_methods: device.screencap_methods,
         input_methods: device.input_methods,
         config: device.config,
-        display_short_side: controllerDef.display_short_side,
+        ...getControllerDisplayOptions(controllerDef),
       };
 
       const ctrlId = await maaService.connectController(instanceId, config);
@@ -424,6 +427,7 @@ export function DeviceSelector({
 
       const config: ControllerConfig = {
         type: 'WlRoots',
+        ...getControllerDisplayOptions(controllerDef),
         wlr_socket_path: socketPath,
         use_win32_vk_code: controllerDef.wlroots?.use_win32_vk_code ?? false,
       };
@@ -524,6 +528,15 @@ export function DeviceSelector({
         return controllerType;
     }
   };
+
+  if (controllerDef.type === 'IOS')
+    return (
+      <IosDevicePicker
+        controller={controllerDef}
+        instanceId={instanceId}
+        onConnectionChange={onConnectionChange}
+      />
+    );
 
   return (
     <div className="space-y-3">

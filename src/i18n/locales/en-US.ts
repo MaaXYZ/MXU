@@ -1,4 +1,25 @@
 export default {
+  pi: {
+    IOS_UDID_REQUIRED: 'Select an iPhone/iPad or enter its UDID.',
+    IOS_MAAFW_UNAVAILABLE:
+      'This MaaFramework does not include the iOS API. Use a newer resource package built with the iOS module.',
+    IOS_CONFIG_INVALID:
+      'Invalid iOS controller configuration. Check the connection and capture methods.',
+    IOS_CREATE_FAILED:
+      'Could not create the iOS controller. Check xdb Server, device pairing and DDI preparation.',
+    IOS_DISCOVERY_FAILED: 'Could not discover iOS devices. Check that xdb Server is running.',
+    iosUdid: 'iPhone / iPad UDID',
+    iosSearch: 'Find iOS devices',
+    PI_DISPLAY_OPTIONS_INVALID:
+      'Configure one screenshot scaling mode with positive integer dimensions.',
+    PI_DISPLAY_OPTIONS_UNSUPPORTED:
+      'This MaaFramework does not support the selected screenshot mode. Update the resource package.',
+  },
+  focus: {
+    title: 'Project notification',
+    confirmFailed: 'Could not confirm the notification. Please try again.',
+  },
+
   // Common
   common: {
     confirm: 'Confirm',
