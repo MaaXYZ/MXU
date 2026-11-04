@@ -46,6 +46,8 @@ import {
   isDebugVersion,
 } from '@/services/updateService';
 import { initTelemetry, isTelemetryBlockedByBuild } from '@/services/telemetryService';
+import { runAutoUpdateCheck } from '@/services/autoUpdateCheck';
+import type { ProjectInterface } from '@/types/interface';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { useShallow } from 'zustand/react/shallow';
@@ -543,6 +545,22 @@ function App() {
     [setUpdateInfo, startAutoDownload],
   );
 
+  const checkForAutoUpdate = useCallback(
+    async (project: ProjectInterface, isCancelled?: () => boolean) => {
+      try {
+        await runAutoUpdateCheck(project, {
+          getState: useAppStore.getState,
+          checkAndPrepareDownload,
+          onResult: handleAutoUpdateCheckResult,
+          isCancelled,
+        });
+      } catch (err) {
+        log.warn('自动检查更新失败:', err);
+      }
+    },
+    [handleAutoUpdateCheckResult],
+  );
+
   // 仅桌面端负责定时更新，避免多个 WebUI 页面重复触发
   useEffect(() => {
     if (
@@ -561,54 +579,7 @@ function App() {
       return;
     }
 
-    const { mirrorchyan_rid: resourceId, version: currentVersion, github, name } = projectInterface;
     let cancelled = false;
-    const isUpdateBusy = () => {
-      const state = useAppStore.getState();
-      return (
-        state.downloadStatus === 'downloading' ||
-        state.downloadStatus === 'completed' ||
-        state.installStatus !== 'idle'
-      );
-    };
-
-    const checkForScheduledUpdate = async () => {
-      const state = useAppStore.getState();
-      if (state.updateCheckLoading || isUpdateBusy()) return;
-      state.setUpdateCheckLoading(true);
-      const { mirrorChyanSettings, proxySettings } = state;
-      try {
-        log.info('定时检查更新');
-        const updateResult = await checkAndPrepareDownload({
-          resourceId,
-          currentVersion,
-          cdk: mirrorChyanSettings.cdk || undefined,
-          channel: mirrorChyanSettings.channel,
-          userAgent: 'MXU',
-          githubUrl: github,
-          githubPat: mirrorChyanSettings.githubPat || undefined,
-          proxyUrl: proxySettings?.url,
-          projectName: name,
-        });
-        const current = useAppStore.getState();
-        // 只在检查参数或更新状态变化时丢弃结果，不比较配置对象引用
-        if (
-          cancelled ||
-          isUpdateBusy() ||
-          current.mirrorChyanSettings.cdk !== mirrorChyanSettings.cdk ||
-          current.mirrorChyanSettings.channel !== mirrorChyanSettings.channel ||
-          current.mirrorChyanSettings.githubPat !== mirrorChyanSettings.githubPat ||
-          current.proxySettings?.url !== proxySettings?.url
-        ) {
-          return;
-        }
-        if (updateResult) handleAutoUpdateCheckResult(updateResult);
-      } catch (err) {
-        log.warn('定时检查更新失败:', err);
-      } finally {
-        state.setUpdateCheckLoading(false);
-      }
-    };
 
     const [hour, minute] = scheduledUpdateCheckTime.split(':').map(Number);
     let timer: ReturnType<typeof setTimeout>;
@@ -621,7 +592,8 @@ function App() {
       }
 
       timer = setTimeout(() => {
-        void checkForScheduledUpdate();
+        log.info('定时检查更新');
+        void checkForAutoUpdate(projectInterface, () => cancelled);
         scheduleNextCheck();
       }, nextCheck.getTime() - now.getTime());
     };
@@ -636,7 +608,7 @@ function App() {
     projectInterface,
     scheduledUpdateCheckEnabled,
     scheduledUpdateCheckTime,
-    handleAutoUpdateCheckResult,
+    checkForAutoUpdate,
   ]);
 
   // 设置窗口标题（根据 ProjectInterface V2 协议）
@@ -1198,25 +1170,7 @@ function App() {
         } else if (isDebugVersion(result.interface.version)) {
           log.info(`非正式版本 (${result.interface.version})，跳过自动更新检查`);
         } else {
-          const appState = useAppStore.getState();
-          try {
-            const updateResult = await checkAndPrepareDownload({
-              resourceId: result.interface.mirrorchyan_rid,
-              currentVersion: result.interface.version,
-              cdk: appState.mirrorChyanSettings.cdk || undefined,
-              channel: appState.mirrorChyanSettings.channel,
-              userAgent: 'MXU',
-              githubUrl: result.interface.github,
-              githubPat: appState.mirrorChyanSettings.githubPat || undefined,
-              proxyUrl: appState.proxySettings?.url,
-              projectName: result.interface.name,
-            });
-            if (updateResult) {
-              handleAutoUpdateCheckResult(updateResult);
-            }
-          } catch (err) {
-            log.warn('自动检查更新失败:', err);
-          }
+          await checkForAutoUpdate(result.interface);
         }
       }
 
