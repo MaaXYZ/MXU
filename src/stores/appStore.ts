@@ -1507,6 +1507,7 @@ export const useAppStore = create<AppState>()(
         confirmBeforeDelete: config.settings.confirmBeforeDelete ?? false,
         maxLogsPerInstance: config.settings.maxLogsPerInstance ?? DEFAULT_MAX_LOGS_PER_INSTANCE,
         autoClearLogsOnLaunch: config.settings.autoClearLogsOnLaunch ?? false,
+        autoDownloadUpdates: config.settings.autoDownloadUpdates !== false,
         scheduledUpdateCheckEnabled: config.settings.scheduledUpdateCheckEnabled === true,
         scheduledUpdateCheckTime: normalizeScheduledUpdateCheckTime(
           config.settings.scheduledUpdateCheckTime,
@@ -2032,6 +2033,10 @@ export const useAppStore = create<AppState>()(
         mirrorChyanSettings: { ...state.mirrorChyanSettings, channel },
       })),
 
+    // 自动下载更新
+    autoDownloadUpdates: true,
+    setAutoDownloadUpdates: (enabled) => set({ autoDownloadUpdates: enabled }),
+
     // 定时检查更新
     scheduledUpdateCheckEnabled: false,
     scheduledUpdateCheckTime: defaultScheduledUpdateCheckTime,
@@ -2512,6 +2517,7 @@ function generateConfig(): MxuConfig {
           confirmBeforeDelete: state.confirmBeforeDelete,
           maxLogsPerInstance: state.maxLogsPerInstance,
           autoClearLogsOnLaunch: state.autoClearLogsOnLaunch,
+          autoDownloadUpdates: state.autoDownloadUpdates,
           scheduledUpdateCheckEnabled: state.scheduledUpdateCheckEnabled,
           scheduledUpdateCheckTime: state.scheduledUpdateCheckTime,
           helpImproveSoftware: state.helpImproveSoftware,
@@ -2608,6 +2614,7 @@ useAppStore.subscribe(
     confirmBeforeDelete: state.confirmBeforeDelete,
     maxLogsPerInstance: state.maxLogsPerInstance,
     autoClearLogsOnLaunch: state.autoClearLogsOnLaunch,
+    autoDownloadUpdates: state.autoDownloadUpdates,
     helpImproveSoftware: state.helpImproveSoftware,
     mirrorChyanSettings: state.mirrorChyanSettings,
     scheduledUpdateCheckEnabled: state.scheduledUpdateCheckEnabled,

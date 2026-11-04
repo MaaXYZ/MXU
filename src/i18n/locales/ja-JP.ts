@@ -49,6 +49,9 @@ export default {
     appearance: '外観',
     hotkeys: 'ショートカットキー',
     general: '一般',
+    autoDownloadUpdates: '更新を自動でダウンロード',
+    autoDownloadUpdatesHint:
+      'オフでも新しいバージョンの確認と通知は行われ、手動でダウンロードできます。',
     scheduledUpdateCheck: '更新の定時確認',
     scheduledUpdateCheckTime: '毎日の確認時刻（現地時間）',
     taskSettings: 'タスク設定',

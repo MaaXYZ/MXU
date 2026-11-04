@@ -383,6 +383,10 @@ export interface AppState {
   setMirrorChyanCdk: (cdk: string) => void;
   setMirrorChyanChannel: (channel: UpdateChannel) => void;
 
+  // 自动下载更新
+  autoDownloadUpdates: boolean;
+  setAutoDownloadUpdates: (enabled: boolean) => void;
+
   // 定时检查更新
   scheduledUpdateCheckEnabled: boolean;
   scheduledUpdateCheckTime: string;

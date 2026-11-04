@@ -44,6 +44,8 @@ export function UpdateSection() {
     mirrorChyanSettings,
     setMirrorChyanCdk,
     setMirrorChyanChannel,
+    autoDownloadUpdates,
+    setAutoDownloadUpdates,
     scheduledUpdateCheckEnabled,
     scheduledUpdateCheckTime,
     setScheduledUpdateCheckEnabled,
@@ -236,6 +238,15 @@ export function UpdateSection() {
 
           if (result) {
             setUpdateInfo(result);
+            // 切换正在进行的下载时继续；否则遵守最新的自动下载偏好。
+            if (
+              result.hasUpdate &&
+              result.downloadUrl &&
+              !isDownloadingFromGitHub &&
+              !useAppStore.getState().autoDownloadUpdates
+            ) {
+              return;
+            }
             if (result.hasUpdate && result.downloadUrl && result.downloadSource === 'mirrorchyan') {
               addDebugLog(`已切换到 Mirror酱 下载: ${result.versionName}`);
               await startDownload(result);
@@ -350,7 +361,9 @@ export function UpdateSection() {
             addDebugLog(
               `下载来源: ${result.downloadSource === 'github' ? 'GitHub' : 'Mirror酱 CDN'}`,
             );
-            startDownload(result);
+            if (useAppStore.getState().autoDownloadUpdates) {
+              startDownload(result);
+            }
           } else {
             addDebugLog('无可用下载链接');
           }
@@ -420,6 +433,19 @@ export function UpdateSection() {
                   {t('mirrorChyan.channelBeta')}
                 </button>
               </div>
+            </div>
+
+            {/* 自动下载更新 */}
+            <div className="pt-4 border-t border-border flex items-center justify-between gap-3">
+              <div>
+                <div className="font-medium text-text-primary">
+                  {t('settings.autoDownloadUpdates')}
+                </div>
+                <p className="mt-1 text-xs text-text-muted">
+                  {t('settings.autoDownloadUpdatesHint')}
+                </p>
+              </div>
+              <SwitchButton value={autoDownloadUpdates} onChange={setAutoDownloadUpdates} />
             </div>
 
             {/* 定时检查更新 */}
@@ -652,12 +678,15 @@ export function UpdateSection() {
                     />
                   )}
 
-                  {/* 等待下载 */}
+                  {/* 有链接时允许用户明确开始下载 */}
                   {updateInfo.downloadUrl && downloadStatus === 'idle' && (
-                    <div className="flex items-center gap-2 text-xs text-text-muted">
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>{t('mirrorChyan.preparingDownload')}</span>
-                    </div>
+                    <button
+                      onClick={() => startDownload()}
+                      className="flex items-center gap-2 px-3 py-2 text-sm bg-accent text-white hover:bg-accent-hover rounded-lg transition-colors"
+                    >
+                      <Download className="w-4 h-4" />
+                      {t('mirrorChyan.downloadNow')}
+                    </button>
                   )}
                 </div>
               )}

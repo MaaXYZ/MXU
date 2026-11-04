@@ -49,6 +49,8 @@ export default {
     appearance: '外觀',
     hotkeys: '快捷鍵',
     general: '一般',
+    autoDownloadUpdates: '自動下載更新',
+    autoDownloadUpdatesHint: '關閉後仍會檢查並提示新版本，可手動下載。',
     scheduledUpdateCheck: '定時檢查更新',
     scheduledUpdateCheckTime: '每日檢查時間（本地時間）',
     taskSettings: '任務設定',

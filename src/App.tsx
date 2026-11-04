@@ -460,7 +460,14 @@ function App() {
   // 自动下载函数
   const startAutoDownload = useCallback(
     async (updateResult: NonNullable<Awaited<ReturnType<typeof checkAndPrepareDownload>>>) => {
-      if (!updateResult.downloadUrl || downloadStartedRef.current) return;
+      // 在检查完成后读取最新偏好，检查期间关闭开关也不应开始下载。
+      if (
+        !useAppStore.getState().autoDownloadUpdates ||
+        !updateResult.downloadUrl ||
+        downloadStartedRef.current
+      ) {
+        return;
+      }
 
       downloadStartedRef.current = true;
       setDownloadStatus('downloading');
@@ -752,8 +759,9 @@ function App() {
       if (config.instances.length > 0) {
         importConfig(config);
       } else {
-        // 无实例时单独恢复定时检查偏好
+        // 无实例时单独恢复更新偏好
         const state = useAppStore.getState();
+        state.setAutoDownloadUpdates(config.settings.autoDownloadUpdates !== false);
         state.setScheduledUpdateCheckEnabled(config.settings.scheduledUpdateCheckEnabled === true);
         state.setScheduledUpdateCheckTime(
           config.settings.scheduledUpdateCheckTime ?? defaultScheduledUpdateCheckTime,

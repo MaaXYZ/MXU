@@ -50,6 +50,8 @@ export default {
     appearance: '外观',
     hotkeys: '快捷键',
     general: '通用',
+    autoDownloadUpdates: '自动下载更新',
+    autoDownloadUpdatesHint: '关闭后仍会检查并提示新版本，可手动下载。',
     scheduledUpdateCheck: '定时检查更新',
     scheduledUpdateCheckTime: '每日检查时间（本地时间）',
     taskSettings: '任务设置',

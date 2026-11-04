@@ -50,6 +50,9 @@ export default {
     appearance: 'Appearance',
     hotkeys: 'Hotkeys',
     general: 'General',
+    autoDownloadUpdates: 'Download updates automatically',
+    autoDownloadUpdatesHint:
+      'When off, new versions are still checked and announced. You can download them manually.',
     scheduledUpdateCheck: 'Scheduled Update Checks',
     scheduledUpdateCheckTime: 'Daily Check Time (Local Time)',
     taskSettings: 'Task Settings',

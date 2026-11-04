@@ -1,14 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  X,
-  Download,
-  ChevronRight,
-  Maximize2,
-  AlertCircle,
-  RefreshCw,
-  AlertTriangle,
-} from 'lucide-react';
+import { X, Download, ChevronRight, Maximize2, AlertCircle, AlertTriangle } from 'lucide-react';
 import { useAppStore, type DownloadProgress } from '@/stores/appStore';
 import { simpleMarkdownToHtml } from '@/services/contentResolver';
 import {
@@ -362,12 +354,15 @@ export function UpdatePanel({ onClose, anchorRef }: UpdatePanelProps) {
             />
           )}
 
-          {/* 等待下载（有链接但未开始） */}
+          {/* 有链接时允许用户明确开始下载 */}
           {updateInfo.downloadUrl && downloadStatus === 'idle' && (
-            <div className="flex items-center gap-2 text-xs text-text-muted">
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              <span>{t('mirrorChyan.preparingDownload')}</span>
-            </div>
+            <button
+              onClick={() => startDownload()}
+              className="flex items-center gap-2 px-3 py-2 text-sm bg-accent text-white hover:bg-accent-hover rounded-lg transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              {t('mirrorChyan.downloadNow')}
+            </button>
           )}
         </div>
       </div>
