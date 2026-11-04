@@ -128,7 +128,22 @@ function collectPretaskOptionValues(
   const optionValue = sanitizedValue || createDefaultOptionValue(optionDef);
 
   if (optionValue.type === 'checkbox') {
-    result[optionKey] = [...optionValue.caseNames];
+    const selected = new Set(optionValue.caseNames);
+    const cases =
+      'cases' in optionDef ? optionDef.cases.filter((item) => selected.has(item.name)) : [];
+    result[optionKey] = cases.map((item) => item.name);
+    for (const item of cases) {
+      for (const nestedKey of item.option ?? []) {
+        collectPretaskOptionValues(
+          nestedKey,
+          optionValues,
+          allOptions,
+          result,
+          controllerName,
+          resourceName,
+        );
+      }
+    }
     return;
   }
 

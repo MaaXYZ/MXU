@@ -594,6 +594,8 @@ fn do_init(config: &TelemetryInitConfig) {
     FAILURE_WORKERS_CLOSING.store(false, Ordering::SeqCst);
 
     let options = sentry::ClientOptions::new()
+        .before_send(super::log_secrets::redact_serializable)
+        .before_send_log(super::log_secrets::redact_serializable)
         .dsn(&config.dsn)
         .release(config.release.clone())
         .environment(config.environment.clone())
@@ -1741,7 +1743,9 @@ fn build_diagnostic_log_records(
     }
 
     let timestamp = SystemTime::now();
-    let chunks = serialized_log_chunks(&source.content, &attributes, context.trace_id, timestamp);
+    // Redact before splitting: a password spanning chunk boundaries must not leak as fragments.
+    let content = super::log_secrets::redact(&source.content);
+    let chunks = serialized_log_chunks(&content, &attributes, context.trace_id, timestamp);
     let chunk_count = chunks.len() as u64;
     chunks
         .into_iter()
@@ -2113,6 +2117,38 @@ mod tests {
         assert!(linked_event_ids
             .iter()
             .all(|linked| linked == &expected_event_id));
+    }
+
+    #[test]
+    fn diagnostic_password_is_redacted_before_log_chunking() {
+        let secret = "unique-chunk-password-".repeat(1024);
+        super::super::log_secrets::register(&[secret.clone()]);
+        let source = task_diagnostics::DiagnosticLog {
+            source: "maafw.log".to_string(),
+            kind: "maafw",
+            raw_bytes: secret.len() as u64,
+            content: format!("before{secret}after"),
+        };
+        let records = build_diagnostic_log_records(
+            &source,
+            DiagnosticLogContext {
+                event_id: "00000000000000000000000000000000",
+                run_id: "run-redaction",
+                maa_task_id: 42,
+                task_name: "DailyTask",
+                failure_node: "EnterBattle",
+                failure_stage: "recognition",
+                trace_id: None,
+                span_id: None,
+            },
+        );
+        assert_eq!(
+            records
+                .iter()
+                .map(|record| record.body.as_str())
+                .collect::<String>(),
+            "before******after"
+        );
     }
 
     #[test]

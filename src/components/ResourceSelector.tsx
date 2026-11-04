@@ -1,3 +1,4 @@
+import { PiIcon, PiDescription } from './PiContent';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FolderOpen, Check, ChevronDown, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
@@ -355,6 +356,7 @@ export function ResourceSelector({
                       {isIncompatible && (
                         <AlertCircle className="w-3.5 h-3.5 text-warning flex-shrink-0" />
                       )}
+                      <PiIcon icon={resource.icon} />
                       <span className="truncate">{getResourceDisplayName(resource)}</span>
                     </div>
                     {/* 描述或不兼容提示 */}
@@ -363,7 +365,7 @@ export function ResourceSelector({
                     ) : (
                       resource.description && (
                         <div className="text-xs text-text-muted truncate">
-                          {resolveI18nText(resource.description, translations)}
+                          <PiDescription source={resource.description} />
                         </div>
                       )
                     )}
