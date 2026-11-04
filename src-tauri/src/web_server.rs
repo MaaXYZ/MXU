@@ -836,8 +836,9 @@ async fn handle_connect_controller(
     ensure_instance_exists(&state.maa_state, &instance_id);
 
     let app_handle = state.app_handle.clone();
+    let callback_instance_id = instance_id.clone();
     let on_event = Arc::new(move |msg: &str, detail: &str| {
-        emit_callback_event(&app_handle, msg, detail);
+        emit_callback_event(&app_handle, &callback_instance_id, msg, detail);
     });
 
     match connect_controller_impl(state.maa_state, instance_id.clone(), config, on_event).await {
@@ -878,9 +879,10 @@ async fn handle_load_resource(
     };
 
     let app_handle = state.app_handle.clone();
+    let callback_instance_id = instance_id.clone();
     let on_event: Arc<dyn Fn(&str, &str) + Send + Sync + 'static> =
         Arc::new(move |msg: &str, detail: &str| {
-            emit_callback_event(&app_handle, msg, detail);
+            emit_callback_event(&app_handle, &callback_instance_id, msg, detail);
         });
 
     match load_resource_impl(

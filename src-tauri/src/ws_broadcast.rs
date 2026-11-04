@@ -14,7 +14,11 @@ use tokio::sync::broadcast;
 pub enum WsEvent {
     /// Maa 框架回调（对应 Tauri `maa-callback` 事件）
     #[serde(rename = "maa-callback")]
-    MaaCallback { message: String, details: String },
+    MaaCallback {
+        instance_id: String,
+        message: String,
+        details: String,
+    },
 
     /// Agent 子进程输出（对应 Tauri `maa-agent-output` 事件）
     #[serde(rename = "maa-agent-output")]
@@ -57,5 +61,27 @@ impl WsBroadcast {
     pub fn send(&self, event: WsEvent) {
         // 没有活跃订阅者时 send 返回 Err(SendError)，这是正常情况，忽略即可
         let _ = self.sender.send(event);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WsEvent;
+
+    #[test]
+    fn websocket_callback_payload_preserves_instance_source() {
+        let event = WsEvent::MaaCallback {
+            instance_id: "adb-b".to_string(),
+            message: "Node.Action.Succeeded".to_string(),
+            details: r#"{"focus":{"Node.Action.Succeeded":"done"}}"#.to_string(),
+        };
+        let wire = serde_json::to_value(event).unwrap();
+        assert_eq!(wire["type"], "maa-callback");
+        assert_eq!(wire["payload"]["instance_id"], "adb-b");
+        assert_eq!(wire["payload"]["message"], "Node.Action.Succeeded");
+        assert_eq!(
+            wire["payload"]["details"],
+            r#"{"focus":{"Node.Action.Succeeded":"done"}}"#
+        );
     }
 }

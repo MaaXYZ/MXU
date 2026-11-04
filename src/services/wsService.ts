@@ -15,6 +15,7 @@ const log = createLogger('wsService');
 // ============================================================================
 
 export interface WsMaaCallbackPayload {
+  instance_id?: string | null;
   message: string;
   details: string;
 }
@@ -35,7 +36,7 @@ export type WsMessage =
 // 订阅者类型
 // ============================================================================
 
-type MaaCallbackHandler = (message: string, details: string) => void;
+type MaaCallbackHandler = (message: string, details: string, instanceId?: string | null) => void;
 type AgentOutputHandler = (instanceId: string, stream: string, line: string) => void;
 type ConfigChangedHandler = () => void;
 type StateChangedHandler = (instanceId: string, kind: string) => void;
@@ -168,7 +169,9 @@ function onMessage(event: MessageEvent) {
 
   switch (msg.type) {
     case 'maa-callback':
-      maaCallbackHandlers.forEach((h) => h(msg.payload.message, msg.payload.details));
+      maaCallbackHandlers.forEach((h) =>
+        h(msg.payload.message, msg.payload.details, msg.payload.instance_id),
+      );
       break;
     case 'maa-agent-output':
       agentOutputHandlers.forEach((h) =>

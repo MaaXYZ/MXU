@@ -623,7 +623,7 @@ pub async fn start_tasks_impl(
                     detail,
                 );
                 // 再转发原始回调到前端
-                emit_callback_event(&app_handle, msg, detail);
+                emit_callback_event(&app_handle, &inst_id_for_sink, msg, detail);
             })
             .map_err(|e| e.to_string())?;
             debug!("[start_tasks] Tasker sink added");
@@ -635,7 +635,7 @@ pub async fn start_tasks_impl(
             t.add_context_sink(move |msg, detail| {
                 // 遥测：把失败节点挂到任务 Span 下，形成失败链路
                 super::telemetry::on_node_event(&inst_id_for_ctx_sink, msg, detail);
-                emit_callback_event(&app_handle, msg, detail);
+                emit_callback_event(&app_handle, &inst_id_for_ctx_sink, msg, detail);
             })
             .map_err(|e| e.to_string())?;
             debug!("[start_tasks] Tasker context sink added");

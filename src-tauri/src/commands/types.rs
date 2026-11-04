@@ -5,7 +5,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::process::Child;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
@@ -148,7 +148,85 @@ pub enum ControllerConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::ControllerConfig;
+    use super::{ControllerConfig, ControllerEventSubscribers, MaaCallbackEvent};
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn shared_controller_callbacks_follow_subscription_lifecycle() {
+        let subscribers = ControllerEventSubscribers::default();
+        let received = Arc::new(Mutex::new(Vec::new()));
+        for instance_id in ["adb-a", "adb-b"] {
+            let received = Arc::clone(&received);
+            subscribers.subscribe(
+                instance_id,
+                Arc::new(move |message, details| {
+                    received.lock().unwrap().push((
+                        instance_id,
+                        message.to_string(),
+                        details.to_string(),
+                    ));
+                }),
+            );
+        }
+        subscribers.emit("Controller.Action.Succeeded", r#"{"ctrl_id":1}"#);
+        let mut first = received.lock().unwrap().drain(..).collect::<Vec<_>>();
+        first.sort();
+        assert_eq!(
+            first.iter().map(|event| event.0).collect::<Vec<_>>(),
+            ["adb-a", "adb-b"]
+        );
+        assert!(
+            first
+                .iter()
+                .all(|event| event.1 == "Controller.Action.Succeeded"
+                    && event.2 == r#"{"ctrl_id":1}"#)
+        );
+
+        // A switched controllers (or was destroyed); the shared handle still belongs to B.
+        subscribers.unsubscribe("adb-a");
+        subscribers.emit("Controller.Action.Failed", "{}");
+        assert_eq!(
+            *received.lock().unwrap(),
+            [(
+                "adb-b",
+                "Controller.Action.Failed".to_string(),
+                "{}".to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn controller_subscriber_can_unsubscribe_during_callback() {
+        let subscribers = Arc::new(ControllerEventSubscribers::default());
+        let weak_subscribers = Arc::downgrade(&subscribers);
+        let calls = Arc::new(Mutex::new(0));
+        let callback_calls = Arc::clone(&calls);
+        subscribers.subscribe(
+            "adb-a",
+            Arc::new(move |_, _| {
+                *callback_calls.lock().unwrap() += 1;
+                weak_subscribers.upgrade().unwrap().unsubscribe("adb-a");
+            }),
+        );
+        subscribers.emit("Controller.Action.Succeeded", "{}");
+        subscribers.emit("Controller.Action.Succeeded", "{}");
+        assert_eq!(*calls.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn tauri_callback_payload_preserves_instance_source() {
+        let event = MaaCallbackEvent {
+            instance_id: "adb-a".to_string(),
+            message: "Tasker.Task.Succeeded".to_string(),
+            details: r#"{"task_id":42}"#.to_string(),
+        };
+        let wire = serde_json::to_value(&event).unwrap();
+        assert_eq!(wire["instance_id"], "adb-a");
+        let decoded: MaaCallbackEvent = serde_json::from_value(wire).unwrap();
+        assert_eq!(decoded.instance_id, event.instance_id);
+        assert_eq!(decoded.message, event.message);
+        assert_eq!(decoded.details, event.details);
+    }
 
     #[test]
     fn deserializes_macos_controller_config_with_default_display_short_side() {
@@ -232,6 +310,8 @@ pub struct AllInstanceStates {
 pub struct InstanceRuntime {
     pub resource: Option<Resource>,
     pub controller: Option<Controller>,
+    /// 此实例订阅的控制器事件。独立保存句柄，以便池条目替换后仍能解除旧订阅。
+    pub controller_subscribers: Option<Arc<ControllerEventSubscribers>>,
     /// 当前控制器的配置（用于 ControllerPool 引用管理）
     pub controller_config: Option<ControllerConfig>,
     pub tasker: Option<Tasker>,
@@ -334,6 +414,41 @@ impl LogBuffer {
     }
 }
 
+/// ControllerPool 的回调订阅按实例维护，避免复用控制器后仍只通知最初的实例。
+pub type ControllerEventCallback = Arc<dyn Fn(&str, &str) + Send + Sync + 'static>;
+
+#[derive(Default)]
+pub struct ControllerEventSubscribers {
+    callbacks: Mutex<HashMap<String, ControllerEventCallback>>,
+}
+
+impl ControllerEventSubscribers {
+    pub fn subscribe(&self, instance_id: &str, callback: ControllerEventCallback) {
+        self.callbacks
+            .lock()
+            .unwrap()
+            .insert(instance_id.to_string(), callback);
+    }
+
+    pub fn unsubscribe(&self, instance_id: &str) {
+        self.callbacks.lock().unwrap().remove(instance_id);
+    }
+
+    pub fn emit(&self, message: &str, details: &str) {
+        // 先取快照、再释放锁。订阅者可以在回调中更新订阅，不阻塞池的生命周期操作。
+        let callbacks: Vec<_> = self.callbacks.lock().unwrap().values().cloned().collect();
+        for callback in callbacks {
+            callback(message, details);
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ControllerPoolEntry {
+    pub controller: Controller,
+    pub subscribers: Arc<ControllerEventSubscribers>,
+}
+
 /// MaaFramework 运行时状态
 #[derive(Default)]
 pub struct MaaState {
@@ -343,7 +458,7 @@ pub struct MaaState {
     /// 前置程序停止请求（用于中断等待退出）
     pub pre_action_stop_requests: Mutex<HashSet<String>>,
     /// Controller 连接池：相同配置的 Controller 复用同一个 MaaControllerHandle
-    pub controller_pool: Mutex<HashMap<ControllerConfig, Controller>>,
+    pub controller_pool: Mutex<HashMap<ControllerConfig, ControllerPoolEntry>>,
     /// 缓存的 ADB 设备列表（全局共享，避免重复搜索）
     pub cached_adb_devices: Mutex<Vec<AdbDevice>>,
     /// 缓存的 Win32 窗口列表（全局共享）
@@ -385,6 +500,7 @@ impl MaaState {
 /// Maa回调事件
 #[derive(Clone, Serialize, Deserialize)]
 pub struct MaaCallbackEvent {
+    pub instance_id: String,
     pub message: String,
     pub details: String,
 }

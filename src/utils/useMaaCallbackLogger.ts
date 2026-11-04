@@ -20,6 +20,7 @@ import {
   markdownToHtmlWithLocalImages,
 } from '@/services/contentResolver';
 import { hasRichTextFeatures } from '@/utils/richText';
+import { getCallbackInstanceId } from '@/utils/maaCallbackRouting';
 import type { FocusTemplate, FocusDisplayChannel } from '@/types/interface';
 
 const log = loggers.app;
@@ -256,17 +257,28 @@ export function useMaaCallbackLogger() {
     // 设置回调监听
     const setupListener = async () => {
       try {
-        const unlisten = await maaService.onCallback((message, details) => {
+        const unlisten = await maaService.onCallback((message, details, sourceInstanceId) => {
           // 组件已卸载则忽略
           if (cancelled) return;
 
-          // 获取当前活动实例 ID
-          const currentActiveId = useAppStore.getState().activeInstanceId;
-          if (!currentActiveId) return;
+          // 事件属于产生它的实例，与用户当前查看哪个标签页无关。
+          const instanceId = getCallbackInstanceId(
+            sourceInstanceId,
+            useAppStore.getState().instances,
+          );
+          if (!instanceId) {
+            // 无来源的全局/旧版事件以及已销毁实例的迟到回调仅用于诊断。
+            log.debug(
+              'Ignoring callback without a live source instance:',
+              message,
+              sourceInstanceId,
+            );
+            return;
+          }
 
-          // 根据消息类型处理
+          // 根据消息类型处理（focus 的异步内容与截图也使用同一来源）
           handleCallback(
-            currentActiveId,
+            instanceId,
             message,
             details as MaaCallbackDetails & Record<string, unknown>,
             t,

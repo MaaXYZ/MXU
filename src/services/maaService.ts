@@ -21,6 +21,7 @@ import { isTauri } from '@/utils/paths';
 import i18n from '@/i18n';
 import { apiDelete, apiGet, apiPost, apiPut, getApiBase } from '@/utils/backendApi';
 import * as wsService from '@/services/wsService';
+import { dispatchMaaCallback, type MaaCallbackHandler } from '@/utils/maaCallbackRouting';
 
 const log = loggers.maa;
 
@@ -81,6 +82,8 @@ async function syncMaaVersionToStore(version: string): Promise<void> {
 
 /** MaaFramework 回调事件载荷 */
 export interface MaaCallbackEvent {
+  /** 来源实例；旧服务端或全局事件可能没有来源，调用方不得回退到活动标签页 */
+  instance_id?: string | null;
   /** 消息类型，如 "Resource.Loading.Succeeded", "Controller.Action.Succeeded", "Tasker.Task.Succeeded" */
   message: string;
   /** 详细数据 JSON 字符串 */
@@ -710,7 +713,7 @@ export const maaService = {
 
   /**
    * 监听 MaaFramework 回调事件
-   * @param callback 回调函数，接收消息类型和详情
+   * @param callback 回调函数，接收消息类型、详情和来源实例 ID
    * @returns 取消监听的函数
    *
    * 常见消息类型：
@@ -720,32 +723,20 @@ export const maaService = {
    * - Node.Recognition.Starting/Succeeded/Failed - 节点识别状态
    * - Node.Action.Starting/Succeeded/Failed - 节点动作状态
    */
-  async onCallback(
-    callback: (message: string, details: MaaCallbackDetails) => void,
-  ): Promise<UnlistenFn> {
+  async onCallback(callback: MaaCallbackHandler): Promise<UnlistenFn> {
     if (!isTauri()) {
       // 浏览器环境：通过 WebSocket 接收 maa-callback 事件
-      return wsService.onMaaCallback((message, details) => {
-        try {
-          const parsedDetails = JSON.parse(details) as MaaCallbackDetails;
-          callback(message, parsedDetails);
-        } catch {
-          log.warn('Failed to parse WS callback details:', details);
-          callback(message, {});
-        }
+      return wsService.onMaaCallback((message, details, instanceId) => {
+        dispatchMaaCallback({ message, details, instance_id: instanceId }, callback, (invalid) => {
+          log.warn('Failed to parse WS callback details:', invalid);
+        });
       });
     }
 
     return await listen<MaaCallbackEvent>('maa-callback', (event) => {
-      const { message, details } = event.payload;
-
-      try {
-        const parsedDetails = JSON.parse(details) as MaaCallbackDetails;
-        callback(message, parsedDetails);
-      } catch {
-        log.warn('Failed to parse callback details:', details);
-        callback(message, {});
-      }
+      dispatchMaaCallback(event.payload, callback, (invalid) => {
+        log.warn('Failed to parse callback details:', invalid);
+      });
     });
   },
 

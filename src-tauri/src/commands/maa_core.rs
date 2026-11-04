@@ -322,23 +322,35 @@ fn update_instance_controller(
     instance_id: &str,
     controller: maa_framework::controller::Controller,
     new_config: super::types::ControllerConfig,
+    subscribers: Arc<super::types::ControllerEventSubscribers>,
 ) -> Result<(), String> {
-    let cleanup_config = {
+    let (cleanup_config, old_subscribers) = {
         let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
         let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;
 
         let old_config = instance.controller_config.clone();
+        let old_subscribers = instance
+            .controller_subscribers
+            .replace(Arc::clone(&subscribers));
         instance.controller = Some(controller);
         instance.controller_config = Some(new_config.clone());
         instance.tasker = None;
 
-        old_config.filter(|old| {
+        let cleanup_config = old_config.filter(|old| {
             *old != new_config
                 && !instances
                     .values()
                     .any(|inst| inst.controller_config.as_ref() == Some(old))
-        })
+        });
+        (cleanup_config, old_subscribers)
     };
+
+    // 直接清理旧实例持有的订阅；旧 pool 条目可能已经被失效/重连替换。
+    if let Some(old_subscribers) = old_subscribers {
+        if !Arc::ptr_eq(&old_subscribers, &subscribers) {
+            old_subscribers.unsubscribe(instance_id);
+        }
+    }
 
     if let Some(old_cfg) = cleanup_config {
         if let Ok(mut pool) = state.controller_pool.lock() {
@@ -741,14 +753,17 @@ pub fn maa_create_instance(state: State<Arc<MaaState>>, instance_id: String) -> 
 pub fn destroy_instance_impl(state: &Arc<MaaState>, instance_id: &str) -> Result<(), String> {
     info!("destroy_instance_impl called, instance_id: {}", instance_id);
 
-    let cleanup_config = {
+    let (cleanup_config, subscribers) = {
         let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
         let old_config = instances
             .get(instance_id)
             .and_then(|inst| inst.controller_config.clone());
-        let removed = instances.remove(instance_id).is_some();
+        let removed = instances.remove(instance_id);
+        let subscribers = removed
+            .as_ref()
+            .and_then(|inst| inst.controller_subscribers.clone());
 
-        if removed {
+        let cleanup_config = if removed.is_some() {
             info!(
                 "destroy_instance_impl success, instance_id: {}",
                 instance_id
@@ -764,8 +779,13 @@ pub fn destroy_instance_impl(state: &Arc<MaaState>, instance_id: &str) -> Result
                 instance_id
             );
             None
-        }
+        };
+        (cleanup_config, subscribers)
     };
+
+    if let Some(subscribers) = subscribers {
+        subscribers.unsubscribe(instance_id);
+    }
 
     // ControllerPool: 清理不再被任何实例使用的条目
     if let Some(cfg) = cleanup_config {
@@ -812,7 +832,9 @@ pub async fn connect_controller_impl(
                 .controller_pool
                 .lock()
                 .map_err(|e| e.to_string())?;
-            pool.get(&config).filter(|c| c.connected()).cloned()
+            pool.get(&config)
+                .filter(|entry| entry.controller.connected())
+                .cloned()
         };
 
         if let Some(pooled_ctrl) = pooled {
@@ -823,7 +845,16 @@ pub async fn connect_controller_impl(
 
             let conn_id = next_synthetic_conn_id();
 
-            update_instance_controller(&state_arc, &instance_id, pooled_ctrl, config)?;
+            update_instance_controller(
+                &state_arc,
+                &instance_id,
+                pooled_ctrl.controller,
+                config,
+                Arc::clone(&pooled_ctrl.subscribers),
+            )?;
+            pooled_ctrl
+                .subscribers
+                .subscribe(&instance_id, on_event.clone());
 
             // 发送合成回调事件，前端无感知
             let details = format!(r#"{{"ctrl_id":{},"action":"Connect"}}"#, conn_id);
@@ -1016,11 +1047,13 @@ pub async fn connect_controller_impl(
             }
         };
 
-        // 注册回调（使用 on_event 抽象，Tauri 命令传入 emit_callback_event，HTTP 处理器传入无操作或 WebSocket 推送）
-        let on_event_clone = on_event.clone();
+        // 共享控制器的事件通知所有当前持有者；每个订阅者保留自己的实例来源。
+        let subscribers = Arc::new(super::types::ControllerEventSubscribers::default());
+        subscribers.subscribe(&instance_id, on_event.clone());
+        let sink_subscribers = Arc::clone(&subscribers);
         controller
             .add_sink(move |msg, detail| {
-                on_event_clone(msg, detail);
+                sink_subscribers.emit(msg, detail);
             })
             .map_err(|e| e.to_string())?;
 
@@ -1064,12 +1097,18 @@ pub async fn connect_controller_impl(
                 .controller_pool
                 .lock()
                 .map_err(|e| e.to_string())?;
-            pool.insert(config.clone(), controller.clone());
+            pool.insert(
+                config.clone(),
+                super::types::ControllerPoolEntry {
+                    controller: controller.clone(),
+                    subscribers: Arc::clone(&subscribers),
+                },
+            );
         }
 
         // 更新实例状态
         debug!("Updating instance state...");
-        update_instance_controller(&state_arc, &instance_id, controller, config)?;
+        update_instance_controller(&state_arc, &instance_id, controller, config, subscribers)?;
 
         Ok(conn_id)
     })
@@ -1132,11 +1171,12 @@ pub async fn maa_connect_controller(
     );
 
     let app_clone = app.clone();
+    let callback_instance_id = instance_id.clone();
     let result = connect_controller_impl(
         state.inner().clone(),
         instance_id.clone(),
         config,
-        Arc::new(move |msg, detail| emit_callback_event(&app, msg, detail)),
+        Arc::new(move |msg, detail| emit_callback_event(&app, &callback_instance_id, msg, detail)),
     )
     .await;
     if result.is_ok() {
@@ -1238,7 +1278,8 @@ pub fn maa_load_resource(
         &paths,
         Arc::new({
             let app = app.clone();
-            move |msg, detail| emit_callback_event(&app, msg, detail)
+            let instance_id = instance_id.clone();
+            move |msg, detail| emit_callback_event(&app, &instance_id, msg, detail)
         }),
         Some(&app),
     )?;
@@ -1347,7 +1388,7 @@ pub fn run_task_impl(
                     msg,
                     detail,
                 );
-                emit_callback_event(&app_for_sink, msg, detail);
+                emit_callback_event(&app_for_sink, &instance_id_for_sink, msg, detail);
             })
             .map_err(|e| e.to_string())?;
 
@@ -1357,7 +1398,12 @@ pub fn run_task_impl(
             .add_context_sink(move |msg, detail| {
                 // 遥测：把失败节点挂到任务 Span 下，形成失败链路
                 super::telemetry::on_node_event(&instance_id_for_context_sink, msg, detail);
-                emit_callback_event(&app_for_context_sink, msg, detail);
+                emit_callback_event(
+                    &app_for_context_sink,
+                    &instance_id_for_context_sink,
+                    msg,
+                    detail,
+                );
             })
             .map_err(|e| e.to_string())?;
 
