@@ -565,6 +565,20 @@ pub async fn start_tasks_impl(
 ) -> Result<Vec<i64>, String> {
     info!("start_tasks_impl called");
 
+    // 上一轮的完成通知与 Agent 注销可能仍在进行；不要让旧注销晚于新注册。
+    let completion = {
+        let instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
+        Arc::clone(
+            &instances
+                .get(&instance_id)
+                .ok_or("Instance not found")?
+                .run_completion,
+        )
+    };
+    let _start_permit = tauri::async_runtime::spawn_blocking(move || completion.acquire_start())
+        .await
+        .map_err(|e| e.to_string())?;
+
     info!("instance_id: {}", instance_id);
     info!("tasks: {:?}", tasks);
     info!("agent_configs: {:?}", agent_configs);
@@ -788,6 +802,7 @@ pub async fn start_tasks_impl(
             state.pending_task_ids.clear();
             state.current_task_index = 0;
         }
+        instance.run_completion.reset();
         for (idx, task) in tasks.iter().enumerate() {
             debug!("[start_tasks] Preparing task {}: entry={}", idx, task.entry);
 
@@ -889,6 +904,17 @@ pub async fn maa_start_tasks(
 pub fn stop_agent_impl(maa_state: &Arc<MaaState>, instance_id: &str) -> Result<(), String> {
     info!("stop_agent_impl called for instance: {}", instance_id);
 
+    let completion = {
+        let instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
+        Arc::clone(
+            &instances
+                .get(instance_id)
+                .ok_or("Instance not found")?
+                .run_completion,
+        )
+    };
+    let _stop_permit = completion.acquire_start();
+
     let (clients, children) = {
         let mut instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
         let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;
@@ -899,9 +925,15 @@ pub fn stop_agent_impl(maa_state: &Arc<MaaState>, instance_id: &str) -> Result<(
         )
     };
 
+    stop_agent_resources(clients, children);
+    Ok(())
+}
+
+/// 清理已从实例取走的本轮 Agent，避免后台清理误取下一轮的 Agent。
+pub(super) fn stop_agent_resources(clients: Vec<AgentClient>, children: Vec<std::process::Child>) {
     if clients.is_empty() && children.is_empty() {
         debug!("[stop_agent] No agents to stop");
-        return Ok(());
+        return;
     }
 
     info!(
@@ -910,15 +942,8 @@ pub fn stop_agent_impl(maa_state: &Arc<MaaState>, instance_id: &str) -> Result<(
         children.len()
     );
 
-    // 同步断开所有 client：确保 custom 反注册在返回前完成，
-    // 避免旧 agent 的反注册晚于新 agent 的注册，误删新 agent 的同名 custom 条目。
-    for client in &clients {
-        let _ = client.disconnect();
-    }
-    drop(clients); // Drop 同步执行 clear_custom_registration()
-
-    // 子进程收尾放到后台：等待自然退出，超时强杀兜底，避免进程泄漏。
-    thread::spawn(move || {
+    // 在 disconnect 前启动看门狗，避免 Agent 收尾卡死时永远阻塞完成通知。
+    let reaper = thread::spawn(move || {
         for (i, mut child) in children.into_iter().enumerate() {
             debug!("Waiting for agent process #{} to exit...", i);
 
@@ -952,7 +977,16 @@ pub fn stop_agent_impl(maa_state: &Arc<MaaState>, instance_id: &str) -> Result<(
         }
     });
 
-    Ok(())
+    // 同步断开所有 client：确保 custom 反注册在返回前完成，
+    // 避免旧 agent 的反注册晚于新 agent 的注册，误删新 agent 的同名 custom 条目。
+    for client in &clients {
+        let _ = client.disconnect();
+    }
+    drop(clients); // Drop 同步执行 clear_custom_registration()
+                   // -q 会在完成通知后退出；先回收本轮子进程，避免退出时丢下后台看门狗。
+    if reaper.join().is_err() {
+        warn!("Agent child reaper panicked");
+    }
 }
 
 /// 停止所有 Agent 并断开连接 — Tauri invoke 入口，委托给 stop_agent_impl

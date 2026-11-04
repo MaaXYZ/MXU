@@ -1313,6 +1313,17 @@ pub fn run_task_impl(
     pipeline_override: &str,
     selected_task_id: Option<&str>,
 ) -> Result<i64, String> {
+    let completion = {
+        let instances = state.instances.lock().map_err(|e| e.to_string())?;
+        Arc::clone(
+            &instances
+                .get(instance_id)
+                .ok_or("Instance not found")?
+                .run_completion,
+        )
+    };
+    let _start_permit = completion.acquire_start();
+
     let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
     let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;
 
@@ -1374,6 +1385,7 @@ pub fn run_task_impl(
         return Err("Tasker not initialized even after rebuild".to_string());
     }
 
+    instance.run_completion.reset();
     let job = tasker
         .post_task(entry, pipeline_override)
         .map_err(|e| e.to_string())?;
@@ -1545,7 +1557,7 @@ pub fn maa_is_running(state: State<Arc<MaaState>>, instance_id: String) -> Resul
     let instances = state.instances.lock().map_err(|e| e.to_string())?;
     let instance = instances.get(&instance_id).ok_or("Instance not found")?;
 
-    Ok(instance.tasker.as_ref().is_some_and(|t| t.running()))
+    Ok(instance.is_running())
 }
 
 // ============================================================================

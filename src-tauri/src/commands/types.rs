@@ -5,7 +5,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::process::Child;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
@@ -211,7 +211,7 @@ pub struct InstanceState {
     pub resource_loaded: bool,
     /// Tasker 是否已初始化
     pub tasker_inited: bool,
-    /// 是否有任务正在运行（通过 MaaTaskerRunning API 查询）
+    /// 是否有任务正在运行或仍在等待本轮 Agent 注销完成
     pub is_running: bool,
     /// 任务运行状态（后端管理，包含逐任务状态、映射、队列）
     pub task_run_state: TaskRunState,
@@ -245,6 +245,17 @@ pub struct InstanceRuntime {
     pub stop_started_at: Option<Instant>,
     /// 任务运行状态（后端管理，单一真相来源）
     pub task_run_state: TaskRunState,
+    /// 本轮任务真正空闲并完成 Agent 注销后才允许开始下一轮。
+    pub run_completion: Arc<super::run_completion::RunCompletion>,
+}
+
+impl InstanceRuntime {
+    /// Tasker idle alone is insufficient while the last callback is handing off
+    /// Agent cleanup. Keep all query channels consistent until cleanup finishes.
+    pub fn is_running(&self) -> bool {
+        self.tasker.as_ref().is_some_and(|tasker| tasker.running())
+            || self.run_completion.is_pending()
+    }
 }
 
 impl Drop for InstanceRuntime {

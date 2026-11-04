@@ -79,6 +79,7 @@ pub fn handle_task_callback(
         None => return,
     };
 
+    let mut completion = None;
     let all_done = {
         let mut instances = match maa_state.instances.lock() {
             Ok(g) => g,
@@ -107,20 +108,27 @@ pub fn handle_task_callback(
             }
 
             // 检查所有已入队任务是否均已完成
-            let all_completed = state.pending_task_ids.iter().all(|id| {
-                state
-                    .mappings
-                    .get(id)
-                    .and_then(|sel_id| state.statuses.get(sel_id))
-                    .map(|s| s == "succeeded" || s == "failed")
-                    .unwrap_or(false)
-            });
+            let all_completed = !state.pending_task_ids.is_empty()
+                && state.pending_task_ids.iter().all(|id| {
+                    state
+                        .mappings
+                        .get(id)
+                        .and_then(|sel_id| state.statuses.get(sel_id))
+                        .map(|s| s == "succeeded" || s == "failed")
+                        .unwrap_or(false)
+                });
 
             if all_completed {
                 let has_failed = state.statuses.values().any(|s| s == "failed");
                 state.overall_status =
                     Some(if has_failed { "Failed" } else { "Succeeded" }.to_string());
                 instance.task_ids.clear();
+                if instance.run_completion.begin() {
+                    completion = Some((
+                        instance.tasker.clone(),
+                        Arc::clone(&instance.run_completion),
+                    ));
+                }
             }
 
             all_completed
@@ -139,16 +147,49 @@ pub fn handle_task_callback(
 
     // 通知前端刷新状态
     emit_state_changed(app, instance_id, "task-progress");
-    if all_done {
-        emit_state_changed(app, instance_id, "tasks-completed");
-
-        // 实例内全部任务结束后清理旧 agent，避免 agent 进程跨轮累积
-        if let Err(e) = super::maa_agent::stop_agent_impl(maa_state, instance_id) {
-            log::warn!(
-                "[handle_task_callback] Failed to stop agents after tasks completed: {}",
-                e
+    if let Some((tasker, completion)) = completion {
+        let maa_state = Arc::clone(maa_state);
+        let app = app.clone();
+        let instance_id = instance_id.to_string();
+        // 回调返回后框架才能进入真正的 idle。不要在框架分发线程同步 disconnect，
+        // 也不要依赖前端 300ms 后恰好能读到 idle 的一次快照。
+        std::thread::spawn(move || {
+            completion.finish_when_idle(
+                || {
+                    tasker.as_ref().is_some_and(|tasker| tasker.running())
+                        || maa_state.instances.lock().ok().is_some_and(|instances| {
+                            instances.get(&instance_id).is_some_and(|instance| {
+                                Arc::ptr_eq(&instance.run_completion, &completion)
+                                    && instance
+                                        .tasker
+                                        .as_ref()
+                                        .is_some_and(|tasker| tasker.running())
+                            })
+                        })
+                },
+                || {
+                    // No startup can acquire its permit while completion is pending.
+                    // Take all Agents only now: a previously admitted append may have
+                    // registered more Agents before submitting its additional tasks.
+                    let agents = maa_state.instances.lock().ok().and_then(|mut instances| {
+                        instances.get_mut(&instance_id).and_then(|instance| {
+                            // A removed/recreated instance with the same ID belongs
+                            // to a different completion coordinator.
+                            Arc::ptr_eq(&instance.run_completion, &completion).then(|| {
+                                (
+                                    std::mem::take(&mut instance.agent_clients),
+                                    std::mem::take(&mut instance.agent_children),
+                                )
+                            })
+                        })
+                    });
+                    if let Some((clients, children)) = agents {
+                        super::maa_agent::stop_agent_resources(clients, children);
+                    }
+                },
+                || emit_state_changed(&app, &instance_id, "tasks-completed"),
             );
-        }
+        });
     }
 }
 

@@ -653,7 +653,7 @@ async fn handle_get_maa_state(State(state): State<WebState>) -> impl IntoRespons
             let mut instance_states: HashMap<String, serde_json::Value> = HashMap::new();
 
             for (id, runtime) in instances.iter_mut() {
-                let is_running = runtime.tasker.as_ref().is_some_and(|t| t.running());
+                let is_running = runtime.is_running();
 
                 // 与 state.rs 的 maa_get_all_states 保持一致：清理停止标志
                 if !is_running && runtime.stop_in_progress {
