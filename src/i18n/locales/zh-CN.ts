@@ -282,6 +282,11 @@ export default {
     loadedFromUrl: '内容来自网络',
     loadDescriptionFailed: '加载失败',
     // 任务运行状态
+    timing: {
+      startedAt: '开始：{{time}}',
+      finishedAt: '结束：{{time}}',
+      duration: '耗时：{{time}}',
+    },
     status: {
       idle: '未执行',
       pending: '等待中',

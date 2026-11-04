@@ -38,7 +38,7 @@ import type {
   SchedulePolicy,
   SelectedTask,
 } from '@/types/interface';
-import type { ConnectionStatus, TaskStatus } from '@/types/maa';
+import type { ConnectionStatus, TaskStatus, TaskRunTiming } from '@/types/maa';
 import { getMxuSpecialTask, isMxuSpecialTask, MXU_SPECIAL_TASKS } from '@/types/specialTasks';
 import {
   getPretaskItems,
@@ -1879,6 +1879,7 @@ export const useAppStore = create<AppState>()(
         const resourceLoaded: Record<string, boolean> = {};
         const taskStatus: Record<string, TaskStatus | null> = {};
         const instanceTaskRunStatus: Record<string, Record<string, TaskRunStatus>> = {};
+        const instanceTaskTimings: Record<string, Record<string, TaskRunTiming>> = {};
         const maaTaskIdMapping: Record<string, Record<number, string>> = {};
         const instancePendingTaskIds: Record<string, number[]> = {};
         const instanceCurrentTaskIndex: Record<string, number> = {};
@@ -1906,6 +1907,7 @@ export const useAppStore = create<AppState>()(
               statuses[k] = v as TaskRunStatus;
             }
             instanceTaskRunStatus[instanceId] = statuses;
+            instanceTaskTimings[instanceId] = trs.timings ?? {};
 
             // 转换 mappings（string keys -> number keys）
             const mappings: Record<number, string> = {};
@@ -1939,6 +1941,7 @@ export const useAppStore = create<AppState>()(
           instanceResourceLoaded: resourceLoaded,
           instanceTaskStatus: taskStatus,
           instanceTaskRunStatus,
+          instanceTaskTimings,
           maaTaskIdMapping,
           instancePendingTaskIds,
           instanceCurrentTaskIndex,
@@ -2252,6 +2255,7 @@ export const useAppStore = create<AppState>()(
 
     // 任务运行状态（只读缓存，由 restoreBackendStates 填充）
     instanceTaskRunStatus: {},
+    instanceTaskTimings: {},
     maaTaskIdMapping: {},
     instancePendingTaskIds: {},
     instanceCurrentTaskIndex: {},
@@ -2277,6 +2281,9 @@ export const useAppStore = create<AppState>()(
       set((state) => ({
         instanceTaskRunStatus: Object.fromEntries(
           Object.entries(state.instanceTaskRunStatus).filter(([id]) => id !== instanceId),
+        ),
+        instanceTaskTimings: Object.fromEntries(
+          Object.entries(state.instanceTaskTimings).filter(([id]) => id !== instanceId),
         ),
         maaTaskIdMapping: Object.fromEntries(
           Object.entries(state.maaTaskIdMapping).filter(([id]) => id !== instanceId),

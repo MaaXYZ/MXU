@@ -21,6 +21,7 @@ import { OptionEditor, SwitchGrid, switchHasNestedOptions } from './OptionEditor
 import { ContextMenu, useContextMenu } from './ContextMenu';
 import { Tooltip } from './ui/Tooltip';
 import { ConfirmDialog } from './ConfirmDialog';
+import { TaskTimingBadge } from './TaskTimingBadge';
 import { buildListItemMenuItems, InlineNameEditor } from './listItemShared';
 import { TriStateCheckbox, getTaskCheckboxState } from './ui/TriStateCheckbox';
 import { taskStartService } from '@/services/taskStartService';
@@ -338,6 +339,7 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
     getActiveInstance,
     showOptionPreview,
     instanceTaskRunStatus,
+    instanceTaskTimings,
     instances,
     findMaaTaskIdBySelectedTaskId,
     basePath,
@@ -1029,6 +1031,8 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
             </>
           )}
         </div>
+
+        {!isEditing && <TaskTimingBadge timing={instanceTaskTimings[instanceId]?.[task.id]} />}
 
         {/* 删除按钮 - hover 时显示，运行时隐藏 */}
         {!isEditing && canDelete && (

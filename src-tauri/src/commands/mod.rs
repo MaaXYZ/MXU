@@ -26,6 +26,7 @@ pub mod notification;
 pub mod state;
 pub mod system;
 mod task_diagnostics;
+mod task_timing;
 pub mod telemetry;
 pub mod tray;
 pub mod update;

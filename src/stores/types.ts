@@ -19,6 +19,7 @@ import type {
 import type {
   ConnectionStatus,
   TaskStatus,
+  TaskRunTiming,
   AdbDevice,
   Win32Window,
   GamescopeInstance,
@@ -325,6 +326,7 @@ export interface AppState {
           isRunning: boolean;
           taskRunState: {
             statuses: Record<string, string>;
+            timings?: Record<string, TaskRunTiming>;
             mappings: Record<string, string>;
             pendingTaskIds: number[];
             currentTaskIndex: number;
@@ -510,6 +512,7 @@ export interface AppState {
 
   // 任务运行状态（只读缓存，由 restoreBackendStates 从后端填充）
   instanceTaskRunStatus: Record<string, Record<string, TaskRunStatus>>;
+  instanceTaskTimings: Record<string, Record<string, TaskRunTiming>>;
   maaTaskIdMapping: Record<string, Record<number, string>>;
   instancePendingTaskIds: Record<string, number[]>;
   instanceCurrentTaskIndex: Record<string, number>;

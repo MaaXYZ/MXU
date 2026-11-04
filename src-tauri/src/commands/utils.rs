@@ -96,6 +96,16 @@ pub fn handle_task_callback(
                 state.current_task_index = idx;
             }
             if let Some(selected_id) = state.mappings.get(&task_id).cloned() {
+                // A start delivered after stop must not create a duration for a cancelled queue item.
+                if matches!(
+                    state.statuses.get(&selected_id).map(String::as_str),
+                    Some("pending" | "running")
+                ) {
+                    state
+                        .timings
+                        .entry(selected_id.clone())
+                        .or_insert_with(super::task_timing::TaskTiming::start);
+                }
                 state.statuses.insert(selected_id, "running".to_string());
             }
             false // 未完成
@@ -103,6 +113,9 @@ pub fn handle_task_callback(
             // 任务成功或失败
             let status_str = if is_succeeded { "succeeded" } else { "failed" };
             if let Some(selected_id) = state.mappings.get(&task_id).cloned() {
+                if let Some(timing) = state.timings.get_mut(&selected_id) {
+                    timing.finish();
+                }
                 state.statuses.insert(selected_id, status_str.to_string());
             }
 

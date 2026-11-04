@@ -278,6 +278,11 @@ export default {
     loadedFromUrl: '內容来自網路',
     loadDescriptionFailed: '載入失敗',
     // 任務執行狀態
+    timing: {
+      startedAt: '開始：{{time}}',
+      finishedAt: '結束：{{time}}',
+      duration: '耗時：{{time}}',
+    },
     status: {
       idle: '未執行',
       pending: '等待中',

@@ -283,6 +283,11 @@ export default {
     loadedFromUrl: '네트워크에서 로드됨',
     loadDescriptionFailed: '로딩 실패',
     // 작업 실행 상태
+    timing: {
+      startedAt: '시작: {{time}}',
+      finishedAt: '종료: {{time}}',
+      duration: '소요 시간: {{time}}',
+    },
     status: {
       idle: '미실행',
       pending: '대기 중',

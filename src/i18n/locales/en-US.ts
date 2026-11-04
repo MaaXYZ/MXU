@@ -293,6 +293,11 @@ export default {
     loadedFromUrl: 'Content loaded from URL',
     loadDescriptionFailed: 'Failed to load',
     // Task run status
+    timing: {
+      startedAt: 'Started: {{time}}',
+      finishedAt: 'Finished: {{time}}',
+      duration: 'Duration: {{time}}',
+    },
     status: {
       idle: 'Not started',
       pending: 'Pending',

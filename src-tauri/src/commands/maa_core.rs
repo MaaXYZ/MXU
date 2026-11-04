@@ -1394,6 +1394,7 @@ pub fn run_task_impl(
         task_run_state
             .statuses
             .insert(selected_task_id.to_string(), "pending".to_string());
+        task_run_state.timings.remove(selected_task_id);
         task_run_state.overall_status = Some("Running".to_string());
     }
 
@@ -1483,6 +1484,10 @@ pub fn stop_task_impl(state: &MaaState, instance_id: &str) -> Result<(), String>
     // 将剩余 pending 任务标记为 failed，更新整体状态
     {
         let state = &mut instance.task_run_state;
+        // Only tasks which actually started have a timing. Queued tasks get no duration.
+        for timing in state.timings.values_mut() {
+            timing.finish();
+        }
         for status in state.statuses.values_mut() {
             if status == "pending" || status == "running" {
                 *status = "failed".to_string();

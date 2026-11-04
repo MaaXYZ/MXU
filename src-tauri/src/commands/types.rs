@@ -192,6 +192,9 @@ pub enum TaskStatus {
 pub struct TaskRunState {
     /// selectedTaskId → status ("idle"/"pending"/"running"/"succeeded"/"failed")
     pub statuses: HashMap<String, String>,
+    /// selectedTaskId → 本轮实际执行的开始/结束时间（未开始的任务没有记录）
+    #[serde(default)]
+    pub timings: HashMap<String, super::task_timing::TaskTiming>,
     /// maaTaskId → selectedTaskId
     pub mappings: HashMap<i64, String>,
     /// 任务队列（maaTaskId 列表，执行顺序）

@@ -288,6 +288,11 @@ export default {
     loadedFromUrl: 'ネットワークから読み込み',
     loadDescriptionFailed: '読み込みに失敗しました',
     // タスク実行ステータス
+    timing: {
+      startedAt: '開始：{{time}}',
+      finishedAt: '終了：{{time}}',
+      duration: '所要時間：{{time}}',
+    },
     status: {
       idle: '未実行',
       pending: '待機中',

@@ -10,6 +10,7 @@ import type {
   ControllerConfig,
   ConnectionStatus,
   TaskStatus,
+  TaskRunTiming,
   AgentConfig,
   TaskConfig,
   ControllerTelemetryInfo,
@@ -863,6 +864,7 @@ export const maaService = {
         isRunning: boolean;
         taskRunState: {
           statuses: Record<string, string>;
+          timings: Record<string, TaskRunTiming>;
           mappings: Record<string, string>;
           pendingTaskIds: number[];
           currentTaskIndex: number;
@@ -878,6 +880,10 @@ export const maaService = {
     try {
       type RawTaskRunState = {
         statuses: Record<string, string>;
+        timings?: Record<
+          string,
+          { started_at: number; finished_at: number | null; duration_ms: number | null }
+        >;
         mappings: Record<string, string>;
         pending_task_ids: number[];
         current_task_index: number;
@@ -913,6 +919,7 @@ export const maaService = {
           isRunning: boolean;
           taskRunState: {
             statuses: Record<string, string>;
+            timings: Record<string, TaskRunTiming>;
             mappings: Record<string, string>;
             pendingTaskIds: number[];
             currentTaskIndex: number;
@@ -930,6 +937,16 @@ export const maaService = {
           isRunning: state.is_running,
           taskRunState: {
             statuses: trs.statuses ?? {},
+            timings: Object.fromEntries(
+              Object.entries(trs.timings ?? {}).map(([taskId, timing]) => [
+                taskId,
+                {
+                  startedAt: timing.started_at,
+                  finishedAt: timing.finished_at,
+                  durationMs: timing.duration_ms,
+                },
+              ]),
+            ),
             mappings: trs.mappings ?? {},
             pendingTaskIds: trs.pending_task_ids ?? [],
             currentTaskIndex: trs.current_task_index ?? 0,

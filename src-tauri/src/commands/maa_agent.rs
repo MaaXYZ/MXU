@@ -784,6 +784,7 @@ pub async fn start_tasks_impl(
             instance.task_ids.clear();
             let state = &mut instance.task_run_state;
             state.statuses.clear();
+            state.timings.clear();
             state.mappings.clear();
             state.pending_task_ids.clear();
             state.current_task_index = 0;
@@ -806,6 +807,7 @@ pub async fn start_tasks_impl(
                     if let Some(sel_id) = &task.selected_task_id {
                         state.mappings.insert(job.id, sel_id.clone());
                         state.statuses.insert(sel_id.clone(), "pending".to_string());
+                        state.timings.remove(sel_id);
                     }
                     if let Some(posting) = telemetry_posting.as_mut() {
                         posting.register(

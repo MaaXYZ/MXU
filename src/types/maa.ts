@@ -2,6 +2,13 @@
 
 import { loggers } from '@/utils/logger';
 
+/** A task's current execution, held by the backend and excluded from saved configuration. */
+export interface TaskRunTiming {
+  startedAt: number;
+  finishedAt: number | null;
+  durationMs: number | null;
+}
+
 /** ADB 设备信息 */
 export interface AdbDevice {
   name: string;
