@@ -33,6 +33,7 @@ import { stripInlineRichText } from '@/utils/richText';
 import clsx from 'clsx';
 import { loggers } from '@/utils/logger';
 import { isPasswordInput } from '@/utils/passwordOptionValues';
+import { getStartupSteps } from '@/utils/startupSteps';
 
 /** 选项预览标签组件 */
 function OptionPreviewTag({
@@ -329,6 +330,7 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
     confirmBeforeDelete,
     renameTask,
     duplicateTask,
+    reorderStartupSteps,
     moveTaskUp,
     moveTaskDown,
     moveTaskToTop,
@@ -727,7 +729,9 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
       const instance = getActiveInstance();
       if (!instance) return;
 
-      const tasks = instance.selectedTasks;
+      const tasks = isPretask
+        ? getStartupSteps(instance, projectInterface).map(({ item }) => item)
+        : instance.selectedTasks;
       const taskIndex = tasks.findIndex((t) => t.id === task.id);
 
       const menuItems: MenuItem[] = [
@@ -773,10 +777,22 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
           },
           onToggle: () => toggleTaskEnabled(instanceId, task.id),
           onExpand: () => toggleTaskExpanded(instanceId, task.id),
-          onMoveUp: () => moveTaskUp(instanceId, task.id),
-          onMoveDown: () => moveTaskDown(instanceId, task.id),
-          onMoveToTop: () => moveTaskToTop(instanceId, task.id),
-          onMoveToBottom: () => moveTaskToBottom(instanceId, task.id),
+          onMoveUp: () =>
+            isPretask
+              ? reorderStartupSteps(instanceId, taskIndex, taskIndex - 1)
+              : moveTaskUp(instanceId, task.id),
+          onMoveDown: () =>
+            isPretask
+              ? reorderStartupSteps(instanceId, taskIndex, taskIndex + 1)
+              : moveTaskDown(instanceId, task.id),
+          onMoveToTop: () =>
+            isPretask
+              ? reorderStartupSteps(instanceId, taskIndex, 0)
+              : moveTaskToTop(instanceId, task.id),
+          onMoveToBottom: () =>
+            isPretask
+              ? reorderStartupSteps(instanceId, taskIndex, tasks.length - 1)
+              : moveTaskToBottom(instanceId, task.id),
           onDelete: () => {
             if (!confirmBeforeDelete) {
               removeTaskFromInstance(instanceId, task.id);
@@ -795,6 +811,9 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
       instanceId,
       canExpand,
       getActiveInstance,
+      isPretask,
+      projectInterface,
+      reorderStartupSteps,
       duplicateTask,
       toggleTaskEnabled,
       toggleTaskExpanded,

@@ -61,7 +61,7 @@ export function ActionItem({
     removePreAction,
     renamePreAction,
     duplicatePreAction,
-    reorderPreActions,
+    reorderStartupSteps,
     confirmBeforeDelete,
     backendOS,
   } = useAppStore();
@@ -157,10 +157,10 @@ export function ActionItem({
         },
         onToggle: () => updateAction({ enabled: !currentAction.enabled }),
         onExpand: () => setExpanded(!expanded),
-        onMoveUp: () => reorderPreActions(instanceId, index, index - 1),
-        onMoveDown: () => reorderPreActions(instanceId, index, index + 1),
-        onMoveToTop: () => reorderPreActions(instanceId, index, 0),
-        onMoveToBottom: () => reorderPreActions(instanceId, index, total - 1),
+        onMoveUp: () => reorderStartupSteps(instanceId, index, index - 1),
+        onMoveDown: () => reorderStartupSteps(instanceId, index, index + 1),
+        onMoveToTop: () => reorderStartupSteps(instanceId, index, 0),
+        onMoveToBottom: () => reorderStartupSteps(instanceId, index, total - 1),
         onDelete: handleRemove,
       });
 
@@ -177,7 +177,7 @@ export function ActionItem({
       currentAction.enabled,
       currentAction.customName,
       duplicatePreAction,
-      reorderPreActions,
+      reorderStartupSteps,
       updateAction,
       showMenu,
       handleRemove,

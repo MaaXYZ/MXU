@@ -46,7 +46,8 @@ import {
 } from '@/utils/tabExportImport';
 import { generateId, initializeAllOptionValues, sanitizeOptionValues } from '@/stores/helpers';
 import { decryptPasswordOptionValues } from '@/utils/passwordOptionValues';
-import { isPretaskName } from '@/types/pretasks';
+import { isPretaskName, getPretaskItems, buildPretaskDef } from '@/types/pretasks';
+import { getStartupSteps } from '@/utils/startupSteps';
 import { loggers } from '@/utils/logger';
 import { toast } from 'sonner';
 import clsx from 'clsx';
@@ -126,7 +127,11 @@ function useImportConfigActions(instanceId: string) {
 
       const specialTaskDefs = getAllMxuSpecialTasks().map((t) => t.taskDef);
       const specialTaskOptions = getAllMxuSpecialTasksOptions();
-      const mergedDefs = [...projectInterface.task, ...specialTaskDefs];
+      const mergedDefs = [
+        ...getPretaskItems(projectInterface).map(buildPretaskDef),
+        ...projectInterface.task,
+        ...specialTaskDefs,
+      ];
       const mergedOptions = { ...projectInterface.option, ...specialTaskOptions };
 
       const importedTasks = payload.selectedTasks
@@ -276,7 +281,7 @@ export function TaskList() {
   const {
     getActiveInstance,
     reorderTasks,
-    reorderPreActions,
+    reorderStartupSteps,
     selectAllTasks,
     collapseAllTasks,
     setShowAddTaskPanel,
@@ -339,15 +344,14 @@ export function TaskList() {
     }
   };
 
-  const handlePreActionDragEnd = (event: DragEndEvent) => {
-    if (isInstanceRunning) return;
+  const handleStartupDragEnd = (event: DragEndEvent) => {
+    if (isInstanceRunning || !instance) return;
     const { active, over } = event;
-    if (over && active.id !== over.id && instance?.preActions) {
-      const oldIndex = instance.preActions.findIndex((a) => a.id === active.id);
-      const newIndex = instance.preActions.findIndex((a) => a.id === over.id);
-      if (oldIndex < 0 || newIndex < 0) return;
-      reorderPreActions(instance.id, oldIndex, newIndex);
-    }
+    if (!over || active.id === over.id) return;
+    const steps = getStartupSteps(instance, projectInterface);
+    const from = steps.findIndex(({ item }) => item.id === active.id);
+    const to = steps.findIndex(({ item }) => item.id === over.id);
+    reorderStartupSteps(instance.id, from, to);
   };
 
   // 任务列表区域右键菜单
@@ -491,13 +495,12 @@ export function TaskList() {
   }
 
   const tasks = instance.selectedTasks;
-  // pretask 伪任务作为卡片置于前置程序之上，其余任务保持在下方
-  const pretaskTasks = tasks.filter((t) => isPretaskName(t.taskName));
+  const startupSteps = getStartupSteps(instance, projectInterface);
   const normalTasks = tasks.filter((t) => !isPretaskName(t.taskName));
 
   const preActions = instance.preActions ?? [];
   const showPreActions = preActions.length > 0;
-  const canReorderPreActions = !isInstanceRunning && preActions.length > 1;
+
   const hasPresets =
     (projectInterface?.preset?.length ?? 0) > 0 && !skippedPresetInstanceIds.has(instance.id);
 
@@ -523,6 +526,38 @@ export function TaskList() {
     );
   }
 
+  const startupCards = startupSteps.length > 0 && (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={handleStartupDragEnd}
+      modifiers={[restrictHorizontalMovement]}
+    >
+      <SortableContext
+        items={startupSteps.map(({ item }) => item.id)}
+        strategy={verticalListSortingStrategy}
+      >
+        <div className="space-y-2">
+          {startupSteps.map((step, index) =>
+            step.type === 'pretask' ? (
+              <TaskItem key={step.item.id} instanceId={instance.id} task={step.item} />
+            ) : (
+              <ActionItem
+                key={step.item.id}
+                instanceId={instance.id}
+                action={step.item}
+                disabled={isInstanceRunning}
+                canReorder={!isInstanceRunning && startupSteps.length > 1}
+                index={index}
+                total={startupSteps.length}
+              />
+            ),
+          )}
+        </div>
+      </SortableContext>
+    </DndContext>
+  );
+
   if (tasks.length === 0) {
     return (
       <>
@@ -530,33 +565,7 @@ export function TaskList() {
           className="flex-1 flex flex-col overflow-y-auto p-3 gap-2"
           onContextMenu={handleListContextMenu}
         >
-          {showPreActions && (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handlePreActionDragEnd}
-              modifiers={[restrictHorizontalMovement]}
-            >
-              <SortableContext
-                items={preActions.map((a) => a.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                <div className="space-y-2">
-                  {preActions.map((action, idx) => (
-                    <ActionItem
-                      key={action.id}
-                      instanceId={instance.id}
-                      action={action}
-                      disabled={isInstanceRunning}
-                      canReorder={canReorderPreActions}
-                      index={idx}
-                      total={preActions.length}
-                    />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
-          )}
+          {startupCards}
 
           {hasPresets ? (
             <PresetSelector instanceId={instance.id} />
@@ -585,53 +594,7 @@ export function TaskList() {
         onContextMenu={handleListContextMenu}
       >
         <div className="space-y-2">
-          {/* 前置任务（pretask）卡片：位于前置程序之上 */}
-          {pretaskTasks.length > 0 && (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-              modifiers={[restrictHorizontalMovement]}
-            >
-              <SortableContext
-                items={pretaskTasks.map((t) => t.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                <div className="space-y-2">
-                  {pretaskTasks.map((task) => (
-                    <TaskItem key={task.id} instanceId={instance.id} task={task} />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
-          )}
-
-          {/* 前置动作列表（支持拖拽排序） */}
-          {showPreActions && (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handlePreActionDragEnd}
-              modifiers={[restrictHorizontalMovement]}
-            >
-              <SortableContext
-                items={preActions.map((a) => a.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                {preActions.map((action, idx) => (
-                  <ActionItem
-                    key={action.id}
-                    instanceId={instance.id}
-                    action={action}
-                    disabled={isInstanceRunning}
-                    canReorder={canReorderPreActions}
-                    index={idx}
-                    total={preActions.length}
-                  />
-                ))}
-              </SortableContext>
-            </DndContext>
-          )}
+          {startupCards}
 
           {/* 任务列表 */}
           <DndContext

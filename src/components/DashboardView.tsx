@@ -24,28 +24,15 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useAppStore } from '@/stores/appStore';
+import { taskStartService } from '@/services/taskStartService';
 import { maaService } from '@/services/maaService';
-import { buildTaskOptionSummary } from '@/services/telemetryService';
-import { collectPasswordPlaintextsFromRunnableTasks } from '@/utils/passwordOptionValues';
 import { ContextMenu, useContextMenu, type MenuItem } from './ContextMenu';
 import { FrameRateSelector, getFrameInterval } from './FrameRateSelector';
 import { resolveI18nText } from '@/services/contentResolver';
-import { loggers, generateTaskPipelineOverride } from '@/utils';
-import type { TaskConfig } from '@/types/maa';
-import { normalizeAgentConfigs } from '@/types/interface';
-import type { PretaskItem } from '@/types/interface';
+import { loggers } from '@/utils';
 import { getLinuxDeviceName } from '@/utils/controller';
 import { getInterfaceLangKey } from '@/i18n';
-import { getMxuSpecialTask } from '@/types/specialTasks';
-import { isTaskCompatible } from '@/stores/helpers';
-import { isPretaskName, getPretaskItem, buildPretaskArgs, buildPretaskDef } from '@/types/pretasks';
-import { startGlobalCallbackListener } from '@/components/connection/callbackCache';
 import { stopInstanceTasks } from '@/services/taskStopService';
-import { buildPiEnvVars } from '@/utils/piEnv';
-import {
-  formatCheckboxCountViolation,
-  validateInstanceCheckboxCounts,
-} from '@/utils/checkboxOptionValidation';
 
 const log = loggers.ui;
 
@@ -74,18 +61,7 @@ function InstanceCard({ instanceId, instanceName, isActive, onSelect }: Instance
     instanceResourceLoaded,
     resolveI18nText: storeResolveI18nText,
     // 任务控制相关
-    updateInstance,
-    setInstanceTaskStatus,
-    setInstanceCurrentTaskId,
-    clearScheduleExecution,
-    basePath,
-    registerTaskIdName,
-    registerEntryTaskName,
     screenshotFrameRate,
-    setShowAddTaskPanel,
-    addLog,
-    tcpCompatMode,
-    maaVersion,
   } = useAppStore();
 
   const langKey = getInterfaceLangKey(language);
@@ -118,11 +94,6 @@ function InstanceCard({ instanceId, instanceName, isActive, onSelect }: Instance
   const tasks = instance?.selectedTasks || [];
   const enabledTasks = tasks.filter((t) => t.enabled);
   const canRun = isConnected && isResourceLoaded && enabledTasks.length > 0;
-
-  // 获取当前控制器和资源名（用于 pipeline override 生成）
-  const currentControllerName =
-    selectedController[instanceId] || projectInterface?.controller[0]?.name;
-  const currentResourceName = selectedResource[instanceId] || projectInterface?.resource[0]?.name;
 
   // 获取连接状态信息
   const getStatusInfo = useCallback(() => {
@@ -207,247 +178,32 @@ function InstanceCard({ instanceId, instanceName, isActive, onSelect }: Instance
 
   const runningTaskName = getRunningTaskName();
 
-  // 启动/停止任务
+  // Share ordering, cancellation and auto-connect with toolbar / scheduled starts.
   const handleStartStop = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation();
-
       if (!instance || (!canRun && !isRunning)) return;
-
       if (isRunning) {
-        // 停止任务
+        setIsStopping(true);
         try {
-          log.info(`[${instanceName}] 停止任务...`);
-          setIsStopping(true);
-          const stopped = await stopInstanceTasks(instanceId);
-          if (!stopped) {
-            log.warn(`[${instanceName}] 等待任务停止超时，保留当前运行状态`);
-          }
+          await stopInstanceTasks(instanceId);
         } catch (err) {
-          log.error(`[${instanceName}] 停止任务失败:`, err);
+          log.error('停止任务失败:', err);
         } finally {
           setIsStopping(false);
         }
       } else {
-        // 启动任务
-        if (!canRun) return;
-
         setIsStarting(true);
-
         try {
-          const compatibleEnabledTasks = enabledTasks.filter((task) => {
-            const specialTask = getMxuSpecialTask(task.taskName);
-            const pretask = isPretaskName(task.taskName)
-              ? getPretaskItem(projectInterface, task.taskName)
-              : undefined;
-            const taskDef =
-              specialTask?.taskDef ||
-              (pretask ? buildPretaskDef(pretask) : undefined) ||
-              projectInterface?.task.find((item) => item.name === task.taskName);
-            return isTaskCompatible(taskDef, currentControllerName, currentResourceName);
-          });
-          const checkboxViolations = validateInstanceCheckboxCounts(
-            compatibleEnabledTasks,
-            projectInterface,
-            currentControllerName,
-            currentResourceName,
-            useAppStore.getState().globalOptionValues,
-          );
-          if (checkboxViolations.length > 0) {
-            for (const violation of checkboxViolations) {
-              const message = formatCheckboxCountViolation(
-                violation,
-                compatibleEnabledTasks,
-                projectInterface,
-                translations,
-                t,
-              );
-              log.warn(`[${instanceName}] ${message}`);
-              addLog(instanceId, { type: 'error', message });
-            }
-            setIsStarting(false);
-            return;
-          }
-
-          // v2.7.0: 连接 Controller 前执行 pretask（如游戏设置）
-          // pretask 以伪任务形式存在于任务列表中，此处从已启用任务中筛出。
-          const enabledPretasks = enabledTasks
-            .filter((task) => isPretaskName(task.taskName))
-            .map((task) => ({ task, item: getPretaskItem(projectInterface, task.taskName) }))
-            .filter((p): p is { task: (typeof enabledTasks)[0]; item: PretaskItem } => !!p.item)
-            .filter(({ item }) =>
-              isTaskCompatible(buildPretaskDef(item), currentControllerName, currentResourceName),
-            );
-          for (const { task, item } of enabledPretasks) {
-            const args = buildPretaskArgs(
-              item,
-              task.optionValues ?? {},
-              projectInterface,
-              currentControllerName,
-              currentResourceName,
-            );
-            log.info(`[${instanceName}] 执行预任务:`, item.exec, args);
-            try {
-              const exitCode = await maaService.runPretask(instanceId, item.exec, args, basePath);
-              if (exitCode !== 0) {
-                log.warn(`[${instanceName}] 预任务退出码非零: ${exitCode}`);
-              }
-            } catch (err) {
-              log.error(`[${instanceName}] 预任务执行失败:`, err);
-            }
-          }
-
-          const runnableTasks = enabledTasks
-            .map((selectedTask) => {
-              // pretask 不进入 Tasker 队列，已在连接 Controller 前单独执行
-              if (isPretaskName(selectedTask.taskName)) return null;
-              const specialTask = getMxuSpecialTask(selectedTask.taskName);
-              const taskDef =
-                specialTask?.taskDef ||
-                projectInterface?.task.find((t) => t.name === selectedTask.taskName);
-              if (!taskDef) return null;
-              return {
-                taskName: selectedTask.taskName,
-                selectedTask,
-                taskDef,
-                specialTask,
-              };
-            })
-            .filter((item): item is NonNullable<typeof item> => item !== null);
-
-          log.info(`[${instanceName}] 开始执行任务, 数量: ${runnableTasks.length}`);
-
-          if (runnableTasks.length === 0) {
-            log.warn(`[${instanceName}] 没有可执行的任务`);
-            setIsStarting(false);
-            return;
-          }
-
-          const taskConfigs: TaskConfig[] = runnableTasks.map(
-            ({ selectedTask, taskDef, specialTask }) => {
-              const taskDisplayName =
-                selectedTask.customName ||
-                (specialTask && taskDef.label
-                  ? t(taskDef.label)
-                  : resolveI18nText(taskDef.label, translations)) ||
-                selectedTask.taskName;
-              registerEntryTaskName(taskDef.entry, taskDisplayName);
-
-              return {
-                entry: taskDef.entry,
-                pipeline_override: generateTaskPipelineOverride(
-                  selectedTask,
-                  projectInterface,
-                  currentControllerName,
-                  currentResourceName,
-                  useAppStore.getState().globalOptionValues,
-                ),
-                selected_task_id: selectedTask.id,
-                task_name: taskDef.name,
-                options: buildTaskOptionSummary(
-                  selectedTask,
-                  taskDef.option,
-                  specialTask?.optionDefs ?? projectInterface?.option,
-                ),
-              };
-            },
-          );
-
-          // 准备 Agent 配置（支持单个或多个 Agent）
-          const agentConfigs = normalizeAgentConfigs(projectInterface?.agent);
-
-          // PI v2.5.0: 构建 Agent 子进程环境变量
-          const piEnvs = agentConfigs?.length
-            ? buildPiEnvVars({
-                projectInterface,
-                controllerName: currentControllerName,
-                resourceName: currentResourceName,
-                translations,
-                language,
-                maaVersion,
-              })
-            : undefined;
-
-          updateInstance(instanceId, { isRunning: true });
-          setInstanceTaskStatus(instanceId, 'Running');
-          setShowAddTaskPanel(false);
-
-          // 任务可能在 startTasks 返回前就瞬时结束，先启动全局回调缓存再提交。
-          await startGlobalCallbackListener();
-
-          const startedTaskIds = await maaService.startTasks(
-            instanceId,
-            taskConfigs,
-            agentConfigs,
-            basePath,
-            tcpCompatMode,
-            piEnvs,
-            {
-              name: currentControllerName,
-              type: projectInterface?.controller.find((c) => c.name === currentControllerName)
-                ?.type,
-            },
-            collectPasswordPlaintextsFromRunnableTasks(
-              runnableTasks,
-              useAppStore.getState().globalOptionValues,
-              projectInterface?.option ?? {},
-            ),
-          );
-
-          startedTaskIds.forEach((maaTaskId, index) => {
-            const runnable = runnableTasks[index];
-            if (!runnable) return;
-            const { selectedTask, taskDef, specialTask } = runnable;
-            const taskDisplayName =
-              selectedTask.customName ||
-              (specialTask && taskDef.label
-                ? t(taskDef.label)
-                : resolveI18nText(taskDef.label, translations)) ||
-              selectedTask.taskName;
-            registerTaskIdName(maaTaskId, taskDisplayName);
-          });
-
-          log.info(`[${instanceName}] 任务已提交, task_ids:`, startedTaskIds);
-
-          setIsStarting(false);
+          await taskStartService.start(instance);
         } catch (err) {
-          log.error(`[${instanceName}] 任务启动异常:`, err);
-          const failedAgentConfigs = normalizeAgentConfigs(projectInterface?.agent);
-          if (failedAgentConfigs && failedAgentConfigs.length > 0) {
-            try {
-              await maaService.stopAgent(instanceId);
-            } catch {
-              // 忽略
-            }
-          }
-          updateInstance(instanceId, { isRunning: false });
-          setInstanceTaskStatus(instanceId, 'Failed');
-          setInstanceCurrentTaskId(instanceId, null);
-          clearScheduleExecution(instanceId);
+          log.error('启动任务失败:', err);
+        } finally {
           setIsStarting(false);
         }
       }
     },
-    [
-      instance,
-      instanceId,
-      instanceName,
-      isRunning,
-      canRun,
-      enabledTasks,
-      projectInterface,
-      basePath,
-      updateInstance,
-      setInstanceTaskStatus,
-      setInstanceCurrentTaskId,
-      clearScheduleExecution,
-      registerTaskIdName,
-      registerEntryTaskName,
-      setShowAddTaskPanel,
-      addLog,
-      translations,
-      tcpCompatMode,
-    ],
+    [instance, instanceId, canRun, isRunning],
   );
 
   // 获取最新缓存截图（后端截图循环负责更新缓存，前端无需主动触发 postScreencap）

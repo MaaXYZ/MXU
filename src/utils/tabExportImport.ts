@@ -34,6 +34,7 @@ type WireOptionValue =
 
 interface WireTask {
   i: string; // id
+  so?: number; // startupOrder
   tn: string; // taskName
   cn?: string; // customName
   e: boolean; // enabled
@@ -43,6 +44,7 @@ interface WireTask {
 
 interface WireAction {
   i: string; // id
+  so?: number; // startupOrder
   cn?: string; // customName
   e: boolean; // enabled
   p: string; // program
@@ -93,6 +95,7 @@ function encodeTask(task: SavedTask): WireTask {
     ),
   };
   if (task.customName !== undefined) wire.cn = task.customName;
+  if (task.startupOrder !== undefined) wire.so = task.startupOrder;
   if (task.enabledByController !== undefined) wire.ec = task.enabledByController;
   return wire;
 }
@@ -108,6 +111,7 @@ function encodeAction(action: ActionConfig): WireAction {
     u: action.useCmd,
   };
   if (action.customName !== undefined) wire.cn = action.customName;
+  if (action.startupOrder !== undefined) wire.so = action.startupOrder;
   return wire;
 }
 
@@ -148,6 +152,7 @@ function decodeTask(w: WireTask): SavedTask {
   return {
     id: w.i,
     taskName: w.tn,
+    startupOrder: w.so,
     customName: w.cn,
     enabled: w.e,
     enabledByController: w.ec,
@@ -160,6 +165,7 @@ function decodeTask(w: WireTask): SavedTask {
 function decodeAction(w: WireAction): ActionConfig {
   return {
     id: w.i,
+    startupOrder: w.so,
     customName: w.cn,
     enabled: w.e,
     program: w.p,
@@ -268,6 +274,7 @@ export async function buildTabConfigExportText(
     resourceName: instance.resourceName,
     selectedTasks: instance.selectedTasks.map((t) => ({
       id: t.id,
+      startupOrder: t.startupOrder,
       taskName: t.taskName,
       customName: t.customName,
       enabled: t.enabled,

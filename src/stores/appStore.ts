@@ -52,6 +52,7 @@ import {
 } from '@/utils/passwordOptionValues';
 import { loggers } from '@/utils/logger';
 import { findSwitchCase } from '@/utils/optionHelpers';
+import { reorderStartupSteps } from '@/utils/startupSteps';
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 
@@ -501,6 +502,7 @@ export const useAppStore = create<AppState>()(
             savedDevice: instanceToClose.savedDevice,
             tasks: instanceToClose.selectedTasks.map((t) => ({
               id: t.id,
+              startupOrder: t.startupOrder,
               taskName: t.taskName,
               customName: t.customName,
               enabled: t.enabled,
@@ -766,6 +768,15 @@ export const useAppStore = create<AppState>()(
 
       return newTask.id;
     },
+
+    reorderStartupSteps: (instanceId, from, to) =>
+      set((state) => ({
+        instances: state.instances.map((instance) =>
+          instance.id === instanceId && !instance.isRunning
+            ? reorderStartupSteps(instance, state.projectInterface, from, to)
+            : instance,
+        ),
+      })),
 
     removeTaskFromInstance: (instanceId, taskId) =>
       set((state) => ({
@@ -1325,6 +1336,7 @@ export const useAppStore = create<AppState>()(
             if (isMxuSpecialTask(t.taskName)) {
               return {
                 id: t.id,
+                startupOrder: t.startupOrder,
                 taskName: t.taskName,
                 customName: t.customName,
                 enabled: t.enabled,
@@ -1353,6 +1365,7 @@ export const useAppStore = create<AppState>()(
               };
               return {
                 id: t.id,
+                startupOrder: t.startupOrder,
                 taskName: t.taskName,
                 customName: t.customName,
                 enabled: t.enabled,
@@ -1381,6 +1394,7 @@ export const useAppStore = create<AppState>()(
             };
             return {
               id: t.id,
+              startupOrder: t.startupOrder,
               taskName: t.taskName,
               customName: t.customName,
               enabled: t.enabled,
@@ -2179,6 +2193,7 @@ export const useAppStore = create<AppState>()(
         savedDevice: closedInstance.savedDevice,
         selectedTasks: closedInstance.tasks.map((t) => ({
           id: generateId(),
+          startupOrder: t.startupOrder,
           taskName: t.taskName,
           customName: t.customName,
           enabled: t.enabled,
@@ -2452,6 +2467,7 @@ function generateConfig(): MxuConfig {
       tasks: persistTasks(
         inst.selectedTasks.map((t) => ({
           id: t.id,
+          startupOrder: t.startupOrder,
           taskName: t.taskName,
           customName: t.customName,
           enabled: t.enabled,

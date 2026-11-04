@@ -2,7 +2,7 @@
 // PI V2 v2.7.0 pretask（预任务）支持
 // ----------------------------------------------------------------------------
 // 将项目在 interface.json 中声明的 pretask 映射为“伪任务”，复用现有任务的
-// 勾选/展开/选项渲染机制，作为卡片显示在任务列表顶部。
+// 勾选/展开/选项渲染机制，与前置程序共同组成可排序的启动步骤。
 // pretask 在连接 Controller 之前执行，且不进入 Tasker 执行队列，而是通过
 // run_pretask 直接启动外部程序。
 // ============================================================================
@@ -14,7 +14,6 @@ import type {
   OptionValue,
   OptionDefinition,
 } from './interface';
-import { normalizePretaskConfigs } from './interface';
 import { findSwitchCase } from '@/utils/optionHelpers';
 import { createDefaultOptionValue, sanitizeOptionValue } from '@/stores/helpers';
 import { loggers } from '@/utils/logger';
@@ -22,38 +21,15 @@ import { loggers } from '@/utils/logger';
 /** pretask 伪任务在流程中的入口节点名（pretask 不进 Tasker，仅作占位） */
 export const PRETASK_ENTRY = 'MXU_PRETASK';
 
-/** pretask 伪任务名前缀 */
-export const PRETASK_NAME_PREFIX = '__MXU_PRETASK__';
-
-/** pretask 条目的稳定标识（缺省 name 时回退到 exec） */
-export function pretaskItemId(item: PretaskItem): string {
-  return item.name || item.exec;
-}
-
-/** 由 pretask 条目生成唯一的伪任务名 */
-export function pretaskName(item: PretaskItem): string {
-  return PRETASK_NAME_PREFIX + pretaskItemId(item);
-}
-
-/** 判断某任务名是否为 pretask 伪任务 */
-export function isPretaskName(taskName: string): boolean {
-  return taskName.startsWith(PRETASK_NAME_PREFIX);
-}
-
-/** 获取当前项目声明的全部 pretask 条目 */
-export function getPretaskItems(pi: ProjectInterface | null | undefined): PretaskItem[] {
-  if (!pi) return [];
-  return normalizePretaskConfigs(pi.pretask) || [];
-}
-
-/** 通过伪任务名反查 pretask 条目定义 */
-export function getPretaskItem(
-  pi: ProjectInterface | null | undefined,
-  taskName: string,
-): PretaskItem | undefined {
-  if (!isPretaskName(taskName)) return undefined;
-  return getPretaskItems(pi).find((item) => pretaskName(item) === taskName);
-}
+export {
+  PRETASK_NAME_PREFIX,
+  pretaskItemId,
+  pretaskName,
+  isPretaskName,
+  getPretaskItems,
+  getPretaskItem,
+} from './pretaskIdentity';
+import { pretaskName, isPretaskName, getPretaskItem } from './pretaskIdentity';
 
 /**
  * 由 pretask 条目构造一个供 UI 复用的虚拟 TaskItem。

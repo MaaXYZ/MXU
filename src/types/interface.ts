@@ -341,6 +341,8 @@ export type OptionDefinition =
 // 运行时状态类型
 export interface SelectedTask {
   id: string;
+  /** Shared ordering with preActions; only used for pretask cards. */
+  startupOrder?: number;
   taskName: string;
   customName?: string; // 用户自定义名称
   enabled: boolean;
@@ -407,6 +409,8 @@ export interface SchedulePolicy {
 // pre-action config
 export interface ActionConfig {
   id: string; // 唯一标识（用于排序和识别）
+  /** Shared ordering with pretask cards; absent in legacy configs. */
+  startupOrder?: number;
   customName?: string; // 用户自定义名称
   enabled: boolean; // 是否启用
   program: string; // 程序路径
