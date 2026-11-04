@@ -50,6 +50,8 @@ export default {
     appearance: 'Appearance',
     hotkeys: 'Hotkeys',
     general: 'General',
+    scheduledUpdateCheck: 'Scheduled Update Checks',
+    scheduledUpdateCheckTime: 'Daily Check Time (Local Time)',
     taskSettings: 'Task Settings',
     taskSettingsEmpty: 'No settings available to display',
     language: 'Language',

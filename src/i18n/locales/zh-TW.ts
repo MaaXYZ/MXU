@@ -49,6 +49,8 @@ export default {
     appearance: '外觀',
     hotkeys: '快捷鍵',
     general: '一般',
+    scheduledUpdateCheck: '定時檢查更新',
+    scheduledUpdateCheckTime: '每日檢查時間（本地時間）',
     taskSettings: '任務設定',
     taskSettingsEmpty: '目前沒有可顯示的設定項',
     language: '語言',
