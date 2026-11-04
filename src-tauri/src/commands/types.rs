@@ -148,7 +148,42 @@ pub enum ControllerConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::ControllerConfig;
+    use super::{ControllerConfig, InstanceRuntime};
+
+    #[test]
+    fn idle_submission_clears_cancelled_queue_even_without_an_idle_state_query() {
+        let mut instance = InstanceRuntime::default();
+        instance.stop_in_progress = true;
+        instance.stop_started_at = Some(std::time::Instant::now());
+        // Task 2 was cancelled before it could emit a terminal callback.
+        instance.task_run_state.pending_task_ids = vec![1, 2];
+        instance.task_results.insert(1, false);
+        instance
+            .task_run_state
+            .statuses
+            .insert("old".to_string(), "failed".to_string());
+        let coordinator = std::sync::Arc::clone(&instance.run_completion);
+        let _permit = coordinator.acquire_start();
+        assert!(instance.is_running()); // Startup itself counts as running.
+        instance.prepare_submission().unwrap(); // Must inspect true Tasker idle.
+        assert!(!instance.stop_in_progress);
+        assert!(instance.stop_started_at.is_none());
+        assert!(instance.task_run_state.pending_task_ids.is_empty());
+        assert!(instance.task_results.is_empty());
+        assert_eq!(
+            instance.task_run_state.statuses.get("old").unwrap(),
+            "failed"
+        );
+        instance.task_run_state.pending_task_ids.push(3);
+        instance.task_results.insert(3, true);
+        assert_eq!(
+            super::super::run_completion::task_queue_result(
+                &instance.task_run_state.pending_task_ids,
+                &instance.task_results,
+            ),
+            Some(true)
+        );
+    }
 
     #[test]
     fn deserializes_macos_controller_config_with_default_display_short_side() {
@@ -247,9 +282,32 @@ pub struct InstanceRuntime {
     pub task_run_state: TaskRunState,
     /// 本轮任务真正空闲并完成 Agent 注销后才允许开始下一轮。
     pub run_completion: Arc<super::run_completion::RunCompletion>,
+    /// MaaTaskId → succeeded；不依赖可选的 UI selected_task_id 映射。
+    pub task_results: HashMap<i64, bool>,
 }
 
 impl InstanceRuntime {
+    /// Start a new framework queue after idle, including raw tasks and appends
+    /// admitted only after the previous completion worker finished.
+    pub fn prepare_submission(&mut self) -> Result<(), String> {
+        if self.tasker.as_ref().is_some_and(|tasker| tasker.running()) {
+            if self.stop_in_progress {
+                return Err("Tasker is stopping".to_string());
+            }
+            return Ok(());
+        }
+        self.stop_in_progress = false;
+        self.stop_started_at = None;
+        self.task_ids.clear();
+        self.task_results.clear();
+        self.task_run_state.pending_task_ids.clear();
+        self.task_run_state.mappings.clear();
+        self.task_run_state.current_task_index = 0;
+        // Keep prior selected-task statuses visible; they do not determine when
+        // this new framework queue finishes.
+        Ok(())
+    }
+
     /// Tasker idle alone is insufficient while the last callback is handing off
     /// Agent cleanup. Keep all query channels consistent until cleanup finishes.
     pub fn is_running(&self) -> bool {

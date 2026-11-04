@@ -1,6 +1,16 @@
 //! Coordinate task completion, Agent cleanup and the next submission.
 
+use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex};
+
+/// None while any framework task is pending; otherwise whether all succeeded.
+/// UI-selected task IDs are optional and must not affect queue completion.
+pub fn task_queue_result(task_ids: &[i64], results: &HashMap<i64, bool>) -> Option<bool> {
+    if task_ids.is_empty() || task_ids.iter().any(|id| !results.contains_key(id)) {
+        return None;
+    }
+    Some(task_ids.iter().all(|id| results[id]))
+}
 
 #[derive(Default)]
 struct CompletionState {
@@ -89,7 +99,8 @@ impl RunCompletion {
 
 #[cfg(test)]
 mod tests {
-    use super::RunCompletion;
+    use super::{task_queue_result, RunCompletion};
+    use std::collections::HashMap;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{mpsc, Arc};
     use std::thread;
@@ -199,5 +210,27 @@ mod tests {
             assert!(!completion.begin());
             assert!(!completion.is_pending());
         }
+    }
+
+    #[test]
+    fn framework_terminal_events_finish_queues_without_ui_selected_task_ids() {
+        // Single /tasks/run request with selected_task_id omitted.
+        let mut results = HashMap::new();
+        assert_eq!(task_queue_result(&[41], &results), None);
+        results.insert(41, true);
+        assert_eq!(task_queue_result(&[41], &results), Some(true));
+        results.insert(41, false);
+        assert_eq!(task_queue_result(&[41], &results), Some(false));
+
+        // A bulk request can mix mapped and unmapped tasks. Finishing one must
+        // not hide a still-pending task just because it has no UI status entry.
+        results.clear();
+        results.insert(41, true);
+        assert_eq!(task_queue_result(&[41, 42], &results), None);
+        results.insert(42, false);
+        assert_eq!(task_queue_result(&[41, 42], &results), Some(false));
+        results.insert(42, true);
+        assert_eq!(task_queue_result(&[41, 42], &results), Some(true));
+        assert_eq!(task_queue_result(&[], &results), None);
     }
 }

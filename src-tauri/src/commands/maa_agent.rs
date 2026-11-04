@@ -575,9 +575,11 @@ pub async fn start_tasks_impl(
                 .run_completion,
         )
     };
-    let _start_permit = tauri::async_runtime::spawn_blocking(move || completion.acquire_start())
-        .await
-        .map_err(|e| e.to_string())?;
+    let start_completion = Arc::clone(&completion);
+    let _start_permit =
+        tauri::async_runtime::spawn_blocking(move || start_completion.acquire_start())
+            .await
+            .map_err(|e| e.to_string())?;
 
     info!("instance_id: {}", instance_id);
     info!("tasks: {:?}", tasks);
@@ -591,6 +593,10 @@ pub async fn start_tasks_impl(
         let instance = instances
             .get_mut(&instance_id)
             .ok_or("Instance not found")?;
+        if !Arc::ptr_eq(&instance.run_completion, &completion) {
+            return Err("Instance replaced during startup".to_string());
+        }
+        instance.prepare_submission()?;
         debug!("[start_tasks] Instance found: {}", instance_id);
 
         let res = instance
@@ -749,11 +755,23 @@ pub async fn start_tasks_impl(
                 }
             }
 
-            // 保存所有 agent 状态到 instance
-            let mut instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
-            if let Some(instance) = instances.get_mut(&instance_id) {
-                instance.agent_clients.extend(new_clients);
-                instance.agent_children.extend(new_children);
+            // A destroyed/recreated ID must not receive the old instance's Agents.
+            let attached = {
+                let mut instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
+                if let Some(instance) = instances
+                    .get_mut(&instance_id)
+                    .filter(|instance| Arc::ptr_eq(&instance.run_completion, &completion))
+                {
+                    instance.agent_clients.append(&mut new_clients);
+                    instance.agent_children.append(&mut new_children);
+                    true
+                } else {
+                    false
+                }
+            };
+            if !attached {
+                stop_agent_resources(new_clients, new_children);
+                return Err("Instance replaced during Agent startup".to_string());
             }
 
             info!(
@@ -793,9 +811,13 @@ pub async fn start_tasks_impl(
         let instance = instances
             .get_mut(&instance_id)
             .ok_or("Instance not found")?;
+        if !Arc::ptr_eq(&instance.run_completion, &completion) {
+            return Err("Instance replaced during startup".to_string());
+        }
         if reset_state {
             // 首批：重置任务运行状态
             instance.task_ids.clear();
+            instance.task_results.clear();
             let state = &mut instance.task_run_state;
             state.statuses.clear();
             state.mappings.clear();
@@ -918,6 +940,9 @@ pub fn stop_agent_impl(maa_state: &Arc<MaaState>, instance_id: &str) -> Result<(
     let (clients, children) = {
         let mut instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
         let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;
+        if !Arc::ptr_eq(&instance.run_completion, &completion) {
+            return Err("Instance replaced during Agent cleanup".to_string());
+        }
 
         (
             std::mem::take(&mut instance.agent_clients),
@@ -944,36 +969,31 @@ pub(super) fn stop_agent_resources(clients: Vec<AgentClient>, children: Vec<std:
 
     // 在 disconnect 前启动看门狗，避免 Agent 收尾卡死时永远阻塞完成通知。
     let reaper = thread::spawn(move || {
-        for (i, mut child) in children.into_iter().enumerate() {
-            debug!("Waiting for agent process #{} to exit...", i);
-
-            let start = std::time::Instant::now();
-            let timeout = std::time::Duration::from_secs(5);
-            let mut exited = false;
-
-            while start.elapsed() < timeout {
-                match child.try_wait() {
-                    Ok(Some(_)) => {
-                        exited = true;
-                        break;
-                    }
-                    Ok(None) => {
-                        thread::sleep(std::time::Duration::from_millis(100));
-                    }
-                    Err(e) => {
-                        error!("Error waiting for agent #{}: {}", i, e);
-                        break;
-                    }
+        let mut children: Vec<_> = children.into_iter().enumerate().collect();
+        // One deadline for the whole batch, below the frontend's 8s stop budget.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !children.is_empty() && Instant::now() < deadline {
+            children.retain_mut(|(i, child)| match child.try_wait() {
+                Ok(Some(_)) => {
+                    info!("Background: Agent #{} child process exited", i);
+                    false
                 }
+                Ok(None) => true,
+                Err(error) => {
+                    warn!("Error waiting for agent #{}: {}", i, error);
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    false
+                }
+            });
+            if !children.is_empty() {
+                thread::sleep(Duration::from_millis(100));
             }
-
-            if !exited {
-                warn!("Agent process #{} did not exit in time, killing it...", i);
-                let _ = child.kill();
-                let _ = child.wait();
-            } else {
-                info!("Background: Agent #{} child process exited", i);
-            }
+        }
+        for (i, mut child) in children {
+            warn!("Agent process #{} did not exit in time, killing it...", i);
+            let _ = child.kill();
+            let _ = child.wait();
         }
     });
 

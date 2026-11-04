@@ -89,6 +89,9 @@ pub fn handle_task_callback(
             Some(i) => i,
             None => return,
         };
+        if !is_started {
+            instance.task_results.insert(task_id, is_succeeded);
+        }
         let state = &mut instance.task_run_state;
 
         if is_started {
@@ -107,19 +110,18 @@ pub fn handle_task_callback(
                 state.statuses.insert(selected_id, status_str.to_string());
             }
 
-            // 检查所有已入队任务是否均已完成
-            let all_completed = !state.pending_task_ids.is_empty()
-                && state.pending_task_ids.iter().all(|id| {
-                    state
-                        .mappings
-                        .get(id)
-                        .and_then(|sel_id| state.statuses.get(sel_id))
-                        .map(|s| s == "succeeded" || s == "failed")
-                        .unwrap_or(false)
-                });
+            // selected_task_id is optional in both HTTP APIs. Framework task IDs,
+            // rather than UI status mappings, determine whether the queue finished.
+            let result = super::run_completion::task_queue_result(
+                &state.pending_task_ids,
+                &instance.task_results,
+            );
+            // post_stop can cancel queued tasks without a terminal callback for each.
+            // The worker still waits for true framework idle before reporting completion.
+            let all_completed = result.is_some() || instance.stop_in_progress;
 
             if all_completed {
-                let has_failed = state.statuses.values().any(|s| s == "failed");
+                let has_failed = instance.stop_in_progress || result == Some(false);
                 state.overall_status =
                     Some(if has_failed { "Failed" } else { "Succeeded" }.to_string());
                 instance.task_ids.clear();

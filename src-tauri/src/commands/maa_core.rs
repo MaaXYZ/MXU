@@ -1326,6 +1326,10 @@ pub fn run_task_impl(
 
     let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
     let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;
+    if !Arc::ptr_eq(&instance.run_completion, &completion) {
+        return Err("Instance replaced during task submission".to_string());
+    }
+    instance.prepare_submission()?;
 
     let resource = instance.resource.as_ref().ok_or("Resource not loaded")?;
     let controller = instance
@@ -1395,18 +1399,18 @@ pub fn run_task_impl(
         instance.task_ids.push(task_id);
     }
 
+    let task_run_state = &mut instance.task_run_state;
+    if !task_run_state.pending_task_ids.contains(&task_id) {
+        task_run_state.pending_task_ids.push(task_id);
+    }
+    task_run_state.overall_status = Some("Running".to_string());
     if let Some(selected_task_id) = selected_task_id {
-        let task_run_state = &mut instance.task_run_state;
-        if !task_run_state.pending_task_ids.contains(&task_id) {
-            task_run_state.pending_task_ids.push(task_id);
-        }
         task_run_state
             .mappings
             .insert(task_id, selected_task_id.to_string());
         task_run_state
             .statuses
             .insert(selected_task_id.to_string(), "pending".to_string());
-        task_run_state.overall_status = Some("Running".to_string());
     }
 
     Ok(task_id)
@@ -1473,12 +1477,15 @@ pub fn stop_task_impl(state: &MaaState, instance_id: &str) -> Result<(), String>
     let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;
     let tasker = instance.tasker.as_ref().ok_or("Tasker not created")?;
 
+    // Agent cleanup is part of the instance's running state, but posting a new
+    // framework stop job after Tasker idle would race the final idle notification.
+    if !tasker.running() {
+        instance.stop_in_progress = false;
+        instance.stop_started_at = None;
+        return Ok(());
+    }
+
     if instance.stop_in_progress {
-        if !tasker.running() {
-            instance.stop_in_progress = false;
-            instance.stop_started_at = None;
-            return Ok(());
-        }
         let elapsed = instance
             .stop_started_at
             .map(|t| t.elapsed())
