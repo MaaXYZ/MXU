@@ -782,12 +782,7 @@ pub async fn start_tasks_impl(
         if reset_state {
             // 首批：重置任务运行状态
             instance.task_ids.clear();
-            let state = &mut instance.task_run_state;
-            state.statuses.clear();
-            state.timings.clear();
-            state.mappings.clear();
-            state.pending_task_ids.clear();
-            state.current_task_index = 0;
+            instance.task_run_state = Default::default();
         }
         for (idx, task) in tasks.iter().enumerate() {
             debug!("[start_tasks] Preparing task {}: entry={}", idx, task.entry);
@@ -802,13 +797,9 @@ pub async fn start_tasks_impl(
                     info!("[start_tasks] post_task returned task_id: {}", job.id);
                     task_id_pairs.push((job.id, task.selected_task_id.clone()));
                     // 立即登记，保证回调不会先于状态
-                    let state = &mut instance.task_run_state;
-                    state.pending_task_ids.push(job.id);
-                    if let Some(sel_id) = &task.selected_task_id {
-                        state.mappings.insert(job.id, sel_id.clone());
-                        state.statuses.insert(sel_id.clone(), "pending".to_string());
-                        state.timings.remove(sel_id);
-                    }
+                    instance
+                        .task_run_state
+                        .register_task(job.id, task.selected_task_id.as_deref());
                     if let Some(posting) = telemetry_posting.as_mut() {
                         posting.register(
                             job.id,

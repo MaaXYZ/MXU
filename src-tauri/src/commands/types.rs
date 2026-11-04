@@ -203,6 +203,11 @@ pub struct TaskRunState {
     pub current_task_index: usize,
     /// 实例级整体状态（None/"Running"/"Succeeded"/"Failed"）
     pub overall_status: Option<String>,
+    /// Each Maa execution has its own lifecycle, even when a UI task is submitted twice.
+    #[serde(skip)]
+    pub(super) executions: HashMap<i64, super::task_run_state::TaskExecution>,
+    #[serde(skip)]
+    pub(super) displayed_executions: HashMap<String, i64>,
 }
 
 /// 实例运行时状态（用于前端查询）

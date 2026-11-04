@@ -18,12 +18,14 @@ import type {
 } from '@/types/maa';
 import { loggers } from '@/utils/logger';
 import { redactSecretsInText } from '@/utils/passwordOptionValues';
+import { createSnapshotLoader } from '@/utils/latestSnapshot';
 import { isTauri } from '@/utils/paths';
 import i18n from '@/i18n';
 import { apiDelete, apiGet, apiPost, apiPut, getApiBase } from '@/utils/backendApi';
 import * as wsService from '@/services/wsService';
 
 const log = loggers.maa;
+const loadStateSnapshot = createSnapshotLoader();
 
 function localizeControllerError(error: unknown): unknown {
   const message = error instanceof Error ? error.message : String(error);
@@ -905,9 +907,10 @@ export const maaService = {
       };
 
       // Tauri 环境：直接 invoke；浏览器环境：通过后端 HTTP API
-      const states = isTauri()
-        ? await invoke<RawAllStates>('maa_get_all_states')
-        : await apiGet<RawAllStates>('/maa/state');
+      const states = await loadStateSnapshot(() =>
+        isTauri() ? invoke<RawAllStates>('maa_get_all_states') : apiGet<RawAllStates>('/maa/state'),
+      );
+      if (!states) return null;
 
       // 转换字段名（snake_case -> camelCase）
       const instances: Record<

@@ -3,6 +3,26 @@
 use serde::{Deserialize, Serialize};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+#[derive(Debug, Clone, Copy)]
+pub(super) struct TaskTimestamp {
+    timestamp: u64,
+    instant: Instant,
+}
+
+impl TaskTimestamp {
+    pub fn now() -> Self {
+        Self {
+            timestamp: timestamp_ms(),
+            instant: Instant::now(),
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn at(timestamp: u64, instant: Instant) -> Self {
+        Self { timestamp, instant }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskTiming {
     /// Unix timestamps in milliseconds, for display in each client's local time.
@@ -22,10 +42,6 @@ fn timestamp_ms() -> u64 {
 }
 
 impl TaskTiming {
-    pub fn start() -> Self {
-        Self::start_at(timestamp_ms(), Instant::now())
-    }
-
     fn start_at(timestamp: u64, instant: Instant) -> Self {
         Self {
             started_at: timestamp,
@@ -35,8 +51,20 @@ impl TaskTiming {
         }
     }
 
-    pub fn finish(&mut self) {
-        self.finish_at(timestamp_ms(), Instant::now());
+    pub(super) fn from_callback(observed: TaskTimestamp, stopped: Option<TaskTimestamp>) -> Self {
+        // A delayed Starting still proves execution, but cannot extend an accepted stop.
+        let started = stopped
+            .filter(|stop| observed.instant > stop.instant)
+            .unwrap_or(observed);
+        let mut timing = Self::start_at(started.timestamp, started.instant);
+        if let Some(stop) = stopped {
+            timing.finish_at(stop.timestamp, stop.instant);
+        }
+        timing
+    }
+
+    pub(super) fn finish_at_timestamp(&mut self, timestamp: TaskTimestamp) {
+        self.finish_at(timestamp.timestamp, timestamp.instant);
     }
 
     fn finish_at(&mut self, timestamp: u64, instant: Instant) {

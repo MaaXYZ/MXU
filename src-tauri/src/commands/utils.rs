@@ -79,6 +79,15 @@ pub fn handle_task_callback(
         None => return,
     };
 
+    // Capture before waiting for the state lock, so a concurrent stop can cap this start.
+    let observed = super::task_timing::TaskTimestamp::now();
+    let event = if is_started {
+        super::task_run_state::TaskEvent::Starting
+    } else if is_succeeded {
+        super::task_run_state::TaskEvent::Succeeded
+    } else {
+        super::task_run_state::TaskEvent::Failed
+    };
     let all_done = {
         let mut instances = match maa_state.instances.lock() {
             Ok(g) => g,
@@ -88,56 +97,17 @@ pub fn handle_task_callback(
             Some(i) => i,
             None => return,
         };
-        let state = &mut instance.task_run_state;
-
-        if is_started {
-            // 任务开始：定位该任务在队列中的索引，更新当前索引和状态
-            if let Some(idx) = state.pending_task_ids.iter().position(|&id| id == task_id) {
-                state.current_task_index = idx;
-            }
-            if let Some(selected_id) = state.mappings.get(&task_id).cloned() {
-                // A start delivered after stop must not create a duration for a cancelled queue item.
-                if matches!(
-                    state.statuses.get(&selected_id).map(String::as_str),
-                    Some("pending" | "running")
-                ) {
-                    state
-                        .timings
-                        .entry(selected_id.clone())
-                        .or_insert_with(super::task_timing::TaskTiming::start);
-                }
-                state.statuses.insert(selected_id, "running".to_string());
-            }
-            false // 未完成
-        } else {
-            // 任务成功或失败
-            let status_str = if is_succeeded { "succeeded" } else { "failed" };
-            if let Some(selected_id) = state.mappings.get(&task_id).cloned() {
-                if let Some(timing) = state.timings.get_mut(&selected_id) {
-                    timing.finish();
-                }
-                state.statuses.insert(selected_id, status_str.to_string());
-            }
-
-            // 检查所有已入队任务是否均已完成
-            let all_completed = state.pending_task_ids.iter().all(|id| {
-                state
-                    .mappings
-                    .get(id)
-                    .and_then(|sel_id| state.statuses.get(sel_id))
-                    .map(|s| s == "succeeded" || s == "failed")
-                    .unwrap_or(false)
-            });
-
-            if all_completed {
-                let has_failed = state.statuses.values().any(|s| s == "failed");
-                state.overall_status =
-                    Some(if has_failed { "Failed" } else { "Succeeded" }.to_string());
-                instance.task_ids.clear();
-            }
-
-            all_completed
+        let Some(all_done) = instance
+            .task_run_state
+            .apply_task_event(task_id, event, observed)
+        else {
+            // Unknown executions belong to an old run; duplicate callbacks cannot revive it.
+            return;
+        };
+        if all_done {
+            instance.task_ids.clear();
         }
+        all_done
     }; // 锁在此处释放
 
     // 遥测埋点（锁外调用，仅操作 telemetry 内部的 RUNS 锁）

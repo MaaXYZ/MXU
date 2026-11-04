@@ -1383,20 +1383,9 @@ pub fn run_task_impl(
         instance.task_ids.push(task_id);
     }
 
-    if let Some(selected_task_id) = selected_task_id {
-        let task_run_state = &mut instance.task_run_state;
-        if !task_run_state.pending_task_ids.contains(&task_id) {
-            task_run_state.pending_task_ids.push(task_id);
-        }
-        task_run_state
-            .mappings
-            .insert(task_id, selected_task_id.to_string());
-        task_run_state
-            .statuses
-            .insert(selected_task_id.to_string(), "pending".to_string());
-        task_run_state.timings.remove(selected_task_id);
-        task_run_state.overall_status = Some("Running".to_string());
-    }
+    instance
+        .task_run_state
+        .register_task(task_id, selected_task_id);
 
     Ok(task_id)
 }
@@ -1477,29 +1466,17 @@ pub fn stop_task_impl(state: &MaaState, instance_id: &str) -> Result<(), String>
         }
     }
 
+    // A rejected stop must leave the running execution and its clock intact.
+    instance
+        .task_run_state
+        .stop_tasks(|| tasker.post_stop().map(|_| ()).map_err(|e| e.to_string()))?;
     instance.stop_in_progress = true;
     instance.stop_started_at = Some(Instant::now());
     instance.task_ids.clear();
 
-    // 将剩余 pending 任务标记为 failed，更新整体状态
-    {
-        let state = &mut instance.task_run_state;
-        // Only tasks which actually started have a timing. Queued tasks get no duration.
-        for timing in state.timings.values_mut() {
-            timing.finish();
-        }
-        for status in state.statuses.values_mut() {
-            if status == "pending" || status == "running" {
-                *status = "failed".to_string();
-            }
-        }
-        state.overall_status = Some("Failed".to_string());
-    }
-
     // 遥测：用户取消，以 cancelled 结束当前运行的 Transaction（幂等，仅首次生效）
     super::telemetry::on_run_cancelled(instance_id);
 
-    tasker.post_stop().map_err(|e| e.to_string())?;
     Ok(())
 }
 
