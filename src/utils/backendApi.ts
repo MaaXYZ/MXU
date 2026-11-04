@@ -4,38 +4,40 @@
  * 浏览器环境下（非 Tauri）通过此模块调用 axum HTTP 服务器 API。
  * Tauri 环境下直接使用 invoke，不经过此模块。
  *
- * 默认走 Vite proxy（`/api`），调用 setBackendPort 后切换为直连后端。
+ * 浏览器默认保持页面同源（支持反向代理和 Vite proxy）。只有实际探测成功的
+ * 直连端口或 Tauri 本地后端端口，才通过 setBackendPort 选择直连。
  */
 
-/** 后端实际端口（0 = 未设置，走相对路径/Vite proxy） */
+import { isTauri } from './paths';
+
+/** 显式选择的直连端口；0 表示浏览器继续使用页面同源。 */
 let backendPort = 0;
 
-/** 设置后端直连端口（从 /api/interface 的 webServerPort 获取） */
+/** 仅在 Tauri 查询端口或浏览器直连探测成功后调用，不使用接口返回的内部监听端口。 */
 export function setBackendPort(port: number): void {
   backendPort = port;
 }
 
 export function getApiBase(): string {
-  // 已探测到后端直连端口：优先使用绝对 URL。
-  // 这是 tauri 生产模式的关键路径 —— tauri://localhost 下相对路径 /api 会 404
-  // （tauri 不代理 /api 到后端端口），只有浏览器 dev 模式（Vite proxy）相对路径才可用。
-  if (backendPort > 0) {
-    const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+  // Tauri 的页面 origin 不提供 /api；内置 axum 服务器只监听普通 HTTP。
+  if (isTauri()) {
+    return `http://127.0.0.1:${backendPort || 12701}/api`;
+  }
+
+  if (backendPort > 0 || !window.location.host) {
+    // 浏览器同源加载失败后实际探测成功的 HTTP 地址；无页面 host 时也直连。
     const hostname = window.location.hostname || '127.0.0.1';
-    return `${protocol}//${hostname}:${backendPort}/api`;
+    return `http://${hostname}:${backendPort || 12701}/api`;
   }
 
-  // 浏览器 dev 模式 / 远程访问：通过代理相对路径或直连
-  if (window.location.host) {
-    // dev 模式（Vite proxy）或后端已在同源反代下
-    return '/api';
-  }
+  return '/api';
+}
 
-  // Fallback：直连后端（file:// 或未设置 host）
-  const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
-  const hostname = window.location.hostname || '127.0.0.1';
-  const port = backendPort || 12701;
-  return `${protocol}//${hostname}:${port}/api`;
+/** HTTP 与 WebSocket 使用同一个后端地址，保留反代的公开协议、主机与端口。 */
+export function getWebSocketUrl(): string {
+  const url = new URL(`${getApiBase()}/ws`, window.location.href);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return url.toString();
 }
 
 /** 安全解析 JSON 响应，204 / 空 body 时返回 undefined */

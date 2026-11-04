@@ -63,7 +63,7 @@ async function getGlobalShortcut() {
   return _globalShortcutModule;
 }
 import { loggers } from '@/utils/logger';
-import { setBackendPort, getApiBase, apiGet } from '@/utils/backendApi';
+import { getApiBase, apiGet } from '@/utils/backendApi';
 import { getAllLogsFromBackend } from '@/utils/logStdout';
 import { useMaaCallbackLogger, useMaaAgentLogger } from '@/utils/useMaaCallbackLogger';
 import { getInterfaceLangKey } from '@/i18n';
@@ -943,12 +943,8 @@ function App() {
       // 完成配置加载后，允许后续状态变更自动保存
       setConfigPersistenceReady(true);
 
-      // 浏览器环境：设置后端直连端口并建立 WebSocket 连接
-      if (!isTauri() && result.webServerPort) {
-        setBackendPort(result.webServerPort);
-        wsService.setServerPort(result.webServerPort);
-        wsService.connect();
-      } else if (!isTauri()) {
+      // 浏览器沿用加载 interface 时成功的地址，不用后端内部监听端口覆盖反代 origin。
+      if (!isTauri()) {
         wsService.connect();
       }
 
