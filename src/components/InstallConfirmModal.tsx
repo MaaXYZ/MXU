@@ -436,15 +436,18 @@ export function InstallConfirmModal() {
           )}
 
           {/* 下载完成，可以安装 */}
-          {!isJustUpdatedMode && isDownloadComplete && installStatus === 'idle' && (
-            <button
-              onClick={handleInstall}
-              className="flex items-center gap-2 px-4 py-2 text-sm bg-accent text-white hover:bg-accent-hover rounded-lg transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              {t('mirrorChyan.installNow')}
-            </button>
-          )}
+          {!isJustUpdatedMode &&
+            isDownloadComplete &&
+            downloadSavePath &&
+            installStatus === 'idle' && (
+              <button
+                onClick={handleInstall}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-accent text-white hover:bg-accent-hover rounded-lg transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                {t('mirrorChyan.installNow')}
+              </button>
+            )}
 
           {/* 正在安装 */}
           {!isJustUpdatedMode && isInstalling && (
@@ -466,7 +469,7 @@ export function InstallConfirmModal() {
               >
                 {t('common.close')}
               </button>
-              {!restartFailed && (
+              {!restartFailed && downloadSavePath && (
                 <button
                   onClick={() => {
                     resetInstallState();
@@ -476,6 +479,18 @@ export function InstallConfirmModal() {
                 >
                   <RefreshCw className="w-4 h-4" />
                   {t('mirrorChyan.retry')}
+                </button>
+              )}
+              {!restartFailed && !downloadSavePath && (
+                <button
+                  onClick={() => {
+                    handleClose();
+                    openUpdateSettings();
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 text-sm bg-accent text-white hover:bg-accent-hover rounded-lg transition-colors"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  {t('mirrorChyan.checkUpdate')}
                 </button>
               )}
             </>
