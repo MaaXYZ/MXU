@@ -1,3 +1,4 @@
+import { PiIcon } from './PiContent';
 import { useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -81,7 +82,10 @@ function PresetCard({ preset, onApply }: { preset: PresetItem; onApply: () => vo
       )}
     >
       <div className="flex items-center gap-2 mb-1.5">
-        <Sparkles className="w-4 h-4 text-accent flex-shrink-0" />
+        <PiIcon
+          icon={preset.icon}
+          fallback={<Sparkles className="w-4 h-4 text-accent flex-shrink-0" />}
+        />
         <span className="text-sm font-medium text-text-primary truncate">{label}</span>
         <span className="text-xs text-text-muted ml-auto flex-shrink-0">
           {enabledCount}/{totalCount} {t('preset.taskCount')}
@@ -635,6 +639,10 @@ export function TaskList() {
                 ))}
               </SortableContext>
             </DndContext>
+          )}
+
+          {normalTasks.length === 0 && hasPresets && (
+            <PresetSelector instanceId={instance.id} presets={presets} />
           )}
 
           {/* 任务列表 */}

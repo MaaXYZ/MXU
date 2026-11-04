@@ -828,6 +828,9 @@ pub fn destroy_instance_impl(state: &Arc<MaaState>, instance_id: &str) -> Result
                 }
             }
         }
+        // Cancel focus only after invalidating the old lifetime, before a
+        // replacement with the same instance ID can begin another run.
+        super::focus::cancel_instance(instance_id);
         if let Ok(mut log_buffer) = state.log_buffer.lock() {
             log_buffer.clear_instance(instance_id);
         }
@@ -1123,36 +1126,7 @@ pub async fn connect_controller_impl(
             })
             .map_err(|e| e.to_string())?;
 
-        let display_short_side = match &config {
-            ControllerConfig::Adb {
-                display_short_side, ..
-            }
-            | ControllerConfig::Win32 {
-                display_short_side, ..
-            }
-            | ControllerConfig::MacOS {
-                display_short_side, ..
-            }
-            | ControllerConfig::WlRoots {
-                display_short_side, ..
-            }
-            | ControllerConfig::Gamepad {
-                display_short_side, ..
-            }
-            | ControllerConfig::PlayCover {
-                display_short_side, ..
-            }
-            | ControllerConfig::Linux {
-                display_short_side, ..
-            } => display_short_side.unwrap_or(720),
-        };
-
-        if let Err(e) = controller.set_screenshot_target_short_side(display_short_side) {
-            warn!(
-                "Failed to set screenshot target short side to {}: {}",
-                display_short_side, e
-            );
-        }
+        config.display_options().apply(&controller)?;
 
         // Install the subscription before posting, so fast callbacks cannot be lost.
         update_instance_controller(
@@ -1513,6 +1487,7 @@ pub fn run_task_impl(
         .ok_or("Controller not connected")?;
 
     // 创建或获取 tasker
+    super::focus::begin_run(instance_id);
     let needs_new_tasker = match instance.tasker.as_ref() {
         None => true,
         Some(t) => !t.inited(),
@@ -1556,11 +1531,12 @@ pub fn run_task_impl(
                 }
                 // 遥测：把失败节点挂到任务 Span 下，形成失败链路
                 super::telemetry::on_node_event(&instance_id_for_context_sink, msg, detail);
-                emit_callback_event(
+                super::focus::emit_context(
                     &app_for_context_sink,
                     &instance_id_for_context_sink,
                     msg,
                     detail,
+                    &lifetime,
                 );
             })
             .map_err(|e| e.to_string())?;
@@ -1661,6 +1637,7 @@ pub fn maa_get_task_status(
 /// 停止任务
 /// 停止任务的内部实现（可从 Tauri 命令和 HTTP 处理器共享调用）
 pub fn stop_task_impl(state: &MaaState, instance_id: &str) -> Result<(), String> {
+    super::focus::cancel_instance(instance_id);
     let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
     let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;
     let tasker = instance.tasker.as_ref().ok_or("Tasker not created")?;

@@ -242,7 +242,8 @@ pub(crate) fn spawn_child_output_reader<R: Read + Send + 'static>(
                 Ok(0) => break,
                 Ok(_) => {
                     let line = String::from_utf8_lossy(&buffer);
-                    let clean_line = line.trim_end();
+                    let clean_line = super::log_secrets::redact(line.trim_end());
+                    let clean_line = clean_line.as_str();
                     log_file.write_line(stream, clean_line);
                     if stream == "stderr" {
                         warn!(target: "agent", "[{}][{}] {}", log_tag, stream, clean_line);
@@ -391,11 +392,14 @@ async fn start_single_agent(
     tasker: Tasker,
     pi_envs: Arc<HashMap<String, String>>,
 ) -> Result<(AgentClient, std::process::Child), String> {
-    info!("[agent#{}] Starting agent: {:?}", agent_index, agent);
+    info!(
+        "[agent#{}] Starting agent: {}",
+        agent_index, agent.child_exec
+    );
 
     // 将整个启动过程移入 spawn_blocking，避免阻塞 async runtime 线程
     tauri::async_runtime::spawn_blocking(move || {
-        let mut client = if tcp_compat_mode {
+        let mut client = if tcp_compat_mode && agent.identifier.is_none() {
             debug!("[agent#{}] Creating TCP agent client...", agent_index);
             AgentClient::create_tcp(0).or_else(|e| {
                 warn!(
@@ -406,7 +410,7 @@ async fn start_single_agent(
             }).map_err(|e| e.to_string())?
         } else {
             debug!("[agent#{}] Creating default agent client...", agent_index);
-            AgentClient::new(None).map_err(|e| e.to_string())?
+            AgentClient::new(agent.identifier.as_deref()).map_err(|e| e.to_string())?
         };
 
         if let Err(e) = client.bind(resource.clone()) {
@@ -434,8 +438,8 @@ async fn start_single_agent(
         let exec_path = resolve_child_exec_path(child_exec, &cwd);
 
         info!(
-            "[agent#{}] Spawning process: {:?} {:?} in {}",
-            agent_index, exec_path, args, cwd
+            "[agent#{}] Spawning process: {:?} in {}",
+            agent_index, exec_path, cwd
         );
 
         #[cfg(windows)]
@@ -566,8 +570,11 @@ pub async fn start_tasks_impl(
     info!("start_tasks_impl called");
 
     info!("instance_id: {}", instance_id);
-    info!("tasks: {:?}", tasks);
-    info!("agent_configs: {:?}", agent_configs);
+    info!("task count: {}", tasks.len());
+    info!(
+        "agent count: {}",
+        agent_configs.as_ref().map_or(0, Vec::len)
+    );
     info!("cwd: {}, tcp_compat_mode: {}", cwd, tcp_compat_mode);
 
     let (resource, controller, tasker) = {
@@ -578,6 +585,7 @@ pub async fn start_tasks_impl(
             .get_mut(&instance_id)
             .ok_or("Instance not found")?;
         debug!("[start_tasks] Instance found: {}", instance_id);
+        super::focus::begin_run(&instance_id);
 
         let res = instance
             .resource
@@ -644,7 +652,13 @@ pub async fn start_tasks_impl(
                 }
                 // 遥测：把失败节点挂到任务 Span 下，形成失败链路
                 super::telemetry::on_node_event(&inst_id_for_ctx_sink, msg, detail);
-                emit_callback_event(&app_handle, &inst_id_for_ctx_sink, msg, detail);
+                super::focus::emit_context(
+                    &app_handle,
+                    &inst_id_for_ctx_sink,
+                    msg,
+                    detail,
+                    &lifetime,
+                );
             })
             .map_err(|e| e.to_string())?;
             debug!("[start_tasks] Tasker context sink added");

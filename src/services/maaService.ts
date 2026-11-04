@@ -23,14 +23,19 @@ import { apiDelete, apiGet, apiPost, apiPut, getApiBase } from '@/utils/backendA
 import * as wsService from '@/services/wsService';
 import { dispatchMaaCallback, type MaaCallbackHandler } from '@/utils/maaCallbackRouting';
 import { ControllerConnectionSupersededError } from '@/utils/controllerErrors';
+import { getLogSecrets } from '@/utils/logSecrets';
 
 const log = loggers.maa;
 
-function localizeControllerError(error: unknown): unknown {
+export function localizeControllerError(error: unknown): unknown {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes('CONTROLLER_CONNECTION_SUPERSEDED')) {
     return new ControllerConnectionSupersededError(i18n.t('controller.connectionSuperseded'));
   }
+  for (const code of ['PI_DISPLAY_OPTIONS_INVALID', 'PI_DISPLAY_OPTIONS_UNSUPPORTED']) {
+    if (message.includes(code)) return new Error(i18n.t(`pi.${code}`));
+  }
+
   if (message.includes('MACOS_PERMISSIONS_REQUIRED')) {
     return new Error(i18n.t('controller.macosPermissionsRequired'));
   }
@@ -50,6 +55,11 @@ function localizeControllerError(error: unknown): unknown {
     return new Error(i18n.t('controller.linuxVersionRequired'));
   }
   return error;
+}
+
+export function controllerErrorMessage(error: unknown): string {
+  const localized = localizeControllerError(error);
+  return localized instanceof Error ? localized.message : String(localized);
 }
 
 /**
@@ -115,6 +125,36 @@ export interface SelfStopRequestedEvent {
 
 /** MaaFramework 服务 */
 export const maaService = {
+  async pendingFocus(): Promise<
+    {
+      request_id: string;
+      instance_id: string;
+      message: string;
+      details: MaaCallbackDetails & Record<string, unknown>;
+    }[]
+  > {
+    return isTauri() ? invoke('pending_focus') : apiGet('/focus/pending');
+  },
+  async acknowledgeFocus(requestId: string): Promise<void> {
+    if (isTauri()) await invoke('acknowledge_focus', { requestId });
+    else await apiPost(`/focus/${encodeURIComponent(requestId)}/ack`, {});
+  },
+  async onFocusClosed(callback: (id: string) => void): Promise<UnlistenFn> {
+    const handle = (_instanceId: string, kind: string) => {
+      if (kind.startsWith('focus-closed:')) callback(kind.slice('focus-closed:'.length));
+    };
+    return isTauri()
+      ? listen<{ instance_id: string; kind: string }>('state-changed', (event) =>
+          handle(event.payload.instance_id, event.payload.kind),
+        )
+      : wsService.onStateChanged(handle);
+  },
+  async registerLogSecrets(extra: string[] = []): Promise<void> {
+    const secrets = getLogSecrets(extra);
+    if (!secrets.length) return;
+    if (isTauri()) await invoke('register_log_secrets', { secrets });
+    else await apiPost('/log-secrets', { secrets });
+  },
   /**
    * 初始化 MaaFramework
    * @param libDir MaaFramework 库目录（可选，默认从 exe 目录/maafw 加载）
@@ -440,6 +480,7 @@ export const maaService = {
     pipelineOverride: string = '{}',
     selectedTaskId?: string,
   ): Promise<number> {
+    await this.registerLogSecrets();
     log.info(
       '运行任务, 实例:',
       instanceId,
@@ -653,6 +694,7 @@ export const maaService = {
     controllerInfo?: ControllerTelemetryInfo,
     logRedactSecrets?: string[],
   ): Promise<number[]> {
+    await this.registerLogSecrets(logRedactSecrets);
     log.info('启动任务, 实例:', instanceId, ', 任务数:', tasks.length, ', cwd:', cwd || '.');
     tasks.forEach((task, i) => {
       const override =
@@ -1081,7 +1123,10 @@ export const maaService = {
   },
 
   async setPreActionStop(instanceId: string, stop: boolean): Promise<void> {
-    if (!isTauri()) return;
+    if (!isTauri()) {
+      await apiPost(`/maa/instances/${instanceId}/pretask/stop`, { stop });
+      return;
+    }
     await invoke('set_pre_action_stop', { instanceId, stop });
   },
 
@@ -1095,10 +1140,16 @@ export const maaService = {
     args: string[],
     cwd?: string,
   ): Promise<number> {
+    await this.registerLogSecrets();
+    log.info('执行预任务:', program);
     if (!isTauri()) {
-      throw new Error('此功能仅在 Tauri 环境中可用');
+      const result = await apiPost<{ exitCode: number }>(`/maa/instances/${instanceId}/pretask`, {
+        program,
+        args,
+        cwd,
+      });
+      return result.exitCode;
     }
-    log.info('执行预任务:', program, args);
     const exitCode = await invoke<number>('run_pretask', {
       instanceId,
       program,
