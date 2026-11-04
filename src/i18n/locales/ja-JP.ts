@@ -607,7 +607,7 @@ export default {
   },
 
   webserver: {
-    title: 'Web サーバー',
+    title: 'Web と AI',
     enabled: 'Web サーバーを有効化',
     enabledHint: '無効にすると内蔵 Web サーバーは起動しません（再起動後に反映）',
     port: 'Web サーバーポート',
@@ -619,6 +619,180 @@ export default {
     restartLater: '後で',
     restartNow: '今すぐ再起動',
     address: 'Web サーバーアドレス',
+  },
+
+  // MCP server
+  mcp: {
+    enabled: 'AI アシスタント（MCP）を有効化',
+    enabledHint:
+      'ローカルの AI ツールが MXU に接続し、タスクの管理・開始やスクリーンショットの確認を行えるようにします。AI の操作はログパネルに記録されます',
+    requiresWebServer:
+      'AI アシスタントには Web サーバーが必要です。先に Web サーバーを有効にしてください',
+    address: '接続 URL',
+    copy: 'コピー',
+    copied: 'コピーしました',
+    log: {
+      addTask: 'AI：タスク「{{name}}」を追加しました',
+      updateTask: 'AI：タスク「{{name}}」を変更しました',
+      removeTask: 'AI：タスク「{{name}}」を削除しました',
+      startTasks: 'AI：タスクを開始します',
+      startTask: 'AI：タスク「{{name}}」を開始します',
+      stopTasks: 'AI：タスクを停止します',
+    },
+    errors: {
+      paramNotString: 'パラメーター {{key}} は文字列である必要があります',
+      paramMissing: 'パラメーター {{key}} がありません',
+      tabNotFound: 'タブが見つかりません：{{id}}。先に list_tabs を呼び出してください',
+      noActiveTab: '開いているタブがありません',
+      adminRequired:
+        '現在のコントローラーには管理者権限が必要です。ユーザーに MXU を管理者として再起動してもらってから再試行してください',
+      startFailedWithReasons: '起動に失敗しました：{{reasons}}',
+      startFailed: '起動に失敗しました。MXU のログを確認してください',
+      projectNotLoaded: 'プロジェクトがまだ読み込まれていません',
+      taskNotFound:
+        'タスクが見つかりません：{{name}}。先に list_available_tasks を呼び出してください',
+      taskNotAddable: 'タスク {{name}} は追加できません',
+      taskIncompatible: 'タスク {{name}} は現在のコントローラー/リソースでは使用できません',
+      paramOptionsNotObject: 'パラメーター options はオブジェクトである必要があります',
+      paramEnabledNotBoolean: 'パラメーター enabled は真偽値である必要があります',
+      addTaskFailed: 'タスクの追加に失敗しました：{{name}}',
+      updateWhileRunning: '実行中はタスクを変更できません。先にタスクを停止してください',
+      taskIdNotFound:
+        'タスクリストに task_id が {{id}} のタスクはありません。先に get_task_list を呼び出してください',
+      taskDefMissing: 'タスク {{name}} の定義が存在しないため、変更できません',
+      updateIncompatible:
+        'タスク {{name}} は現在のコントローラー/リソースでは使用できないため、変更できません',
+      nothingToUpdate: '変更内容がありません。options または enabled を指定してください',
+      removeWhileRunning: '実行中はタスクを削除できません。先にタスクを停止してください',
+      alreadyRunning: 'このタブのタスクはすでに実行中です',
+      tabStarting:
+        'このタブは起動中です。重複して起動せず、しばらくしてから get_run_status で状態を確認してください',
+      uiNotReady: 'MXU の画面の準備ができていません。しばらくしてから再試行してください',
+      unknownOp: '不明な操作：{{op}}',
+      optionNotFoundForDescribe:
+        'タスクにオプション "{{key}}" はありません。先に option_key を指定せずに describe_task を呼び出してオプション一覧を確認してください',
+      optionIncompatible: 'オプション "{{key}}" は現在のコントローラー/リソースでは使用できません',
+      optionNotFound: 'タスクにオプション "{{key}}" はありません。使用できるオプション：{{valid}}',
+      noSettableOptions: 'このタスクには設定できるオプションがありません',
+      inputNeedsObject:
+        'オプション "{{key}}" には { フィールド名: 値 } のオブジェクトを指定してください',
+      inputFieldNotFound:
+        'オプション "{{key}}" にフィールド "{{name}}" はありません。使用できるフィールド：{{valid}}',
+      inputFieldNotString:
+        'オプション "{{key}}" のフィールド "{{name}}" には文字列を指定してください',
+      inputFieldInvalid:
+        'オプション "{{key}}" のフィールド "{{name}}" の値 "{{value}}" は形式が正しくありません（正規表現：{{verify}}）',
+      inputFieldInvalidWithHint:
+        'オプション "{{key}}" のフィールド "{{name}}" の値 "{{value}}" は形式が正しくありません：{{hint}}（正規表現：{{verify}}）',
+      switchInvalid: 'オプション "{{key}}" はスイッチです。値は "Yes" または "No" のみです',
+      checkboxNeedsArray:
+        'オプション "{{key}}" は複数選択です。値の名前の配列を指定してください。選択肢：{{valid}}',
+      casesInvalid: 'オプション "{{key}}" に値 {{invalid}} はありません。選択肢：{{valid}}',
+      checkboxMin: 'オプション "{{key}}" は {{count}} 個以上選択する必要があります',
+      checkboxMax: 'オプション "{{key}}" は最大 {{count}} 個まで選択できます',
+      selectInvalid: 'オプション "{{key}}" に値 "{{value}}" はありません。選択肢：{{valid}}',
+    },
+    notes: {
+      pretaskNextRun: '前処理タスクは次回の起動時に反映されます',
+      stopPending:
+        '停止リクエストを送信しましたが、タスクはまだ完全には停止していません。しばらくしてから get_run_status で確認してください',
+    },
+    // 推送给后端：MCP 握手 instructions、工具标题/描述、参数说明与后端错误（后端占位符为 {name}）
+    server: {
+      instructions:
+        'あなたは MCP を通じて MXU を操作しています。MXU は MaaFramework ベースの汎用自動化クライアントで、どのプロジェクトを自動化するかは list_tabs が返すプロジェクト情報に従います。\n\n## できること\n- タスクリストの管理：タスクの確認・追加・変更・削除（遅延、指定時刻まで待機、プログラム起動などの MXU 特殊タスクを含む）\n- タスクの開始 / 停止、実行状態とログの確認\n- デバイスの現在の画面のスクリーンショットの確認\n画面上の操作はすべて MXU のタスクが行います。あなたが直接クリックやスワイプをすることはできません。\n\n## 基本概念\n- タブ：MXU 画面上部の各タブで、それぞれ独立したデバイス接続、タスクリスト、実行状態を持ちます。tab_id を省略すると、現在選択中のタブが使われます。\n- タスク：プロジェクトで定義されます。追加できるタスクは list_available_tasks で確認でき、タスクのオプションは describe_task で確認できます。\n- タスクリストの各項目には個別の task_id があり、同じタスクを複数回追加できます。\n- 結果の label は画面に表示される名前（現在の表示言語に翻訳済み）、name は内部名です。ツールを呼び出すときは name を渡してください。\n\n## 推奨される流れ\n1. まず list_tabs を呼び出します。タブが複数あり、ユーザーがどれか指定していない場合は、先にユーザーに確認します。\n2. タスクリストを変更する前に get_task_list で現状を確認し、重複追加を避けます。\n3. タスクの追加：\n   - list_available_tasks の名前と説明をユーザーの言葉と照らし合わせます。対応が不確かな場合は推測せず、ユーザーに確認します。\n   - describe_task でオプションを確認し、ユーザーが変更を求めたオプションだけを渡し、それ以外は既定値のままにします。\n   - オプションの値には describe_task が返す値の名前を使います。検証に失敗した場合は、エラーに示された有効な値に従って修正します。\n4. タスクの開始：start_tasks はすぐに戻ります。その後、実行が終わるまで 10～30 秒ごとに get_run_status を呼び出します。実行中に重複して開始しないでください。\n5. 失敗の調査：まず get_run_status のログを確認し、必要に応じて capture_screen で画面を確認します。ユーザーに報告するときは、根拠と推測を分けて伝えます。\n\n## 注意事項\n- タスクはユーザーのデバイスを操作するため、ユーザーが明示的に求めたときだけ開始してください。\n- 実行中はタスクを変更・削除できません。実行中に追加した通常タスクと特殊タスクは現在の実行キューの末尾に追加され、前処理タスク（pretask）は次回の起動時に反映されます。\n- タスクの削除には確認がありません。削除する前に、task_id がユーザーの指定した項目であることを確認してください。\n- スクリーンショットにはデバイスの接続が必要です。未接続のときに、スクリーンショットのためだけにタスクを開始せず、先にユーザーに確認してください。\n- パスワード系オプションの値はマスクされています。会話の中でパスワードを求めず、MXU の画面で入力するようユーザーに伝えてください。\n- あなたの書き込み操作はすべて MXU のログパネルに記録されます。',
+      tools: {
+        list_tabs: {
+          title: 'タブを表示',
+          description:
+            'MXU のすべてのタブ（それぞれ独立したデバイス接続とタスクリストを持つ）と、その接続・実行状態、読み込み中のプロジェクト情報を返します。返される tab_id は、他のツールでタブを指定するときに使います。',
+        },
+        list_available_tasks: {
+          title: '追加できるタスクを表示',
+          description:
+            'タブに追加できるタスク（現在のコントローラー/リソースで絞り込み済み）を返します。プロジェクトのタスク、前処理タスク（pretask: true）、MXU 特殊タスク（special: true）を含みます。名前と説明のみで、オプション構造は含みません（describe_task で確認）。追加済みのタスクは get_task_list で確認してください。',
+        },
+        describe_task: {
+          title: 'タスクのオプションを表示',
+          description:
+            'タスクのオプション構造を interface.json と同じ形式で返します：root_options はトップレベルのオプション key、options は key → オプション定義の表（種類、label、既定値、選択肢、入力フィールド）です。値の下の options は、その値を選んだときに表示されるサブオプションの key で、定義は options 表で確認します。構造のみを返し、追加済みタスクの現在の値は返しません（get_task_list で確認）。値の一覧が別のオプションと完全に同じ場合は cases を省略し、cases_same_as で参照先のオプション key を示します。値が 50 個を超える場合は cases を省略し（cases_omitted、件数は case_count）、必要なときは option_key を指定してそのオプションの全値を確認します。',
+        },
+        get_task_list: {
+          title: 'タスクリストを表示',
+          description:
+            'タブのタスクリストに追加済みのタスクを返します：各項目の task_id、名前、チェックの有無、実行状態、現在のオプション値（パスワードはマスク済み）。まだ追加できるタスクは list_available_tasks で確認してください。',
+        },
+        add_task: {
+          title: 'タスクを追加',
+          description:
+            'タブのタスクリストにタスクを 1 つ追加し、新しいタスクの task_id を返します。オプションの key と値は先に describe_task で確認してください。タブの実行中は、通常タスクと特殊タスクは現在の実行キューに追加され、前処理タスクは次回の起動時に反映されます。追加のみで開始はしません。開始は start_tasks で行います。',
+        },
+        update_task: {
+          title: 'タスクを変更',
+          description:
+            'タスクリストにある既存タスクのオプションまたはチェック状態を変更します。task_id は get_task_list で取得します。変更するオプションだけを渡し、渡さなかったものは現在の値のままです。オプションの key と値は describe_task で確認してください。タブの実行中は変更できないため、先に stop_tasks で停止します。変更後のオプション値を返します。',
+        },
+        remove_task: {
+          title: 'タスクを削除',
+          description:
+            'タブのタスクリストからタスクを 1 つ削除します（確認なし）。task_id は get_task_list で取得します。タブの実行中は削除できないため、先に stop_tasks で停止します。',
+        },
+        start_tasks: {
+          title: 'タスクを開始',
+          description:
+            'タブのタスクを開始します：チェック済みのタスクをすべて実行するか、task_id で 1 つだけ実行します。デバイスの接続とリソースの読み込みは自動で行います。起動したらすぐに戻り、タスクの終了は待ちません。進行状況は get_run_status で確認します。起動に失敗した場合は理由を返します（ウィンドウ/デバイスが見つからないなど）。',
+        },
+        stop_tasks: {
+          title: 'タスクを停止',
+          description:
+            'タブで実行中のタスクを停止し、停止してから戻ります。タスクの削除やタスクリストの変更は行いません。',
+        },
+        get_run_status: {
+          title: '実行状態を表示',
+          description:
+            'タブの実行状態を返します：実行中か、起動中か、今回の実行での各タスクの状態、最近のログ。タスクの開始・停止は行いません。タスクリストの全内容は get_task_list で確認してください。',
+        },
+        capture_screen: {
+          title: 'デバイス画面を取得',
+          description:
+            'タブに接続されたデバイスの現在の画面のスクリーンショット（PNG）を取得します。デバイスへの自動接続は行わず、未接続の場合はエラーを返します。接続は start_tasks が自動で行います。',
+        },
+      },
+      params: {
+        tab_id: 'タブ ID（list_tabs で取得）。省略すると現在選択中のタブを使います',
+        task_name: 'タスク名（list_available_tasks が返す name）',
+        task_id: 'タスクリスト内のタスク ID（get_task_list が返す task_id）',
+        task_id_start:
+          'このタスクだけを実行します（get_task_list が返す task_id）。省略するとチェック済みのタスクをすべて実行します',
+        option_key:
+          'このオプション（サブオプションを含む）だけを表示し、値の一覧をすべて返します。cases_omitted が付いたオプションの確認に使います',
+        options_add:
+          'オプションの値。キーは describe_task が返すオプション key で、変更するオプションだけを渡します：select は値の名前の文字列、checkbox は値の名前の配列、switch は "Yes" / "No"、input は { フィールド名: 文字列値 } のオブジェクト',
+        options_update:
+          '変更するオプション。変更するものだけを渡し、渡さなかったものは現在の値のままです。形式は add_task の options と同じです',
+        enabled_add: 'チェックして有効にするかどうか。既定値は true',
+        enabled_update: 'チェックして有効にするかどうか',
+        log_limit: '返す最近のログの件数。既定値 20、最大 200',
+      },
+      errors: {
+        uiNotReady: 'MXU の画面の準備ができていません。しばらくしてから再試行してください',
+        sendFailed: 'MXU の画面へのリクエスト送信に失敗しました：{error}',
+        noResult: 'MXU の画面から結果が返されませんでした',
+        timeout: 'MXU の画面の応答待ちがタイムアウトしました（{seconds} 秒）',
+        timeoutStart:
+          '起動結果の待機がタイムアウトしました（{seconds} 秒）：起動はまだ進行中の可能性があります。すぐに再試行せず、get_run_status で状態を確認してください',
+        timeoutWrite:
+          'MXU の画面の応答待ちがタイムアウトしました（{seconds} 秒）：操作はすでに実行された可能性があります。再試行するかどうかは、get_task_list または get_run_status で確認してから判断してください',
+        unknownError: '不明なエラー',
+        tabResolveFailed: 'タブを特定できません',
+        deviceNotConnected: 'デバイスが接続されていないため、スクリーンショットを取得できません',
+        captureFailed: 'スクリーンショットの取得に失敗しました',
+        captureFailedWithError: 'スクリーンショットの取得に失敗しました：{error}',
+        captureTimeout: 'スクリーンショットの取得がタイムアウトしました',
+        readImageFailed: 'スクリーンショットのデータの読み込みに失敗しました',
+        noImageData: 'スクリーンショットのデータがありません',
+      },
+    },
   },
 
   // 設定の自動修復通知

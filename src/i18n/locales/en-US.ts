@@ -609,7 +609,7 @@ export default {
   },
 
   webserver: {
-    title: 'Web Server',
+    title: 'Web & AI',
     enabled: 'Enable Web Server',
     enabledHint: 'When disabled, the built-in web server will not start (restart required)',
     port: 'Web Server Port',
@@ -621,6 +621,175 @@ export default {
     restartLater: 'Later',
     restartNow: 'Restart Now',
     address: 'Web Server Address',
+  },
+
+  // MCP server
+  mcp: {
+    enabled: 'Enable AI Assistant (MCP)',
+    enabledHint:
+      'Allow local AI tools to connect to MXU to manage and start tasks and view screenshots. AI actions are recorded in the log panel',
+    requiresWebServer:
+      'The AI assistant requires the Web server. Please enable the Web server first',
+    address: 'Connection URL',
+    copy: 'Copy',
+    copied: 'Copied',
+    log: {
+      addTask: 'AI: added task "{{name}}"',
+      updateTask: 'AI: updated task "{{name}}"',
+      removeTask: 'AI: removed task "{{name}}"',
+      startTasks: 'AI: starting tasks',
+      startTask: 'AI: starting task "{{name}}"',
+      stopTasks: 'AI: stopping tasks',
+    },
+    errors: {
+      paramNotString: 'Parameter {{key}} must be a string',
+      paramMissing: 'Missing parameter {{key}}',
+      tabNotFound: 'Tab not found: {{id}}. Call list_tabs first',
+      noActiveTab: 'No tab is currently open',
+      adminRequired:
+        'The current controller requires administrator privileges. Ask the user to restart MXU as administrator and try again',
+      startFailedWithReasons: 'Failed to start: {{reasons}}',
+      startFailed: 'Failed to start. Check the MXU logs',
+      projectNotLoaded: 'The project has not been loaded yet',
+      taskNotFound: 'Task not found: {{name}}. Call list_available_tasks first',
+      taskNotAddable: 'Task {{name}} cannot be added',
+      taskIncompatible: 'Task {{name}} is not available for the current controller/resource',
+      paramOptionsNotObject: 'Parameter options must be an object',
+      paramEnabledNotBoolean: 'Parameter enabled must be a boolean',
+      addTaskFailed: 'Failed to add task: {{name}}',
+      updateWhileRunning: 'Tasks cannot be modified while running. Stop the tasks first',
+      taskIdNotFound: 'No task with task_id {{id}} in the task list. Call get_task_list first',
+      taskDefMissing: 'The definition of task {{name}} no longer exists, so it cannot be modified',
+      updateIncompatible:
+        'Task {{name}} is not available for the current controller/resource and cannot be modified',
+      nothingToUpdate: 'Nothing to update. Pass options or enabled',
+      removeWhileRunning: 'Tasks cannot be removed while running. Stop the tasks first',
+      alreadyRunning: 'Tasks in this tab are already running',
+      tabStarting:
+        'This tab is starting. Check the status later with get_run_status instead of starting it again',
+      uiNotReady: 'The MXU interface is not ready yet. Try again later',
+      unknownOp: 'Unknown operation: {{op}}',
+      optionNotFoundForDescribe:
+        'The task has no option "{{key}}". Call describe_task without option_key to list the options first',
+      optionIncompatible: 'Option "{{key}}" is not available for the current controller/resource',
+      optionNotFound: 'The task has no option "{{key}}". Available options: {{valid}}',
+      noSettableOptions: 'The task has no configurable options',
+      inputNeedsObject: 'Option "{{key}}" expects an object of { field: value }',
+      inputFieldNotFound: 'Option "{{key}}" has no field "{{name}}". Available fields: {{valid}}',
+      inputFieldNotString: 'Field "{{name}}" of option "{{key}}" must be a string',
+      inputFieldInvalid:
+        'Value "{{value}}" of field "{{name}}" in option "{{key}}" has an invalid format (pattern: {{verify}})',
+      inputFieldInvalidWithHint:
+        'Value "{{value}}" of field "{{name}}" in option "{{key}}" has an invalid format: {{hint}} (pattern: {{verify}})',
+      switchInvalid: 'Option "{{key}}" is a switch; the value must be "Yes" or "No"',
+      checkboxNeedsArray:
+        'Option "{{key}}" is a multi-select and expects an array of value names. Choices: {{valid}}',
+      casesInvalid: 'Option "{{key}}" has no value {{invalid}}. Choices: {{valid}}',
+      checkboxMin: 'Option "{{key}}" requires at least {{count}} selections',
+      checkboxMax: 'Option "{{key}}" allows at most {{count}} selections',
+      selectInvalid: 'Option "{{key}}" has no value "{{value}}". Choices: {{valid}}',
+    },
+    notes: {
+      pretaskNextRun: 'Pre-tasks take effect on the next start',
+      stopPending:
+        'A stop request has been sent but the tasks have not fully stopped yet. Check again later with get_run_status',
+    },
+    // 推送给后端：MCP 握手 instructions、工具标题/描述、参数说明与后端错误（后端占位符为 {name}）
+    server: {
+      instructions:
+        "You are operating MXU through MCP. MXU is a general-purpose automation client based on MaaFramework; the project being automated is given by the project info returned from list_tabs.\n\n## What you can do\n- Manage the task list: view, add, modify, and remove tasks (including MXU special tasks such as delay, wait until a time, and launch a program)\n- Start / stop tasks, and query run status and logs\n- View a screenshot of the device's current screen\nAll on-screen actions are performed by MXU tasks; you cannot click or swipe directly.\n\n## Concepts\n- Tab: each tab at the top of the MXU window has its own device connection, task list, and run state. When tab_id is omitted, the currently selected tab is used.\n- Task: defined by the project. Use list_available_tasks to see which tasks can be added; tasks can have options, which describe_task shows.\n- Every item in the task list has its own task_id, and the same task can appear more than once.\n- In results, label is the display name (already translated into the current UI language) and name is the internal name; pass name when calling tools.\n\n## Recommended workflow\n1. Call list_tabs first. If there are several tabs and the user did not say which one, ask the user.\n2. Call get_task_list before changing the task list, to avoid adding duplicates.\n3. Adding tasks:\n   - Match what the user said against the names and descriptions from list_available_tasks; if the match is uncertain, ask the user instead of guessing.\n   - Use describe_task to view the options, and pass only the options the user asked to change; keep the rest at their defaults.\n   - Use the value names returned by describe_task; if validation fails, correct the value using the valid values listed in the error.\n4. Starting tasks: start_tasks returns immediately; then call get_run_status every 10–30 seconds until the run finishes. Do not start again while running.\n5. Troubleshooting: check the logs from get_run_status first, and use capture_screen to look at the screen if needed. When reporting to the user, keep evidence and speculation separate.\n\n## Notes\n- Only start tasks when the user explicitly asks: tasks control the user's device.\n- Tasks cannot be modified or removed while running. Regular and special tasks added while running are appended to the end of the current run queue; pre-tasks take effect on the next start.\n- Removing a task does not ask for confirmation; make sure the task_id is the one the user wants removed.\n- Screenshots require a connected device. If it is not connected, do not start tasks just to take a screenshot; ask the user first.\n- Values of password options are masked. Do not ask the user for passwords in the conversation; ask them to fill them in within the MXU interface.\n- All of your write operations are recorded in the MXU log panel.",
+      tools: {
+        list_tabs: {
+          title: 'List tabs',
+          description:
+            'List all MXU tabs (each with its own device connection and task list) with their connection and run status, plus info about the loaded project. The returned tab_id identifies a tab in other tools.',
+        },
+        list_available_tasks: {
+          title: 'List addable tasks',
+          description:
+            'List the tasks that can be added to a tab (already filtered by the current controller/resource), including project tasks, pre-tasks (pretask: true), and MXU special tasks (special: true). Returns only names and descriptions, not option structures (use describe_task); use get_task_list for tasks already added.',
+        },
+        describe_task: {
+          title: 'Describe task options',
+          description:
+            "Describe the option structure of a task in the same shape as interface.json: root_options lists the top-level option keys, and options is a key → option definition table (type, label, default, value choices, input fields). The options under a value are the keys of sub-options that appear when it is selected; look them up in the options table. Describes the structure only, not the current values of added tasks (use get_task_list). When a value list is identical to another option's, cases is omitted and cases_same_as names that option's key; when an option has more than 50 values, cases is omitted (cases_omitted, with case_count giving the number); pass option_key to view that option's full value list.",
+        },
+        get_task_list: {
+          title: 'View task list',
+          description:
+            "View the tasks already added to a tab's task list: each item's task_id, name, whether it is checked, run status, and current option values (passwords masked). Use list_available_tasks to see which tasks can still be added.",
+        },
+        add_task: {
+          title: 'Add task',
+          description:
+            "Add a task to a tab's task list and return the new task's task_id; check option keys and values with describe_task first. While the tab is running, regular and special tasks are appended to the current run queue, and pre-tasks take effect on the next start. Adds only, does not start; use start_tasks to start.",
+        },
+        update_task: {
+          title: 'Modify task',
+          description:
+            'Modify the options or checked state of an existing task in the task list; task_id comes from get_task_list. Pass only the options to change; others keep their current values. Check option keys and values with describe_task. Cannot modify while the tab is running; stop with stop_tasks first. Returns the updated option values.',
+        },
+        remove_task: {
+          title: 'Remove task',
+          description:
+            "Remove a task from a tab's task list (no confirmation); task_id comes from get_task_list. Cannot remove while the tab is running; stop with stop_tasks first.",
+        },
+        start_tasks: {
+          title: 'Start tasks',
+          description:
+            "Start a tab's tasks: run all checked tasks, or only one with task_id. Automatically connects the device and loads resources; returns once started without waiting for the tasks to finish; query progress with get_run_status. Returns the reason if the start fails (e.g. window/device not found).",
+        },
+        stop_tasks: {
+          title: 'Stop tasks',
+          description:
+            'Stop the tasks running in a tab and return once they have stopped. Does not remove tasks or change the task list.',
+        },
+        get_run_status: {
+          title: 'View run status',
+          description:
+            "Query a tab's run status: whether it is running or starting, the status of each task in the current run, and recent logs. Does not start or stop tasks; use get_task_list for the full task list.",
+        },
+        capture_screen: {
+          title: 'Capture device screen',
+          description:
+            'Get a screenshot (PNG) of the current screen of the device connected to a tab. Does not connect the device automatically: returns an error if it is not connected; start_tasks connects automatically.',
+        },
+      },
+      params: {
+        tab_id: 'Tab ID (from list_tabs); defaults to the currently selected tab',
+        task_name: 'Task name (the name returned by list_available_tasks)',
+        task_id: 'ID of a task in the task list (the task_id returned by get_task_list)',
+        task_id_start:
+          'Run only this task (the task_id returned by get_task_list); runs all checked tasks when omitted',
+        option_key:
+          'Describe only this option (with its sub-options), listing its full value list; use it for options marked cases_omitted',
+        options_add:
+          'Option values keyed by the option keys returned by describe_task; pass only the options to change: a value name string for select; an array of value names for checkbox; "Yes" / "No" for switch; an object of { field: string value } for input',
+        options_update:
+          'Options to change; pass only the options to change, others keep their current values. Same format as the options of add_task',
+        enabled_add: 'Whether the task is checked; defaults to true',
+        enabled_update: 'Whether the task is checked',
+        log_limit: 'Number of recent log entries to return; default 20, max 200',
+      },
+      errors: {
+        uiNotReady: 'The MXU interface is not ready yet. Try again later',
+        sendFailed: 'Failed to send the request to the MXU interface: {error}',
+        noResult: 'The MXU interface returned no result',
+        timeout: 'Timed out waiting for the MXU interface ({seconds} s)',
+        timeoutStart:
+          'Timed out waiting for the start result ({seconds} s): the start may still be in progress. Check the status with get_run_status instead of retrying directly',
+        timeoutWrite:
+          'Timed out waiting for the MXU interface ({seconds} s): the operation may already have been applied. Check with get_task_list or get_run_status before deciding whether to retry',
+        unknownError: 'Unknown error',
+        tabResolveFailed: 'Unable to resolve the tab',
+        deviceNotConnected: 'The device is not connected, so a screenshot cannot be taken',
+        captureFailed: 'Screenshot failed',
+        captureFailedWithError: 'Screenshot failed: {error}',
+        captureTimeout: 'Screenshot timed out',
+        readImageFailed: 'Failed to read the screenshot data',
+        noImageData: 'No screenshot data available',
+      },
+    },
   },
 
   // Config self-heal notices
