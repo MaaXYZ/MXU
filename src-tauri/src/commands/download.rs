@@ -241,7 +241,13 @@ pub async fn download_file(
     let actual_save_path_obj = std::path::Path::new(&actual_save_path);
 
     // 使用包含 session_id 的临时文件名，避免取消后立即重试时新旧任务竞争同一临时文件
-    let temp_path = format!("{}.{}.downloading", actual_save_path, session_id);
+    // session_id 是进程内计数，多个实例同时下载时会重复，再加上进程号区分
+    let temp_path = format!(
+        "{}.{}.{}.downloading",
+        actual_save_path,
+        std::process::id(),
+        session_id
+    );
     let mut temp_guard = TempFileGuard::new(PathBuf::from(&temp_path));
 
     // 获取文件大小
@@ -399,6 +405,22 @@ pub async fn download_file(
         return Err(err);
     }
     write_thread_result?;
+
+    // 核对下载字节数：连接被提前断开时流也可能正常结束，留下不完整的文件
+    // 优先以响应的 Content-Length 为准，没有时再使用调用方提供的文件大小
+    let expected_size = content_length.or(total_size.filter(|size| *size > 0));
+    if let Some(expected) = expected_size {
+        if downloaded != expected {
+            warn!(
+                "download_file size mismatch: {} / {} bytes (session {})",
+                downloaded, expected, session_id
+            );
+            return Err(format!(
+                "下载不完整：已下载 {} 字节，应为 {} 字节",
+                downloaded, expected
+            ));
+        }
+    }
 
     // 发送最终进度
     let _ = app.emit(

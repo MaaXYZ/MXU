@@ -237,7 +237,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
   const allEnabled = useMemo(() => {
     if (tasks.length === 0) return false;
     const compatibleTasks = tasks.filter((t) => {
-      const taskDef = projectInterface?.task.find((td) => td.name === t.taskName);
+      const taskDef = resolveCompatTaskDef(projectInterface, t.taskName);
       return isTaskCompatible(taskDef, currentControllerName, currentResourceName);
     });
     return compatibleTasks.length > 0 && compatibleTasks.every((t) => t.enabled);
@@ -1290,6 +1290,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
         const cancelled = errMsg === PRE_ACTION_CANCELLED_ERROR;
         if (!cancelled) {
           const localizedErrMsg = errMsg
+            .replace('UINPUT_SCREEN_SIZE_REQUIRED', t('controller.uinputDimensionsRequired'))
             .replace(
               ' [[hint:spawn_file_not_found]]',
               ` ${t('taskList.autoConnect.agentSpawnHintFileNotFound')}`,

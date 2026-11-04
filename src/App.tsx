@@ -41,6 +41,7 @@ import {
   consumeUpdateCompleteInfo,
   savePendingUpdateInfo,
   getPendingUpdateInfo,
+  hasInstallFailedInSession,
   clearPendingUpdateInfo,
   isDebugVersion,
 } from '@/services/updateService';
@@ -429,6 +430,11 @@ function App() {
     if (state.autoInstallPending) return;
     if (autoTaskLaunchPendingRef.current) return;
     if (state.instances.some((i) => i.isRunning)) return;
+    // 本次运行中安装失败过则不再自动重试，避免反复失败；手动安装和下次启动不受影响
+    if (hasInstallFailedInSession()) {
+      log.info('自动安装更新：本次运行中已安装失败过，跳过自动安装');
+      return;
+    }
 
     log.info('自动安装更新：条件满足，弹出安装');
     state.setAutoInstallPending(true);
@@ -1156,7 +1162,7 @@ function App() {
       // 检查是否有待安装的更新（上次下载完成但未安装）
       // 调试版本跳过待安装更新检测
       if (!isDebugVersion(result.interface.version)) {
-        const pendingUpdate = await getPendingUpdateInfo();
+        const pendingUpdate = await getPendingUpdateInfo(result.interface.version);
         if (pendingUpdate) {
           log.info('检测到待安装更新:', pendingUpdate.versionName);
           // 恢复更新状态

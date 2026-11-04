@@ -15,15 +15,27 @@ import {
   restartApp,
   saveUpdateCompleteInfo,
   clearPendingUpdateInfo,
-  FallbackUpdateError,
+  ensureCurrentExeExists,
   isExecutableInstaller,
+  UpdateInstallError,
 } from '@/services/updateService';
+import type { TFunction } from 'i18next';
 import { ReleaseNotes, DownloadProgressBar, useOpenUpdateSettings } from './UpdateInfoCard';
 import { loggers } from '@/utils/logger';
+
+// 将安装/重启错误转换为界面显示的文案（兜底更新的提示直接使用其 message）
+function formatInstallError(error: unknown, t: TFunction): string {
+  if (error instanceof UpdateInstallError) {
+    return t(`mirrorChyan.installErrors.${error.code}`, { detail: error.detail });
+  }
+  return error instanceof Error ? error.message : String(error);
+}
 
 export function InstallConfirmModal() {
   const { t } = useTranslation();
   const [installStage, setInstallStage] = useState<string>('');
+  // 重启失败（安装已完成）时不提供重试：更新包已移走，重新安装没有意义
+  const [restartFailed, setRestartFailed] = useState(false);
 
   const {
     updateInfo,
@@ -58,6 +70,7 @@ export function InstallConfirmModal() {
     setInstallStatus('installing');
     setInstallError(null);
     setInstallStage('');
+    setRestartFailed(false);
 
     try {
       const success = await installUpdate({
@@ -83,20 +96,16 @@ export function InstallConfirmModal() {
         setInstallError(t('mirrorChyan.installFailed'));
       }
     } catch (error) {
-      loggers.ui.error('安装失败:', error);
+      loggers.ui.error('安装失败:', error instanceof Error ? error.message : error);
       setInstallStatus('failed');
-      // 兜底更新成功时显示特殊提示
-      if (error instanceof FallbackUpdateError) {
-        setInstallError(error.message);
-      } else {
-        setInstallError(error instanceof Error ? error.message : String(error));
-      }
+      setInstallError(formatInstallError(error, t));
     }
   }, [downloadSavePath, basePath, updateInfo, projectName, setInstallStatus, setInstallError, t]);
 
   // 重启应用（直接重启，不再确认）
   const handleRestart = useCallback(async () => {
     try {
+      await ensureCurrentExeExists();
       // 清除待安装更新信息（安装已完成）
       clearPendingUpdateInfo();
       // 保存更新完成信息，供重启后显示
@@ -111,9 +120,12 @@ export function InstallConfirmModal() {
       }
       await restartApp();
     } catch (error) {
-      loggers.ui.error('重启失败:', error);
+      loggers.ui.error('重启失败:', error instanceof Error ? error.message : error);
+      setRestartFailed(true);
+      setInstallStatus('failed');
+      setInstallError(formatInstallError(error, t));
     }
-  }, [updateInfo, currentVersion]);
+  }, [updateInfo, currentVersion, setInstallStatus, setInstallError, t]);
 
   // 关闭模态框
   const handleClose = useCallback(() => {
@@ -189,14 +201,9 @@ export function InstallConfirmModal() {
             setInstallError(t('mirrorChyan.installFailed'));
           }
         } catch (error) {
-          loggers.ui.error('安装失败:', error);
+          loggers.ui.error('安装失败:', error instanceof Error ? error.message : error);
           setInstallStatus('failed');
-          // 兜底更新成功时显示特殊提示
-          if (error instanceof FallbackUpdateError) {
-            setInstallError(error.message);
-          } else {
-            setInstallError(error instanceof Error ? error.message : String(error));
-          }
+          setInstallError(formatInstallError(error, t));
         }
       })();
     }
@@ -205,6 +212,7 @@ export function InstallConfirmModal() {
     if (!showInstallConfirmModal) {
       autoInstallTriggered.current = false;
       autoRestartTriggered.current = false;
+      setRestartFailed(false);
     }
   }, [
     showInstallConfirmModal,
@@ -477,16 +485,18 @@ export function InstallConfirmModal() {
               >
                 {t('common.close')}
               </button>
-              <button
-                onClick={() => {
-                  resetInstallState();
-                  handleInstall();
-                }}
-                className="flex items-center gap-2 px-4 py-2 text-sm bg-accent text-white hover:bg-accent-hover rounded-lg transition-colors"
-              >
-                <RefreshCw className="w-4 h-4" />
-                {t('mirrorChyan.retry')}
-              </button>
+              {!restartFailed && (
+                <button
+                  onClick={() => {
+                    resetInstallState();
+                    handleInstall();
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 text-sm bg-accent text-white hover:bg-accent-hover rounded-lg transition-colors"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  {t('mirrorChyan.retry')}
+                </button>
+              )}
             </>
           )}
         </div>

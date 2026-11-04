@@ -404,6 +404,7 @@ export default {
     portal: 'Portal',
     uinputWidth: '너비 (px)',
     uinputHeight: '높이 (px)',
+    uinputDimensionsRequired: 'UInput 화면 너비와 높이를 양의 정수로 먼저 입력하세요.',
     playcover: 'PlayCover (macOS)',
     macos: 'macOS 창',
     macosPermissionsRequired:
@@ -729,6 +730,15 @@ export default {
     installing: '업데이트 설치 중...',
     installComplete: '설치 완료',
     installFailed: '설치 실패',
+    installErrors: {
+      packageMissing: '업데이트 패키지를 찾을 수 없습니다. 다시 다운로드해 주세요',
+      packageCorrupt: '업데이트 패키지가 손상되었습니다. 다시 다운로드해 주세요 ({{detail}})',
+      extractFailed:
+        '업데이트 패키지 압축 해제에 실패했습니다. 보안 프로그램에 의해 차단되었을 수 있습니다 ({{detail}})',
+      rolledBack: '업데이트에 실패하여 이전 버전으로 복원했습니다 ({{detail}})',
+      exeMissing:
+        '프로그램 파일이 없습니다. 보안 프로그램에 의해 삭제되거나 격리되었을 수 있습니다. 설치 폴더를 보안 프로그램의 예외 목록에 추가한 후 업데이트를 다시 다운로드해 주세요',
+    },
     installNow: '지금 설치',
     installUpdate: '업데이트 설치',
     installStages: {

@@ -19,11 +19,6 @@ pub fn run() {
     // 确保日志目录存在
     let _ = std::fs::create_dir_all(&logs_dir);
 
-    // 自动迁移旧版注册表自启动到任务计划程序
-    //TODO：26年2月写的，应该过几个月这自动迁移就能去除了，等旧版的都更上来
-    #[cfg(windows)]
-    commands::system::migrate_legacy_autostart();
-
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
@@ -85,6 +80,13 @@ pub fn run() {
             match commands::utils::get_exe_directory() {
                 Ok(exe_dir) => {
                     app_config.load_interface(&exe_dir);
+
+                    // 确定自启动计划任务名并迁移旧版自启动配置（依赖 interface 中的项目名）
+                    #[cfg(windows)]
+                    {
+                        let project_name = app_config.project_name.lock().unwrap().clone();
+                        commands::system::migrate_legacy_autostart(project_name.as_deref());
+                    }
                 }
                 Err(e) => {
                     log::warn!("AppConfigState: could not get exe dir: {}", e);
@@ -167,10 +169,14 @@ pub fn run() {
             }
 
             // 启动时异步清理 cache/old 目录（更新残留的旧文件），不阻塞应用启动
-            if let Ok(data_dir) = commands::get_data_dir() {
-                let old_dir = std::path::Path::new(&data_dir).join("cache").join("old");
+            // 路径与更新时移入旧文件的位置一致（macOS 上数据目录与程序目录不同）
+            if let Ok(old_dir) = commands::update::get_old_dir() {
                 if old_dir.exists() {
                     std::thread::spawn(move || {
+                        // 与全量更新互斥：更新期间 cache/old 中是回滚备份
+                        let _guard = commands::update::OLD_DIR_LOCK
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
                         let (deleted, failed) = commands::cleanup_dir_contents(&old_dir);
                         if deleted > 0 || failed > 0 {
                             if failed == 0 {
@@ -293,6 +299,7 @@ pub fn run() {
             commands::update::fallback_update,
             commands::update::move_file_to_old,
             commands::update::cleanup_update_artifacts,
+            commands::update::current_exe_exists,
             // 下载命令
             commands::download::get_github_release_by_version,
             commands::download::download_file,

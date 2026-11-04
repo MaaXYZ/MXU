@@ -67,7 +67,7 @@ export function GeneralSection() {
         .then((os) => {
           isWindowsRef.current = os === 'windows';
           if (isWindowsRef.current) {
-            tauriInvoke<boolean>('autostart_is_enabled', { suffix: projectInterface?.name })
+            tauriInvoke<boolean>('autostart_is_enabled')
               .then(setAutoStartEnabled)
               .catch(() => {});
           } else {
@@ -100,9 +100,7 @@ export function GeneralSection() {
     try {
       if (isWindowsRef.current) {
         const { invoke } = await import('@tauri-apps/api/core');
-        await invoke(enabled ? 'autostart_enable' : 'autostart_disable', {
-          suffix: projectInterface?.name,
-        });
+        await invoke(enabled ? 'autostart_enable' : 'autostart_disable');
       } else {
         const { enable, disable } = await import('@tauri-apps/plugin-autostart');
         if (enabled) {
