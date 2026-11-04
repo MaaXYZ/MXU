@@ -7,6 +7,8 @@
  */
 
 import { createLogger } from '@/utils/logger';
+import { suspendConfigSync } from '@/services/configService';
+import type { ConfigChangedEvent } from '@/utils/configSync';
 import { getWebSocketUrl } from '@/utils/backendApi';
 
 const log = createLogger('wsService');
@@ -29,7 +31,7 @@ export interface WsAgentOutputPayload {
 export type WsMessage =
   | { type: 'maa-callback'; payload: WsMaaCallbackPayload }
   | { type: 'maa-agent-output'; payload: WsAgentOutputPayload }
-  | { type: 'config-changed'; payload: undefined }
+  | { type: 'config-changed'; payload: ConfigChangedEvent }
   | { type: 'state-changed'; payload: { instance_id: string; kind: string } };
 
 // ============================================================================
@@ -38,7 +40,7 @@ export type WsMessage =
 
 type MaaCallbackHandler = (message: string, details: string) => void;
 type AgentOutputHandler = (instanceId: string, stream: string, line: string) => void;
-type ConfigChangedHandler = () => void;
+type ConfigChangedHandler = (event: ConfigChangedEvent | undefined) => void;
 type StateChangedHandler = (instanceId: string, kind: string) => void;
 type ConnectionStatusHandler = (connected: boolean) => void;
 
@@ -97,16 +99,20 @@ function onOpen() {
   log.info('WebSocket 已连接');
   reconnectDelay = 1000;
 
-  if (hasEverConnected && !currentlyConnected) {
+  const recovered = (hasEverConnected || hasUnexpectedDisconnect) && !currentlyConnected;
+  // 先通知订阅者拉取快照；草稿存储失败时用户可能取消下面的页面刷新。
+  notifyConnectionStatus(true);
+
+  if (recovered) {
     log.info('后端恢复，刷新页面以重新同步状态');
+    suspendConfigSync();
     window.location.reload();
     return;
   }
-
-  notifyConnectionStatus(true);
 }
 
 function onClose(event: CloseEvent) {
+  suspendConfigSync();
   ws = null;
   currentlyConnected = false;
   if (!stopped) {
@@ -142,7 +148,7 @@ function onMessage(event: MessageEvent) {
       );
       break;
     case 'config-changed':
-      configChangedHandlers.forEach((h) => h());
+      configChangedHandlers.forEach((h) => h(msg.payload));
       break;
     case 'state-changed':
       stateChangedHandlers.forEach((h) => h(msg.payload.instance_id, msg.payload.kind));

@@ -4,6 +4,7 @@
 //! 与现有 MaaState 并列，由 `app.manage()` 注入。
 
 use chrono::{Local, NaiveDateTime};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -41,6 +42,44 @@ pub struct ConfigRecoveryNotice {
     pub backup_time: Option<String>,
 }
 
+/// 内部配置同步快照；revision 不属于 PI，也不会写入用户配置文件。
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct ConfigSnapshot {
+    pub config: serde_json::Value,
+    pub revision: String,
+}
+
+#[derive(serde::Deserialize)]
+pub struct ConfigSaveRequest {
+    pub config: serde_json::Value,
+    pub revision: Option<String>,
+    #[serde(default)]
+    pub client_id: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct ConfigSaveError {
+    pub code: &'static str,
+    pub message: String,
+}
+
+impl ConfigSaveError {
+    fn failed(message: impl Into<String>) -> Self {
+        Self {
+            code: "save_failed",
+            message: message.into(),
+        }
+    }
+}
+
+fn config_revision(config: &serde_json::Value) -> String {
+    // serde_json 的默认 Map 按键排序，同一内容在重启后仍能安全比较。
+    format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(config).expect("JSON value serializes"))
+    )
+}
+
 /// 应用配置状态（供 HTTP server 使用）
 #[derive(Default)]
 pub struct AppConfigState {
@@ -54,6 +93,8 @@ pub struct AppConfigState {
     pub data_path: Mutex<String>,
     /// 项目名称（来自 interface.json 的 "name" 字段）
     pub project_name: Mutex<Option<String>>,
+    /// 沿用已有桌面配置的安全原始文件名（如项目名含点），避免接管保存时切换文件。
+    pub config_filename: Mutex<Option<String>>,
     /// 当前 MXU 配置（原始 JSON，启动时从磁盘加载，变更时写回）
     pub config: Mutex<serde_json::Value>,
     /// 配置损坏自愈的结果，等前端取走后清空
@@ -118,7 +159,22 @@ impl AppConfigState {
         *self.data_path.lock().unwrap() = data_dir.to_string_lossy().to_string();
 
         let project_name = self.project_name.lock().unwrap().clone();
-        let config_filename = make_config_filename(project_name.as_deref());
+        let sanitized_filename = make_config_filename(project_name.as_deref());
+        let config_dir = data_dir.join("config");
+        let config_filename = project_name
+            .as_deref()
+            .and_then(|name| {
+                if name.contains(['/', '\\', '\0', ':']) {
+                    return None;
+                }
+                let filename = format!("mxu-{}.json", name);
+                // 两份都存在时沿用桌面端；仅旧 Web 文件存在时保持兼容；新项目沿用原桌面命名。
+                (config_dir.join(&filename).is_file()
+                    || !config_dir.join(&sanitized_filename).exists())
+                .then_some(filename)
+            })
+            .unwrap_or(sanitized_filename);
+        *self.config_filename.lock().unwrap() = Some(config_filename.clone());
         let config_path = data_dir.join("config").join(&config_filename);
 
         if config_path.exists() {
@@ -127,7 +183,7 @@ impl AppConfigState {
                     if is_corrupt_content(&content) {
                         log::error!("AppConfigState: config is corrupt (empty or all-NUL bytes)");
                     } else {
-                        match serde_json::from_str::<serde_json::Value>(&content) {
+                        match parse_jsonc(&content) {
                             Ok(config) if is_valid_mxu_config(&config) => {
                                 log::info!("AppConfigState: config loaded from {:?}", config_path);
                                 *self.config.lock().unwrap() = config;
@@ -210,7 +266,7 @@ impl AppConfigState {
                 continue;
             }
 
-            let parsed = match serde_json::from_str::<serde_json::Value>(&content) {
+            let parsed = match parse_jsonc(&content) {
                 Ok(v) if is_valid_mxu_config(&v) => v,
                 _ => {
                     log::warn!(
@@ -278,7 +334,7 @@ impl AppConfigState {
         };
 
         let usable = !is_corrupt_content(&content)
-            && serde_json::from_str::<serde_json::Value>(&content)
+            && parse_jsonc(&content)
                 .map(|v| is_valid_mxu_config(&v))
                 .unwrap_or(false);
         if !usable {
@@ -309,24 +365,76 @@ impl AppConfigState {
         }
     }
 
-    /// 保存配置到磁盘并更新内存
-    pub fn save_config(&self, config: serde_json::Value) -> Result<(), String> {
+    pub fn snapshot(&self) -> Result<ConfigSnapshot, String> {
+        let config = self.config.lock().map_err(|e| e.to_string())?;
+        Ok(ConfigSnapshot {
+            revision: config_revision(&config),
+            config: config.clone(),
+        })
+    }
+
+    /// 条件检查、磁盘写入及内存更新共用同一把锁，避免多个客户端同时通过检查。
+    pub fn save_config(
+        &self,
+        request: ConfigSaveRequest,
+    ) -> Result<ConfigSnapshot, ConfigSaveError> {
+        // ID 会进入广播队列；它只是关联提示，不能携带任意大的调用方数据。
+        if request.client_id.len() > 128
+            || !request
+                .client_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        {
+            return Err(ConfigSaveError {
+                code: "invalid_client_id",
+                message: "Client ID must contain at most 128 ASCII letters, digits, '-' or '_'"
+                    .to_string(),
+            });
+        }
+        let mut current = self
+            .config
+            .lock()
+            .map_err(|e| ConfigSaveError::failed(e.to_string()))?;
+        let revision = config_revision(&current);
+        if request.revision.as_deref() != Some(revision.as_str()) {
+            return Err(ConfigSaveError {
+                code: if request.revision.is_none() {
+                    "revision_required"
+                } else {
+                    "conflict"
+                },
+                message: "配置已在其它客户端更新，请重新加载后再编辑".to_string(),
+            });
+        }
+        let config = request.config;
+        if !is_valid_mxu_config(&config) {
+            return Err(ConfigSaveError {
+                code: "invalid_config",
+                message: "配置结构无效".to_string(),
+            });
+        }
         let data_path = self.data_path.lock().unwrap().clone();
         if data_path.is_empty() {
-            return Err("数据路径未初始化".to_string());
+            return Err(ConfigSaveError::failed("数据路径未初始化"));
         }
 
         let project_name = self.project_name.lock().unwrap().clone();
-        let config_filename = make_config_filename(project_name.as_deref());
+        let config_filename = self
+            .config_filename
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_else(|| make_config_filename(project_name.as_deref()));
         let config_dir = Path::new(&data_path).join("config");
 
         if !config_dir.exists() {
-            std::fs::create_dir_all(&config_dir).map_err(|e| format!("创建配置目录失败: {}", e))?;
+            std::fs::create_dir_all(&config_dir)
+                .map_err(|e| ConfigSaveError::failed(format!("创建配置目录失败: {}", e)))?;
         }
 
         let config_path = config_dir.join(&config_filename);
 
-        // 防止空实例列表覆盖已有非空配置（与前端 configService.ts 保持一致）
+        // 保留原有保护：拒绝空实例列表覆盖已有非空配置。
         let new_instances_empty = config
             .get("instances")
             .and_then(|v| v.as_array())
@@ -335,7 +443,7 @@ impl AppConfigState {
 
         if new_instances_empty && config_path.exists() {
             if let Ok(existing_content) = std::fs::read_to_string(&config_path) {
-                if let Ok(existing) = serde_json::from_str::<serde_json::Value>(&existing_content) {
+                if let Ok(existing) = parse_jsonc(&existing_content) {
                     let existing_non_empty = existing
                         .get("instances")
                         .and_then(|v| v.as_array())
@@ -345,7 +453,7 @@ impl AppConfigState {
                         log::error!(
                             "AppConfigState: refusing to overwrite non-empty config with empty instances"
                         );
-                        return Err("拒绝用空实例列表覆盖已有配置".to_string());
+                        return Err(ConfigSaveError::failed("拒绝用空实例列表覆盖已有配置"));
                     }
                 }
             }
@@ -355,11 +463,11 @@ impl AppConfigState {
         // 内含 1 天间隔判定，绝大多数保存会在这里直接返回。
         self.rolling_backup(Path::new(&data_path), &config_filename, &config_path);
 
-        let content =
-            serde_json::to_string_pretty(&config).map_err(|e| format!("序列化配置失败: {}", e))?;
+        let content = serde_json::to_string_pretty(&config)
+            .map_err(|e| ConfigSaveError::failed(format!("序列化配置失败: {}", e)))?;
 
         // 原子写：先写到 .tmp，再 rename 覆盖正式文件。
-        // 与前端 configService.ts 保持一致，避免进程在写入中途被杀
+        // 避免进程在写入中途被杀
         // （如自动更新触发的 Tauri relaunch）时把配置文件截断为 0 字节。
         // std::fs::rename 在 Windows 上走 MoveFileExW(MOVEFILE_REPLACE_EXISTING)，
         // 在 Unix 上是原子的 rename(2)，同文件系统内可保证原子替换。
@@ -367,16 +475,23 @@ impl AppConfigState {
         std::fs::write(&tmp_path, content).map_err(|e| {
             // 清理半成品 .tmp，避免遗留
             let _ = std::fs::remove_file(&tmp_path);
-            format!("写入临时配置文件失败: {}", e)
+            ConfigSaveError::failed(format!("写入临时配置文件失败: {}", e))
         })?;
         if let Err(e) = std::fs::rename(&tmp_path, &config_path) {
             let _ = std::fs::remove_file(&tmp_path);
-            return Err(format!("重命名配置文件失败: {}", e));
+            return Err(ConfigSaveError::failed(format!(
+                "重命名配置文件失败: {}",
+                e
+            )));
         }
 
-        *self.config.lock().unwrap() = config;
+        let snapshot = ConfigSnapshot {
+            revision: config_revision(&config),
+            config: config.clone(),
+        };
+        *current = config;
         log::debug!("AppConfigState: config saved to {:?}", config_path);
-        Ok(())
+        Ok(snapshot)
     }
 }
 
@@ -384,22 +499,22 @@ impl AppConfigState {
 // Tauri 命令
 // ============================================================================
 
-/// 通知后端配置已变更（任一客户端保存后调用）
-///
-/// 更新 `AppConfigState` 内存缓存，并通过双通道（WS + Tauri 事件）广播 `ConfigChanged`，
-/// 使所有其他客户端（浏览器 WebUI 和 Tauri 桌面端）重新拉取最新配置。
-/// 各端需配合 `consumeSelfSave` 跳过自身触发的通知。
+/// 桌面端和 WebUI 共用后端快照与条件写入，避免桌面直接写盘绕过并发检查。
 #[tauri::command]
-pub fn notify_config_changed(
+pub fn get_config_snapshot(state: State<Arc<AppConfigState>>) -> Result<ConfigSnapshot, String> {
+    state.snapshot()
+}
+
+#[tauri::command]
+pub fn save_config_snapshot(
     app: tauri::AppHandle,
     state: State<Arc<AppConfigState>>,
-    config: serde_json::Value,
-) -> Result<(), String> {
-    *state.config.lock().map_err(|e| e.to_string())? = config;
-
-    super::utils::emit_config_changed(&app);
-
-    Ok(())
+    request: ConfigSaveRequest,
+) -> Result<ConfigSnapshot, ConfigSaveError> {
+    let client_id = request.client_id.clone();
+    let snapshot = state.save_config(request)?;
+    super::utils::emit_config_changed(&app, &client_id, &snapshot.revision);
+    Ok(snapshot)
 }
 
 /// 取走并清空配置自愈通知（前端启动时调用一次）
@@ -717,7 +832,36 @@ fn normalize_external_task(value: Option<&serde_json::Value>) -> Vec<serde_json:
 /// 解析 JSONC（带注释的 JSON），去除 `//` 和 `/* */` 注释后用 serde_json 解析
 pub fn parse_jsonc(content: &str) -> Result<serde_json::Value, serde_json::Error> {
     let stripped = strip_jsonc_comments(content);
-    serde_json::from_str(&stripped)
+    serde_json::from_str(&strip_trailing_commas(&stripped))
+}
+
+/// 与原桌面端 jsonc-parser 的 allowTrailingComma 行为一致，字符串中的逗号不变。
+fn strip_trailing_commas(content: &str) -> String {
+    let mut result = String::with_capacity(content.len());
+    let mut chars = content.chars().peekable();
+    let mut in_string = false;
+    let mut escape_next = false;
+    while let Some(ch) = chars.next() {
+        if escape_next {
+            result.push(ch);
+            escape_next = false;
+            continue;
+        }
+        if in_string {
+            if ch == '\\' {
+                escape_next = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+        } else if ch == '"' {
+            in_string = true;
+        } else if ch == ',' && matches!(chars.clone().find(|c| !c.is_whitespace()), Some('}' | ']'))
+        {
+            continue;
+        }
+        result.push(ch);
+    }
+    result
 }
 
 /// 去除 JSONC 中的注释，保留字符串内的斜杠字符
@@ -813,6 +957,246 @@ mod tests {
             "settings": { "theme": "dark" }
         }))
         .unwrap()
+    }
+
+    fn initialized_state(tag: &str) -> (AppConfigState, PathBuf) {
+        let data_path = make_temp_dir(tag);
+        write_config_file(&data_path, &sample_config_json());
+        let state = AppConfigState::default();
+        *state.project_name.lock().unwrap() = Some("MaaEnd".to_string());
+        state.load_config(&data_path);
+        (state, data_path)
+    }
+
+    fn save_request(config: serde_json::Value, revision: Option<&str>) -> ConfigSaveRequest {
+        ConfigSaveRequest {
+            config,
+            revision: revision.map(str::to_string),
+            client_id: "test-client".to_string(),
+        }
+    }
+
+    #[test]
+    fn caller_ids_are_bounded_before_saving_or_broadcasting() {
+        let (state, data_path) = initialized_state("client-id-limit");
+        let initial = state.snapshot().unwrap();
+        for id in [
+            "a".repeat(129),
+            "invalid/id".to_string(),
+            "身份".to_string(),
+        ] {
+            let mut request = save_request(initial.config.clone(), Some(&initial.revision));
+            request.client_id = id;
+            assert_eq!(
+                state.save_config(request).unwrap_err().code,
+                "invalid_client_id"
+            );
+            assert_eq!(state.snapshot().unwrap().revision, initial.revision);
+        }
+        let mut request = save_request(initial.config.clone(), Some(&initial.revision));
+        request.client_id = "a".repeat(128);
+        assert!(state.save_config(request).is_ok());
+        std::fs::remove_dir_all(data_path).unwrap();
+    }
+
+    #[test]
+    fn stale_or_unversioned_browser_cannot_overwrite_desktop_config() {
+        let (state, data_path) = initialized_state("stale-browser");
+        let browser_snapshot = state.snapshot().unwrap();
+        let mut desktop_config = browser_snapshot.config.clone();
+        desktop_config["instances"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({ "id": "new-desktop-tab" }));
+        let saved = state
+            .save_config(save_request(
+                desktop_config,
+                Some(&browser_snapshot.revision),
+            ))
+            .unwrap();
+        for revision in [None, Some(browser_snapshot.revision.as_str())] {
+            let error = state
+                .save_config(save_request(browser_snapshot.config.clone(), revision))
+                .unwrap_err();
+            assert!(matches!(error.code, "revision_required" | "conflict"));
+        }
+        let disk: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(data_path.join("config/mxu-MaaEnd.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(disk, saved.config);
+        assert_eq!(state.snapshot().unwrap().config, saved.config);
+        assert!(
+            disk.get("revision").is_none(),
+            "sync metadata must not enter the config file"
+        );
+        std::fs::remove_dir_all(data_path).unwrap();
+    }
+
+    #[test]
+    fn two_simultaneous_browsers_cannot_both_commit_the_same_base_revision() {
+        let (state, data_path) = initialized_state("concurrent-browsers");
+        let state = Arc::new(state);
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let snapshot = state.snapshot().unwrap();
+        let threads: Vec<_> = ["browser-a", "browser-b"]
+            .into_iter()
+            .map(|name| {
+                let state = Arc::clone(&state);
+                let barrier = Arc::clone(&barrier);
+                let mut config = snapshot.config.clone();
+                config["instances"] = serde_json::json!([{ "id": name }]);
+                let revision = snapshot.revision.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    state.save_config(save_request(config, Some(&revision)))
+                })
+            })
+            .collect();
+        let results: Vec<_> = threads
+            .into_iter()
+            .map(|thread| thread.join().unwrap())
+            .collect();
+        assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+        assert_eq!(
+            results
+                .iter()
+                .filter(|result| result.as_ref().is_err_and(|error| error.code == "conflict"))
+                .count(),
+            1
+        );
+        let disk: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(data_path.join("config/mxu-MaaEnd.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(disk, state.snapshot().unwrap().config);
+        std::fs::remove_dir_all(data_path).unwrap();
+    }
+
+    #[test]
+    fn host_restart_still_rejects_a_browser_snapshot_from_before_a_desktop_edit() {
+        let (state, data_path) = initialized_state("restart-revision");
+        let old = state.snapshot().unwrap();
+        let mut config = old.config.clone();
+        config["settings"]["theme"] = serde_json::json!("light");
+        let saved = state
+            .save_config(save_request(config, Some(&old.revision)))
+            .unwrap();
+        let restarted = AppConfigState::default();
+        *restarted.project_name.lock().unwrap() = Some("MaaEnd".to_string());
+        restarted.load_config(&data_path);
+        assert_eq!(restarted.snapshot().unwrap().revision, saved.revision);
+        assert_eq!(
+            restarted
+                .save_config(save_request(old.config, Some(&old.revision)))
+                .unwrap_err()
+                .code,
+            "conflict"
+        );
+        std::fs::remove_dir_all(data_path).unwrap();
+    }
+
+    #[test]
+    fn failed_disk_write_keeps_the_current_snapshot_and_revision() {
+        let (state, data_path) = initialized_state("failed-write");
+        let old = state.snapshot().unwrap();
+        let config_path = data_path.join("config/mxu-MaaEnd.json");
+        let original_disk = std::fs::read_to_string(&config_path).unwrap();
+        // 模拟原子写临时文件无法创建，正式文件不能被截断或替换。
+        std::fs::create_dir(config_path.with_extension("json.tmp")).unwrap();
+        let mut config = old.config.clone();
+        config["settings"]["theme"] = serde_json::json!("light");
+        assert!(state
+            .save_config(save_request(config, Some(&old.revision)))
+            .is_err());
+        let current = state.snapshot().unwrap();
+        assert_eq!(current.revision, old.revision);
+        assert_eq!(current.config, old.config);
+        assert_eq!(std::fs::read_to_string(config_path).unwrap(), original_disk);
+        std::fs::remove_dir_all(data_path).unwrap();
+    }
+
+    #[test]
+    fn shared_backend_loader_preserves_jsonc_desktop_configs() {
+        let data_path = make_temp_dir("jsonc-loader");
+        write_config_file(
+            &data_path,
+            r#"// Desktop config
+        { "version": "1.0", "instances": [{ "id": "a", },], "settings": { "theme": "dark", "literal": ",]", }, }
+        "#,
+        );
+        let state = AppConfigState::default();
+        *state.project_name.lock().unwrap() = Some("MaaEnd".to_string());
+        state.load_config(&data_path);
+        assert_eq!(state.snapshot().unwrap().config["instances"][0]["id"], "a");
+        assert_eq!(
+            state.snapshot().unwrap().config["settings"]["literal"],
+            ",]"
+        );
+        std::fs::remove_dir_all(data_path).unwrap();
+    }
+
+    #[test]
+    fn jsonc_configs_are_backed_up_and_jsonc_backups_can_be_recovered() {
+        let data_path = make_temp_dir("jsonc-backup");
+        let jsonc = r#"// existing desktop config
+        { "version": "1.0", "instances": [{ "id": "a", },], "settings": { "theme": "dark", }, }
+        "#;
+        let config_path = write_config_file(&data_path, jsonc);
+        let state = AppConfigState::default();
+        *state.project_name.lock().unwrap() = Some("MaaEnd".to_string());
+        state.load_config(&data_path);
+        let snapshot = state.snapshot().unwrap();
+        let mut edited = snapshot.config.clone();
+        edited["settings"]["theme"] = serde_json::json!("light");
+        state
+            .save_config(save_request(edited, Some(&snapshot.revision)))
+            .unwrap();
+        let backups = list_backups_newest_first(&data_path, "mxu-MaaEnd.json");
+        assert_eq!(backups.len(), 1);
+        assert_eq!(std::fs::read_to_string(&backups[0].path).unwrap(), jsonc);
+        std::fs::write(&config_path, "\0\0").unwrap();
+        state.load_config(&data_path);
+        assert_eq!(
+            state.snapshot().unwrap().config["settings"]["theme"],
+            "dark"
+        );
+        std::fs::remove_dir_all(data_path).unwrap();
+    }
+
+    #[test]
+    fn desktop_filename_with_dots_remains_authoritative_when_backend_takes_over_writes() {
+        let data_path = make_temp_dir("filename-compat");
+        std::fs::create_dir_all(data_path.join("config")).unwrap();
+        let raw_path = data_path.join("config/mxu-Maa.Custom.json");
+        let sanitized_path = data_path.join("config/mxu-Maa_Custom.json");
+        std::fs::write(&raw_path, sample_config_json()).unwrap();
+        let legacy_web_content = sample_config_json().replace("dark", "system");
+        std::fs::write(&sanitized_path, &legacy_web_content).unwrap();
+        let state = AppConfigState::default();
+        *state.project_name.lock().unwrap() = Some("Maa.Custom".to_string());
+        state.load_config(&data_path);
+        let snapshot = state.snapshot().unwrap();
+        assert_eq!(snapshot.config["settings"]["theme"], "dark");
+        let mut edited = snapshot.config;
+        edited["settings"]["theme"] = serde_json::json!("light");
+        state
+            .save_config(save_request(edited, Some(&snapshot.revision)))
+            .unwrap();
+        let disk: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&raw_path).unwrap()).unwrap();
+        assert_eq!(disk["settings"]["theme"], "light");
+        assert_eq!(
+            std::fs::read_to_string(&sanitized_path).unwrap(),
+            legacy_web_content
+        );
+        std::fs::remove_file(raw_path).unwrap();
+        state.load_config(&data_path);
+        assert_eq!(
+            state.snapshot().unwrap().config["settings"]["theme"],
+            "system"
+        );
+        std::fs::remove_dir_all(data_path).unwrap();
     }
 
     #[test]
