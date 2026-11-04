@@ -660,16 +660,25 @@ fn export_logs_blocking(
         &["log", "json", "dmp"],
     )?);
 
-    // ─── 2. 收集图片（on_error + vision，按 mtime 新→旧） ───
+    // ─── 2. 收集图片（on_error + vision + screencap，按 mtime 新→旧） ───
     let on_error_images = collect_debug_images(&debug_dir.join("on_error"), "on_error");
     let vision_images = collect_debug_images(&debug_dir.join("vision"), "vision");
+    // Screencap 的自定义 filename 可包含子目录；只收集其目录内的 PNG / JPEG，
+    // 保留相对路径，避免不同子目录中的同名截图互相覆盖。
+    let mut screencap_images =
+        collect_files_recursively(&debug_dir.join("screencap"), "screencap")?;
+    screencap_images.retain(|entry| is_image_file(&entry.source_path));
+    screencap_images.sort_by_cached_key(|entry| {
+        std::cmp::Reverse(entry.source_path.metadata().and_then(|m| m.modified()).ok())
+    });
 
-    // ─── 3. 合并入卷条目：先 regular，再 on_error，再 vision ───
+    // ─── 3. 合并入卷条目：先 regular，再 on_error，再 vision，最后 screencap ───
     // 图片按 mtime 新→旧排在尾部，保证最近的崩溃图一定落在 part01.zip。
     let mut all_entries: Vec<ExportEntry> = Vec::new();
     all_entries.extend(regular_entries);
     all_entries.extend(on_error_images);
     all_entries.extend(vision_images);
+    all_entries.extend(screencap_images);
 
     let total_entries = all_entries.len();
     if total_entries == 0 {
