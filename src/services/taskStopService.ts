@@ -1,4 +1,3 @@
-import { normalizeAgentConfigs } from '@/types/interface';
 import { loggers } from '@/utils/logger';
 import { isTauri } from '@/utils/paths';
 import { useAppStore } from '@/stores/appStore';
@@ -74,11 +73,8 @@ export async function stopInstanceTasks(instanceId: string): Promise<boolean> {
 
     cancelTaskQueueMonitor(instanceId);
 
-    const agentConfigs = normalizeAgentConfigs(useAppStore.getState().projectInterface?.agent);
-    if (agentConfigs && agentConfigs.length > 0) {
-      await maaService.stopAgent(instanceId);
-    }
-
+    // Backend idle already includes this run's Agent cleanup. A new stopAgent
+    // RPC here could target the next run started by another client meanwhile.
     cleanupTaskState(instanceId);
     return true;
   })().finally(() => {

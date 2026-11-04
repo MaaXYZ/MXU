@@ -811,6 +811,8 @@ pub fn destroy_instance_impl(state: &Arc<MaaState>, instance_id: &str) -> Result
         let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
         let removed = instances.remove(instance_id);
         if let Some(instance) = &removed {
+            // Retire the old completion worker before this ID can be reused.
+            instance.run_completion.retire();
             // Cancel before allowing the same ID to be created again. A callback snapshot
             // captured before unsubscribe still checks its own cancelled lifetime.
             instance.callback_lifetime.cancel();
@@ -831,6 +833,21 @@ pub fn destroy_instance_impl(state: &Arc<MaaState>, instance_id: &str) -> Result
         // Cancel focus only after invalidating the old lifetime, before a
         // replacement with the same instance ID can begin another run.
         super::focus::cancel_instance(instance_id);
+        if let Some(tasker) = removed
+            .as_ref()
+            .and_then(|instance| instance.tasker.as_ref())
+        {
+            // A completion worker can retain another Tasker Arc. Dropping the
+            // runtime alone would then leave an admitted append executing.
+            if tasker.running() {
+                if let Err(error) = tasker.post_stop() {
+                    warn!(
+                        "Failed to stop destroyed instance {}: {}",
+                        instance_id, error
+                    );
+                }
+            }
+        }
         if let Ok(mut log_buffer) = state.log_buffer.lock() {
             log_buffer.clear_instance(instance_id);
         }
@@ -1224,6 +1241,8 @@ mod tests {
         let old_lifetime = state.instances.lock().unwrap()["same-id"]
             .callback_lifetime
             .clone();
+        let old_completion = Arc::clone(&state.instances.lock().unwrap()["same-id"].run_completion);
+        assert!(old_completion.begin());
         let old_request = begin_controller_connection(&state, "same-id").unwrap();
         destroy_instance_impl(&state, "same-id").unwrap();
         state
@@ -1238,6 +1257,10 @@ mod tests {
         assert!(!replacement.controller_request.is_current(&old_request));
         assert!(!replacement.callback_lifetime.is_current(&old_lifetime));
         assert!(replacement.callback_lifetime.is_active());
+        drop(instances);
+        let notified = std::sync::atomic::AtomicBool::new(false);
+        old_completion.finish_when_idle(|| false, || {}, || notified.store(true, Ordering::SeqCst));
+        assert!(!notified.load(Ordering::SeqCst));
     }
 
     #[test]
@@ -1477,8 +1500,25 @@ pub fn run_task_impl(
     pipeline_override: &str,
     selected_task_id: Option<&str>,
 ) -> Result<i64, String> {
+    let completion = {
+        let instances = state.instances.lock().map_err(|e| e.to_string())?;
+        Arc::clone(
+            &instances
+                .get(instance_id)
+                .ok_or("Instance not found")?
+                .run_completion,
+        )
+    };
+    let _start_permit = completion.acquire_start();
+
     let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
-    let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;
+    let instance = instances.get_mut(instance_id).ok_or("INSTANCE_REPLACED")?;
+    if !Arc::ptr_eq(&instance.run_completion, &completion) {
+        return Err("INSTANCE_REPLACED".to_string());
+    }
+    if instance.prepare_submission(false)? {
+        super::focus::begin_run(instance_id);
+    }
 
     let resource = instance.resource.as_ref().ok_or("Resource not loaded")?;
     let controller = instance
@@ -1487,7 +1527,6 @@ pub fn run_task_impl(
         .ok_or("Controller not connected")?;
 
     // 创建或获取 tasker
-    super::focus::begin_run(instance_id);
     let needs_new_tasker = match instance.tasker.as_ref() {
         None => true,
         Some(t) => !t.inited(),
@@ -1563,18 +1602,18 @@ pub fn run_task_impl(
         instance.task_ids.push(task_id);
     }
 
+    let task_run_state = &mut instance.task_run_state;
+    if !task_run_state.pending_task_ids.contains(&task_id) {
+        task_run_state.pending_task_ids.push(task_id);
+    }
+    task_run_state.overall_status = Some("Running".to_string());
     if let Some(selected_task_id) = selected_task_id {
-        let task_run_state = &mut instance.task_run_state;
-        if !task_run_state.pending_task_ids.contains(&task_id) {
-            task_run_state.pending_task_ids.push(task_id);
-        }
         task_run_state
             .mappings
             .insert(task_id, selected_task_id.to_string());
         task_run_state
             .statuses
             .insert(selected_task_id.to_string(), "pending".to_string());
-        task_run_state.overall_status = Some("Running".to_string());
     }
 
     Ok(task_id)
@@ -1636,46 +1675,59 @@ pub fn maa_get_task_status(
 
 /// 停止任务
 /// 停止任务的内部实现（可从 Tauri 命令和 HTTP 处理器共享调用）
-pub fn stop_task_impl(state: &MaaState, instance_id: &str) -> Result<(), String> {
-    super::focus::cancel_instance(instance_id);
-    let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
-    let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;
-    let tasker = instance.tasker.as_ref().ok_or("Tasker not created")?;
+pub fn stop_task_impl(
+    app: &tauri::AppHandle,
+    state: &Arc<MaaState>,
+    instance_id: &str,
+) -> Result<(), String> {
+    let completion = {
+        let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
+        let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;
+        // Serialize focus reopening and cancellation with queue admission. Always
+        // release a modal waiter before posting the framework stop operation.
+        super::focus::cancel_instance(instance_id);
+        let submitting = instance.run_completion.cancel_submission();
+        let tasker = instance.tasker.as_ref();
+        let running = tasker.is_some_and(|tasker| tasker.running());
 
-    if instance.stop_in_progress {
-        if !tasker.running() {
-            instance.stop_in_progress = false;
-            instance.stop_started_at = None;
+        // Cleanup counts as running for UI queries, but must not post a new
+        // framework stop job once its Tasker is idle.
+        if !running && !submitting {
+            if tasker.is_none() {
+                return Err("Tasker not created".to_string());
+            }
             return Ok(());
         }
-        let elapsed = instance
-            .stop_started_at
-            .map(|t| t.elapsed())
-            .unwrap_or(Duration::from_secs(0));
-        if elapsed < Duration::from_millis(500) {
-            return Ok(());
+
+        if instance.stop_in_progress {
+            let elapsed = instance
+                .stop_started_at
+                .map(|t| t.elapsed())
+                .unwrap_or(Duration::from_secs(0));
+            if elapsed < Duration::from_millis(500) {
+                return Ok(());
+            }
         }
-    }
 
-    instance.stop_in_progress = true;
-    instance.stop_started_at = Some(Instant::now());
-    instance.task_ids.clear();
-
-    // 将剩余 pending 任务标记为 failed，更新整体状态
-    {
-        let state = &mut instance.task_run_state;
-        for status in state.statuses.values_mut() {
+        // Schedule cleanup even when all queued jobs are cancelled before they
+        // start, since that path need not emit a Tasker.Task terminal callback.
+        if running {
+            tasker.unwrap().post_stop().map_err(|e| e.to_string())?;
+        }
+        instance.stop_in_progress = true;
+        instance.stop_started_at = Some(Instant::now());
+        for status in instance.task_run_state.statuses.values_mut() {
             if status == "pending" || status == "running" {
                 *status = "failed".to_string();
             }
         }
-        state.overall_status = Some("Failed".to_string());
+        instance.begin_completion(false)
+    };
+
+    // Telemetry and Agent cleanup run after the submission permit is released.
+    if let Some((tasker, completion)) = completion {
+        super::utils::schedule_run_completion(state, app, instance_id, tasker, completion);
     }
-
-    // 遥测：用户取消，以 cancelled 结束当前运行的 Transaction（幂等，仅首次生效）
-    super::telemetry::on_run_cancelled(instance_id);
-
-    tasker.post_stop().map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -1685,7 +1737,7 @@ pub fn maa_stop_task(
     state: State<Arc<MaaState>>,
     instance_id: String,
 ) -> Result<(), String> {
-    let result = stop_task_impl(&state, &instance_id);
+    let result = stop_task_impl(&app, &state, &instance_id);
     if result.is_ok() {
         super::utils::emit_state_changed(&app, &instance_id, "task-stopped");
     }
@@ -1726,7 +1778,7 @@ pub fn maa_is_running(state: State<Arc<MaaState>>, instance_id: String) -> Resul
     let instances = state.instances.lock().map_err(|e| e.to_string())?;
     let instance = instances.get(&instance_id).ok_or("Instance not found")?;
 
-    Ok(instance.tasker.as_ref().is_some_and(|t| t.running()))
+    Ok(instance.is_running())
 }
 
 // ============================================================================

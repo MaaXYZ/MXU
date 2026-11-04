@@ -1899,9 +1899,12 @@ fn unix_time_ms(time: SystemTime) -> Option<u64> {
         .map(|duration| duration.as_millis() as u64)
 }
 
-/// 整批运行结束：finish Transaction。
-pub fn on_run_finished(instance_id: &str) {
-    finish_run(instance_id, None);
+/// 整批运行结束；提交失败也必须失败，即使没有任务 Failed 回调。
+pub fn on_run_finished(instance_id: &str, succeeded: bool) {
+    finish_run(
+        instance_id,
+        (!succeeded).then_some(SpanStatus::InternalError),
+    );
 }
 
 /// 用户取消 / 停止：以 cancelled 结束 Transaction。

@@ -686,7 +686,7 @@ async fn handle_get_maa_state(State(state): State<WebState>) -> impl IntoRespons
             let mut instance_states: HashMap<String, serde_json::Value> = HashMap::new();
 
             for (id, runtime) in instances.iter_mut() {
-                let is_running = runtime.tasker.as_ref().is_some_and(|t| t.running());
+                let is_running = runtime.is_running();
 
                 // 与 state.rs 的 maa_get_all_states 保持一致：清理停止标志
                 if !is_running && runtime.stop_in_progress {
@@ -1044,7 +1044,7 @@ async fn handle_stop_task(
     State(state): State<WebState>,
     axum::extract::Path(instance_id): axum::extract::Path<String>,
 ) -> impl IntoResponse {
-    match stop_task_impl(&state.maa_state, &instance_id) {
+    match stop_task_impl(&state.app_handle, &state.maa_state, &instance_id) {
         Ok(()) => {
             emit_state_changed(&state.app_handle, &instance_id, "task-stopped");
             Json(serde_json::json!({ "ok": true })).into_response()

@@ -569,6 +569,22 @@ pub async fn start_tasks_impl(
 ) -> Result<Vec<i64>, String> {
     info!("start_tasks_impl called");
 
+    // 上一轮的完成通知与 Agent 注销可能仍在进行；不要让旧注销晚于新注册。
+    let completion = {
+        let instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
+        Arc::clone(
+            &instances
+                .get(&instance_id)
+                .ok_or("Instance not found")?
+                .run_completion,
+        )
+    };
+    let start_completion = Arc::clone(&completion);
+    let _start_permit =
+        tauri::async_runtime::spawn_blocking(move || start_completion.acquire_start())
+            .await
+            .map_err(|e| e.to_string())?;
+
     info!("instance_id: {}", instance_id);
     info!("task count: {}", tasks.len());
     info!(
@@ -581,11 +597,14 @@ pub async fn start_tasks_impl(
         debug!("[start_tasks] Acquiring instances lock...");
         let mut instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
         debug!("[start_tasks] Instances lock acquired");
-        let instance = instances
-            .get_mut(&instance_id)
-            .ok_or("Instance not found")?;
+        let instance = instances.get_mut(&instance_id).ok_or("INSTANCE_REPLACED")?;
+        if !Arc::ptr_eq(&instance.run_completion, &completion) {
+            return Err("INSTANCE_REPLACED".to_string());
+        }
+        if instance.prepare_submission(reset_state)? {
+            super::focus::begin_run(&instance_id);
+        }
         debug!("[start_tasks] Instance found: {}", instance_id);
-        super::focus::begin_run(&instance_id);
 
         let res = instance
             .resource
@@ -758,11 +777,23 @@ pub async fn start_tasks_impl(
                 }
             }
 
-            // 保存所有 agent 状态到 instance
-            let mut instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
-            if let Some(instance) = instances.get_mut(&instance_id) {
-                instance.agent_clients.extend(new_clients);
-                instance.agent_children.extend(new_children);
+            // A destroyed/recreated ID must not receive the old instance's Agents.
+            let attached = {
+                let mut instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
+                if let Some(instance) = instances
+                    .get_mut(&instance_id)
+                    .filter(|instance| Arc::ptr_eq(&instance.run_completion, &completion))
+                {
+                    instance.agent_clients.append(&mut new_clients);
+                    instance.agent_children.append(&mut new_children);
+                    true
+                } else {
+                    false
+                }
+            };
+            if !attached {
+                stop_agent_resources(new_clients, new_children);
+                return Err("INSTANCE_REPLACED".to_string());
             }
 
             info!(
@@ -792,6 +823,7 @@ pub async fn start_tasks_impl(
     // 持锁提交，确保任务开始回调不会早于遥测元数据登记
     let mut telemetry_posting = super::telemetry::begin_posting(&instance_id);
     let task_ids_ret;
+    let completion_to_schedule;
     {
         // 初始化/追加后端 TaskRunState（单一真相来源）并缓存 task_ids
         debug!(
@@ -799,12 +831,19 @@ pub async fn start_tasks_impl(
             reset_state
         );
         let mut instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
-        let instance = instances
-            .get_mut(&instance_id)
-            .ok_or("Instance not found")?;
+        let instance = instances.get_mut(&instance_id).ok_or("INSTANCE_REPLACED")?;
+        if !Arc::ptr_eq(&instance.run_completion, &completion) {
+            return Err("INSTANCE_REPLACED".to_string());
+        }
+        // Stop may arrive while Agent registration is awaiting a child process,
+        // even when the previous tasks have already become idle.
+        if instance.stop_in_progress || completion.submission_cancelled() {
+            return Err("TASKER_STOPPING".to_string());
+        }
         if reset_state {
             // 首批：重置任务运行状态
             instance.task_ids.clear();
+            instance.task_results.clear();
             let state = &mut instance.task_run_state;
             state.statuses.clear();
             state.mappings.clear();
@@ -845,8 +884,18 @@ pub async fn start_tasks_impl(
                         idx, job.id
                     );
                 }
-                Err(_e) => {
-                    warn!("[start_tasks] Failed to post task: {}", task.entry);
+                Err(error) => {
+                    warn!(
+                        "[start_tasks] Failed to post task {}: {}",
+                        task.entry, error
+                    );
+                    instance.submission_failed = true;
+                    if let Some(selected_id) = &task.selected_task_id {
+                        instance
+                            .task_run_state
+                            .statuses
+                            .insert(selected_id.clone(), "failed".to_string());
+                    }
                 }
             }
         }
@@ -863,6 +912,9 @@ pub async fn start_tasks_impl(
         } else {
             instance.task_ids.extend(task_ids);
         }
+        completion_to_schedule = instance
+            .queue_result()
+            .and_then(|succeeded| instance.begin_completion(succeeded));
         debug!("[start_tasks] TaskRunState updated");
     }
     // 提交完成，释放遥测状态锁（后续有 await，不能继续持有）
@@ -870,6 +922,9 @@ pub async fn start_tasks_impl(
 
     // 通知所有客户端：任务已启动，需刷新运行时状态
     super::utils::emit_state_changed(&app, &instance_id, "task-started");
+    if let Some((tasker, completion)) = completion_to_schedule {
+        super::utils::schedule_run_completion(maa_state, &app, &instance_id, tasker, completion);
+    }
 
     info!(
         "[start_tasks] start_tasks_impl completed successfully, returning {} task_ids",
@@ -912,9 +967,24 @@ pub async fn maa_start_tasks(
 pub fn stop_agent_impl(maa_state: &Arc<MaaState>, instance_id: &str) -> Result<(), String> {
     info!("stop_agent_impl called for instance: {}", instance_id);
 
+    let (completion, generation) = {
+        let instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
+        let instance = instances.get(instance_id).ok_or("INSTANCE_REPLACED")?;
+        (
+            Arc::clone(&instance.run_completion),
+            instance.run_completion.generation(),
+        )
+    };
+    let Some(_stop_permit) = completion.acquire_generation(generation) else {
+        return Ok(()); // The observed run already finished; leave newer Agents alone.
+    };
+
     let (clients, children) = {
         let mut instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
-        let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;
+        let instance = instances.get_mut(instance_id).ok_or("INSTANCE_REPLACED")?;
+        if !Arc::ptr_eq(&instance.run_completion, &completion) {
+            return Err("INSTANCE_REPLACED".to_string());
+        }
 
         (
             std::mem::take(&mut instance.agent_clients),
@@ -922,9 +992,15 @@ pub fn stop_agent_impl(maa_state: &Arc<MaaState>, instance_id: &str) -> Result<(
         )
     };
 
+    stop_agent_resources(clients, children);
+    Ok(())
+}
+
+/// 清理已从实例取走的本轮 Agent，避免后台清理误取下一轮的 Agent。
+pub(super) fn stop_agent_resources(clients: Vec<AgentClient>, children: Vec<std::process::Child>) {
     if clients.is_empty() && children.is_empty() {
         debug!("[stop_agent] No agents to stop");
-        return Ok(());
+        return;
     }
 
     info!(
@@ -933,49 +1009,46 @@ pub fn stop_agent_impl(maa_state: &Arc<MaaState>, instance_id: &str) -> Result<(
         children.len()
     );
 
+    // 在 disconnect 前启动看门狗，避免 Agent 收尾卡死时永远阻塞完成通知。
+    let reaper = thread::spawn(move || {
+        let mut children: Vec<_> = children.into_iter().enumerate().collect();
+        // One deadline for the whole batch, below the frontend's 8s stop budget.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !children.is_empty() && Instant::now() < deadline {
+            children.retain_mut(|(i, child)| match child.try_wait() {
+                Ok(Some(_)) => {
+                    info!("Background: Agent #{} child process exited", i);
+                    false
+                }
+                Ok(None) => true,
+                Err(error) => {
+                    warn!("Error waiting for agent #{}: {}", i, error);
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    false
+                }
+            });
+            if !children.is_empty() {
+                thread::sleep(Duration::from_millis(100));
+            }
+        }
+        for (i, mut child) in children {
+            warn!("Agent process #{} did not exit in time, killing it...", i);
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    });
+
     // 同步断开所有 client：确保 custom 反注册在返回前完成，
     // 避免旧 agent 的反注册晚于新 agent 的注册，误删新 agent 的同名 custom 条目。
     for client in &clients {
         let _ = client.disconnect();
     }
     drop(clients); // Drop 同步执行 clear_custom_registration()
-
-    // 子进程收尾放到后台：等待自然退出，超时强杀兜底，避免进程泄漏。
-    thread::spawn(move || {
-        for (i, mut child) in children.into_iter().enumerate() {
-            debug!("Waiting for agent process #{} to exit...", i);
-
-            let start = std::time::Instant::now();
-            let timeout = std::time::Duration::from_secs(5);
-            let mut exited = false;
-
-            while start.elapsed() < timeout {
-                match child.try_wait() {
-                    Ok(Some(_)) => {
-                        exited = true;
-                        break;
-                    }
-                    Ok(None) => {
-                        thread::sleep(std::time::Duration::from_millis(100));
-                    }
-                    Err(e) => {
-                        error!("Error waiting for agent #{}: {}", i, e);
-                        break;
-                    }
-                }
-            }
-
-            if !exited {
-                warn!("Agent process #{} did not exit in time, killing it...", i);
-                let _ = child.kill();
-                let _ = child.wait();
-            } else {
-                info!("Background: Agent #{} child process exited", i);
-            }
-        }
-    });
-
-    Ok(())
+                   // -q 会在完成通知后退出；先回收本轮子进程，避免退出时丢下后台看门狗。
+    if reaper.join().is_err() {
+        warn!("Agent child reaper panicked");
+    }
 }
 
 /// 停止所有 Agent 并断开连接 — Tauri invoke 入口，委托给 stop_agent_impl

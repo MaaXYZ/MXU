@@ -267,6 +267,11 @@ export default {
       resourceFailed: 'Resource loading failed',
       startFailed: 'Failed to start tasks',
       alreadyRunning: 'Tasks are already running or a pre-action is still in progress',
+      taskerStopping: 'Tasks are stopping. Wait for cleanup to finish before starting again.',
+      queueAlreadyRunning:
+        'Tasks are already running. Stop the current queue before starting a new run.',
+      instanceReplaced:
+        'This instance was replaced while processing the request. Select it again and retry.',
       taskNotFound: 'The specified task does not exist or has been deleted',
       noRunnableTasks: 'No runnable tasks; check the task definitions and entry configuration',
       workstationLocked: 'The computer is locked. Please unlock it before running tasks.',

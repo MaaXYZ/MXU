@@ -257,6 +257,11 @@ export default {
       resourceFailed: 'リソースの読み込みに失敗しました',
       startFailed: 'タスクの開始に失敗しました',
       alreadyRunning: 'タスクは既に実行中か、前処理を実行しています',
+      taskerStopping: 'タスクを停止しています。後処理が完了してから再開してください。',
+      queueAlreadyRunning:
+        'タスクは実行中です。現在のキューを停止してから新しい実行を開始してください。',
+      instanceReplaced:
+        'リクエストの処理中にインスタンスが置き換えられました。選び直して再試行してください。',
       taskNotFound: '指定されたタスクが存在しないか、削除されています',
       noRunnableTasks: '実行可能なタスクがありません。タスク定義とエントリ設定を確認してください',
       workstationLocked:
