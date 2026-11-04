@@ -83,7 +83,15 @@ test('update preferences and explicit settings downloads survive restart boundar
   const savedStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
   try {
     const { defaultConfig } = await server.ssrLoadModule('/src/types/config.ts');
-    const { loadConfig } = await server.ssrLoadModule('/src/services/configService.ts');
+    let client = 0;
+    async function readFreshConfig(): Promise<MxuConfig> {
+      // Each assertion models a new client startup; a connected client's reconnect
+      // policy must not be confused with an independent offline preview.
+      const { loadConfig } = await server.ssrLoadModule(
+        `/src/services/configService.ts?update-test-client=${client++}`,
+      );
+      return loadConfig('', 'Example');
+    }
     const stored = new Map<string, string>();
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
@@ -91,13 +99,31 @@ test('update preferences and explicit settings downloads survive restart boundar
     });
     Object.defineProperty(globalThis, 'localStorage', {
       configurable: true,
-      value: { getItem: (key: string) => stored.get(key) ?? null },
+      value: {
+        getItem: (key: string) => stored.get(key) ?? null,
+        setItem: (key: string, value: string) => stored.set(key, value),
+        removeItem: (key: string) => stored.delete(key),
+        key: (index: number) => [...stored.keys()][index] ?? null,
+        get length() {
+          return stored.size;
+        },
+      },
     });
     let hostConfig: MxuConfig | null = null;
     let staticConfig: MxuConfig | null = null;
     t.mock.method(globalThis, 'fetch', async (path: string) => {
-      const config = path === '/api/config' ? hostConfig : staticConfig;
-      return new Response(config ? JSON.stringify(config) : null, {
+      const pathname = new URL(path, 'http://localhost').pathname;
+      // The same user behavior must hold with either the raw config API or its
+      // revisioned snapshot API; static preview files are a separate source.
+      const config =
+        pathname === '/api/config' || pathname === '/api/config/snapshot'
+          ? hostConfig
+          : pathname === '/config/mxu-Example.json'
+            ? staticConfig
+            : null;
+      const body =
+        pathname === '/api/config/snapshot' ? { revision: 'test-revision', config } : config;
+      return new Response(config ? JSON.stringify(body) : null, {
         status: config ? 200 : 404,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -110,24 +136,24 @@ test('update preferences and explicit settings downloads survive restart boundar
     stored.set('mxu-config-Example', JSON.stringify(preference));
 
     await t.test('offline preview restores false with no instances', async () => {
-      assert.deepEqual(await loadConfig('', 'Example'), preference);
+      assert.deepEqual(await readFreshConfig(), preference);
     });
     await t.test(
       'valid host and static empty configurations take priority over browser cache',
       async () => {
         hostConfig = defaultConfig;
-        assert.deepEqual(await loadConfig('', 'Example'), defaultConfig);
+        assert.deepEqual(await readFreshConfig(), defaultConfig);
         hostConfig = null;
         staticConfig = defaultConfig;
-        assert.deepEqual(await loadConfig('', 'Example'), defaultConfig);
+        assert.deepEqual(await readFreshConfig(), defaultConfig);
         staticConfig = null;
       },
     );
     await t.test('invalid local configuration falls back to enabled defaults', async () => {
       stored.set('mxu-config-Example', '{"settings":{"autoDownloadUpdates":false}}');
-      assert.equal((await loadConfig('', 'Example')).settings.autoDownloadUpdates, true);
+      assert.equal((await readFreshConfig()).settings.autoDownloadUpdates, true);
       stored.set('mxu-config-Example', '{');
-      assert.equal((await loadConfig('', 'Example')).settings.autoDownloadUpdates, true);
+      assert.equal((await readFreshConfig()).settings.autoDownloadUpdates, true);
     });
 
     const { UpdateSection } = await server.ssrLoadModule(
