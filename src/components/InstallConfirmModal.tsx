@@ -53,8 +53,6 @@ export function InstallConfirmModal() {
     setInstallError,
     setJustUpdatedInfo,
     resetInstallState,
-    autoInstallPending,
-    setAutoInstallPending,
   } = useAppStore();
 
   const currentVersion = projectInterface?.version || '';
@@ -224,23 +222,6 @@ export function InstallConfirmModal() {
     setInstallStatus,
     setInstallError,
     t,
-  ]);
-
-  // 自动安装：由 tryAutoInstallUpdate 触发，通过 autoInstallPending 标记
-  useEffect(() => {
-    if (showInstallConfirmModal && autoInstallPending && installStatus === 'idle') {
-      setAutoInstallPending(false);
-      // 标记已触发，防止 handleInstall 设置 installStatus='installing' 后
-      // 上方的 installStatus==='installing' effect 再次调用 installUpdate（竞态双发）
-      autoInstallTriggered.current = true;
-      handleInstall();
-    }
-  }, [
-    showInstallConfirmModal,
-    autoInstallPending,
-    installStatus,
-    setAutoInstallPending,
-    handleInstall,
   ]);
 
   // 判断当前是否为可执行安装程序（exe/dmg）

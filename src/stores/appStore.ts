@@ -2149,13 +2149,10 @@ export const useAppStore = create<AppState>()(
     setInstallStatus: (status) => set({ installStatus: status }),
     setInstallError: (error) => set({ installError: error }),
     setJustUpdatedInfo: (info) => set({ justUpdatedInfo: info }),
-    autoInstallPending: false,
-    setAutoInstallPending: (pending) => set({ autoInstallPending: pending }),
     resetInstallState: () =>
       set({
         installStatus: 'idle',
         installError: null,
-        autoInstallPending: false,
       }),
 
     // 最近关闭的实例

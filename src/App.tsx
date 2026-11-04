@@ -40,7 +40,6 @@ import {
   consumeUpdateCompleteInfo,
   savePendingUpdateInfo,
   getPendingUpdateInfo,
-  hasInstallFailedInSession,
   clearPendingUpdateInfo,
   isDebugVersion,
 } from '@/services/updateService';
@@ -409,41 +408,6 @@ function App() {
   const initialized = useRef(false);
   const downloadStartedRef = useRef(false);
   const pendingAutoTasksRef = useRef(false);
-  // 自动任务已分发但尚未完成启动时，也要阻止下载完成触发自动安装。
-  // 否则小体积更新可能在 500ms 的任务分发延迟或连接准备期间先完成下载。
-  const autoTaskLaunchPendingRef = useRef(false);
-  // 尝试自动安装更新（无任务运行中时触发）
-  const tryAutoInstallUpdate = useCallback(() => {
-    const state = useAppStore.getState();
-    if (state.downloadStatus !== 'completed') return;
-    if (state.installStatus !== 'idle') return;
-    if (state.autoInstallPending) return;
-    if (autoTaskLaunchPendingRef.current) return;
-    if (state.instances.some((i) => i.isRunning)) return;
-    // 本次运行中安装失败过则不再自动重试，避免反复失败；手动安装和下次启动不受影响
-    if (hasInstallFailedInSession()) {
-      log.info('自动安装更新：本次运行中已安装失败过，跳过自动安装');
-      return;
-    }
-
-    log.info('自动安装更新：条件满足，弹出安装');
-    state.setAutoInstallPending(true);
-    state.setShowInstallConfirmModal(true);
-  }, []);
-
-  // 监听任务结束 或 下载完成 后自动安装更新
-  useEffect(() => {
-    return useAppStore.subscribe((state, prev) => {
-      const wasRunning = prev.instances.some((i) => i.isRunning);
-      const nowRunning = state.instances.some((i) => i.isRunning);
-      const downloadJustCompleted =
-        prev.downloadStatus !== 'completed' && state.downloadStatus === 'completed';
-      if ((wasRunning && !nowRunning) || downloadJustCompleted) {
-        tryAutoInstallUpdate();
-      }
-    });
-  }, [tryAutoInstallUpdate]);
-
   // 自动下载函数
   const startAutoDownload = useCallback(
     async (updateResult: NonNullable<Awaited<ReturnType<typeof checkAndPrepareDownload>>>) => {
@@ -496,9 +460,6 @@ function App() {
             downloadSource: updateResult.downloadSource,
             timestamp: Date.now(),
           });
-
-          // 尝试自动安装更新
-          tryAutoInstallUpdate();
         } else {
           setDownloadStatus('failed');
           // 下载失败时重置标志，允许后续重新下载（如填入 CDK 后切换下载源）
@@ -512,7 +473,7 @@ function App() {
         downloadStartedRef.current = false;
       }
     },
-    [setDownloadStatus, setDownloadProgress, setDownloadSavePath, tryAutoInstallUpdate],
+    [setDownloadStatus, setDownloadProgress, setDownloadSavePath],
   );
 
   // 设置窗口标题（根据 ProjectInterface V2 协议）
@@ -952,19 +913,10 @@ function App() {
       const dispatchPendingAutoStartTasks = () => {
         if (!autoStartTasksPending) return;
         autoStartTasksPending = false;
-        autoTaskLaunchPendingRef.current = true;
         setTimeout(() => {
           document.dispatchEvent(
             new CustomEvent('mxu-start-tasks', {
-              detail: {
-                source: 'autostart',
-                onSettled: () => {
-                  autoTaskLaunchPendingRef.current = false;
-                  // 启动失败时任务不会产生 running -> idle 状态变化，需要在这里补一次安装检查；
-                  // 启动成功时仍处于运行态，本次检查会直接返回，并在任务结束后再次触发。
-                  tryAutoInstallUpdate();
-                },
-              },
+              detail: { source: 'autostart' },
             }),
           );
         }, 500);
@@ -1045,8 +997,7 @@ function App() {
             downloadSource: pendingUpdate.downloadSource,
           });
           setDownloadSavePath(pendingUpdate.downloadSavePath);
-          // 先设置 installStatus，再设置 downloadStatus，
-          // 避免 subscribe 在 installStatus 还是 idle 时触发 tryAutoInstallUpdate 造成双发
+          // 启动时安装已下载的更新，完成重启后再执行自动任务。
           useAppStore.getState().setInstallStatus('installing');
           setDownloadStatus('completed');
           setShowInstallConfirmModal(true);
@@ -1383,12 +1334,8 @@ function App() {
   // 回到主界面时，根据状态弹出相应的弹窗
   useEffect(() => {
     if (currentPage === 'main') {
-      // 下载完成：弹出安装模态框
-      if (downloadStatus === 'completed') {
-        setShowInstallConfirmModal(true);
-      }
-      // 有更新、有错误或正在下载：弹出更新气泡
-      else if (updateInfo?.hasUpdate || updateInfo?.errorCode || downloadStatus === 'downloading') {
+      // 更新状态通过气泡展示，已下载的更新在下次启动时自动安装。
+      if (updateInfo?.hasUpdate || updateInfo?.errorCode || downloadStatus === 'downloading') {
         setShowUpdateDialog(true);
       }
     }
@@ -1398,15 +1345,7 @@ function App() {
     updateInfo?.errorCode,
     downloadStatus,
     setShowUpdateDialog,
-    setShowInstallConfirmModal,
   ]);
-
-  // 下载完成时，强制弹出安装模态框
-  useEffect(() => {
-    if (downloadStatus === 'completed') {
-      setShowInstallConfirmModal(true);
-    }
-  }, [downloadStatus, setShowInstallConfirmModal]);
 
   // 下载失败或取消时，如果有挂起的自动任务，立即分发
   useEffect(() => {
