@@ -7,8 +7,9 @@ export interface TaskRunFilterOptions {
   singleTaskId?: string;
 }
 
-/** 判断任务是否应在常规启动时被包含 */
+/** 判断任务是否应在常规启动时被包含（容器子任务随容器执行，不进入主队列） */
 export function isTaskSelectedForRun(task: SelectedTask): boolean {
+  if (task.parentId) return false;
   return task.enabled || Boolean(task.runOnce);
 }
 

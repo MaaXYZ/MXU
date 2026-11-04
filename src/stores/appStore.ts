@@ -38,6 +38,7 @@ import type {
 } from '@/types/interface';
 import type { ConnectionStatus, TaskStatus } from '@/types/maa';
 import { getMxuSpecialTask, isMxuSpecialTask, MXU_SPECIAL_TASKS } from '@/types/specialTasks';
+import { planTaskReorder, reconcileContainerTasks } from '@/utils/taskContainer';
 import {
   getPretaskItems,
   pretaskName,
@@ -512,6 +513,7 @@ export const useAppStore = create<AppState>()(
               optionValues: t.optionValues,
               expanded: t.expanded,
               collapsedOptions: t.collapsedOptions,
+              parentId: t.parentId,
             })),
             schedulePolicies: instanceToClose.schedulePolicies,
             preActions: instanceToClose.preActions,
@@ -773,7 +775,10 @@ export const useAppStore = create<AppState>()(
           i.id === instanceId
             ? {
                 ...i,
-                selectedTasks: i.selectedTasks.filter((t) => t.id !== taskId),
+                // 删除容器后其子任务恢复为顶层任务；顺带清理悬空挂载
+                selectedTasks: reconcileContainerTasks(
+                  i.selectedTasks.filter((t) => t.id !== taskId),
+                ),
               }
             : i,
         ),
@@ -783,15 +788,28 @@ export const useAppStore = create<AppState>()(
       set((state) => ({
         instances: state.instances.map((i) => {
           if (i.id !== instanceId) return i;
-          const len = i.selectedTasks.length;
-          if (oldIndex < 0 || oldIndex >= len || newIndex < 0 || newIndex >= len) return i;
-          if (oldIndex === newIndex) return i;
+          const reordered = planTaskReorder(i.selectedTasks, oldIndex, newIndex);
+          return reordered === i.selectedTasks ? i : { ...i, selectedTasks: reordered };
+        }),
+      })),
 
-          const tasks = [...i.selectedTasks];
-          const [removed] = tasks.splice(oldIndex, 1);
-          tasks.splice(newIndex, 0, removed);
+    setTaskParent: (instanceId, taskId, parentId) =>
+      set((state) => ({
+        instances: state.instances.map((i) => {
+          if (i.id !== instanceId) return i;
+          const updated = i.selectedTasks.map((t) =>
+            t.id === taskId ? { ...t, parentId: parentId ?? undefined } : t,
+          );
+          return { ...i, selectedTasks: reconcileContainerTasks(updated) };
+        }),
+      })),
 
-          return { ...i, selectedTasks: tasks };
+    normalizeAndSyncContainers: (instanceId) =>
+      set((state) => ({
+        instances: state.instances.map((i) => {
+          if (i.id !== instanceId) return i;
+          const reconciled = reconcileContainerTasks(i.selectedTasks);
+          return reconciled === i.selectedTasks ? i : { ...i, selectedTasks: reconciled };
         }),
       })),
 
@@ -1068,7 +1086,7 @@ export const useAppStore = create<AppState>()(
 
       set({
         instances: state.instances.map((i) =>
-          i.id === instanceId ? { ...i, selectedTasks: tasks } : i,
+          i.id === instanceId ? { ...i, selectedTasks: reconcileContainerTasks(tasks) } : i,
         ),
       });
     },
@@ -1148,13 +1166,19 @@ export const useAppStore = create<AppState>()(
       const newId = generateId();
       const instanceNumber = state.nextInstanceNumber;
 
+      // 复制任务时同步重映射 parentId（与任务 id 使用同一份映射），
+      // 否则副本里的容器子任务会继续指向源实例的容器，脱离副本容器。
+      const idMap = new Map<string, string>();
+      sourceInstance.selectedTasks.forEach((t) => idMap.set(t.id, generateId()));
+
       const newInstance: Instance = {
         ...sourceInstance,
         id: newId,
         name: `${sourceInstance.name}${i18n.t('common.copySuffix')}`,
         selectedTasks: sourceInstance.selectedTasks.map((t) => ({
           ...t,
-          id: generateId(),
+          id: idMap.get(t.id) as string,
+          parentId: t.parentId ? idMap.get(t.parentId) : undefined,
           enabledByController: t.enabledByController ? { ...t.enabledByController } : undefined,
           optionValues: { ...t.optionValues },
         })),
@@ -1332,6 +1356,7 @@ export const useAppStore = create<AppState>()(
                 optionValues: t.optionValues,
                 expanded: prevExpandedByTask.get(t.id) ?? t.expanded ?? false,
                 collapsedOptions: prevCollapsedByTask.get(t.id) ?? t.collapsedOptions,
+                parentId: t.parentId,
               };
             }
 
@@ -1360,6 +1385,7 @@ export const useAppStore = create<AppState>()(
                 optionValues: mergedValues,
                 expanded: prevExpandedByTask.get(t.id) ?? t.expanded ?? false,
                 collapsedOptions: prevCollapsedByTask.get(t.id) ?? t.collapsedOptions,
+                parentId: t.parentId,
               };
             }
 
@@ -1388,6 +1414,7 @@ export const useAppStore = create<AppState>()(
               optionValues: mergedValues,
               expanded: prevExpandedByTask.get(t.id) ?? t.expanded ?? false,
               collapsedOptions: prevCollapsedByTask.get(t.id) ?? t.collapsedOptions,
+              parentId: t.parentId,
             };
           });
 
@@ -1399,7 +1426,8 @@ export const useAppStore = create<AppState>()(
           controllerName: inst.controllerName,
           resourceName: inst.resourceName,
           savedDevice: inst.savedDevice,
-          selectedTasks: savedTasks,
+          // 归一化容器嵌套关系，并把收纳集合与轮换顺序同步回容器选项
+          selectedTasks: reconcileContainerTasks(savedTasks),
           isRunning: prevRunningByInstance.get(inst.id) ?? false,
           schedulePolicies: normalizeSchedulePolicies(inst),
           preActions: migratePreActions(inst),
@@ -2177,16 +2205,24 @@ export const useAppStore = create<AppState>()(
         controllerName: closedInstance.controllerName,
         resourceName: closedInstance.resourceName,
         savedDevice: closedInstance.savedDevice,
-        selectedTasks: closedInstance.tasks.map((t) => ({
-          id: generateId(),
-          taskName: t.taskName,
-          customName: t.customName,
-          enabled: t.enabled,
-          enabledByController: t.enabledByController ? { ...t.enabledByController } : undefined,
-          optionValues: restoreOptionValuesFromConfig(t.optionValues, pi, pi?.name),
-          expanded: t.expanded ?? false,
-          collapsedOptions: t.collapsedOptions ? { ...t.collapsedOptions } : undefined,
-        })),
+        selectedTasks: (() => {
+          // 重新生成 id 时同步重映射 parentId，避免嵌套引用悬空
+          const idMap = new Map<string, string>();
+          closedInstance.tasks.forEach((t) => idMap.set(t.id, generateId()));
+          return reconcileContainerTasks(
+            closedInstance.tasks.map((t) => ({
+              id: idMap.get(t.id) as string,
+              taskName: t.taskName,
+              customName: t.customName,
+              enabled: t.enabled,
+              enabledByController: t.enabledByController ? { ...t.enabledByController } : undefined,
+              optionValues: restoreOptionValuesFromConfig(t.optionValues, pi, pi?.name),
+              expanded: t.expanded ?? false,
+              collapsedOptions: t.collapsedOptions ? { ...t.collapsedOptions } : undefined,
+              parentId: t.parentId ? idMap.get(t.parentId) : undefined,
+            })),
+          );
+        })(),
         isRunning: false,
         schedulePolicies: normalizeSchedulePolicies(closedInstance),
         preActions: migratePreActions(closedInstance),
@@ -2463,6 +2499,7 @@ function generateConfig(): MxuConfig {
           optionValues: t.optionValues,
           expanded: t.expanded,
           collapsedOptions: t.collapsedOptions,
+          parentId: t.parentId,
         })),
       ),
       schedulePolicies: inst.schedulePolicies,

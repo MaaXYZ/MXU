@@ -31,11 +31,14 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { TaskItem } from './TaskItem';
+import { ContainerChildItem } from './ContainerChildItem';
 import { ActionItem } from './ActionItem';
 import { ContextMenu, useContextMenu, type MenuItem } from './ContextMenu';
 import type { SavedTask } from '@/types/config';
 import type { PresetItem } from '@/types/interface';
 import { getInterfaceLangKey } from '@/i18n';
+import { getContainerDefinition } from '@/types/containerTasks';
+import { setContainerStatusBasePath } from '@/services/containerStatusService';
 import { useResolvedContent } from '@/services/contentResolver';
 import {
   exportWithToast,
@@ -285,6 +288,9 @@ export function TaskList() {
     clearLastAddedTaskId,
     projectInterface,
     skippedPresetInstanceIds,
+    setTaskParent,
+    normalizeAndSyncContainers,
+    basePath,
   } = useAppStore();
 
   const instance = getActiveInstance();
@@ -311,6 +317,11 @@ export function TaskList() {
     }
   }, [lastAddedTaskId, clearLastAddedTaskId]);
 
+  // 容器子任务状态灯：轮询项目侧状态文件（Agent 工作目录下的 debug/record）
+  useEffect(() => {
+    if (basePath) setContainerStatusBasePath(basePath);
+  }, [basePath]);
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -331,12 +342,33 @@ export function TaskList() {
   const handleDragEnd = (event: DragEndEvent) => {
     if (isInstanceRunning) return;
     const { active, over } = event;
-    if (over && active.id !== over.id && instance) {
-      const oldIndex = instance.selectedTasks.findIndex((t) => t.id === active.id);
-      const newIndex = instance.selectedTasks.findIndex((t) => t.id === over.id);
-      if (oldIndex < 0 || newIndex < 0) return;
-      reorderTasks(instance.id, oldIndex, newIndex);
+    if (!over || !instance) return;
+    const tasks = instance.selectedTasks;
+    const activeTask = tasks.find((t) => t.id === active.id);
+    if (!activeTask) return;
+
+    // 拖到容器卡片上：纳入该容器（仅限容器支持的作战任务）
+    if (over.id !== active.id) {
+      const overTask = tasks.find((t) => t.id === over.id);
+      if (overTask) {
+        const containerDef = getContainerDefinition(overTask.taskName);
+        if (
+          containerDef &&
+          containerDef.childTaskNames.includes(activeTask.taskName) &&
+          activeTask.parentId !== overTask.id
+        ) {
+          setTaskParent(instance.id, activeTask.id, overTask.id);
+          return;
+        }
+      }
     }
+
+    const oldIndex = tasks.findIndex((t) => t.id === active.id);
+    const newIndex = tasks.findIndex((t) => t.id === over.id);
+    if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
+    reorderTasks(instance.id, oldIndex, newIndex);
+    // 归一化容器区块（子任务保持紧随容器）并同步容器选项
+    normalizeAndSyncContainers(instance.id);
   };
 
   const handlePreActionDragEnd = (event: DragEndEvent) => {
@@ -645,9 +677,13 @@ export function TaskList() {
               strategy={verticalListSortingStrategy}
             >
               <div className="space-y-2">
-                {normalTasks.map((task) => (
-                  <TaskItem key={task.id} instanceId={instance.id} task={task} />
-                ))}
+                {normalTasks.map((task) =>
+                  task.parentId ? (
+                    <ContainerChildItem key={task.id} instanceId={instance.id} task={task} />
+                  ) : (
+                    <TaskItem key={task.id} instanceId={instance.id} task={task} />
+                  ),
+                )}
               </div>
             </SortableContext>
           </DndContext>

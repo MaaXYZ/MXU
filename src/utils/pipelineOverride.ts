@@ -519,6 +519,9 @@ const collectOptionOverrides = (
  * 返回数组格式的 JSON 字符串，MaaFramework 会按顺序依次覆盖（同名字段完整替换）
  *
  * v2.3.0 覆盖顺序：global_option < resource.option < controller.option < task.option
+ *
+ * `skipOptionKeys` 用于容器子任务：被容器接管的选项（如执行周期）在界面中隐藏，
+ * 其保存值也不应再进入合成的覆写，避免绕过容器自己的设置。
  */
 export const generateTaskPipelineOverride = (
   selectedTask: SelectedTask,
@@ -526,6 +529,7 @@ export const generateTaskPipelineOverride = (
   controllerName?: string,
   resourceName?: string,
   globalOptionValues?: Record<string, OptionValue>,
+  skipOptionKeys?: Iterable<string>,
 ): string => {
   // 处理 MXU 内置特殊任务
   if (isMxuSpecialTask(selectedTask.taskName)) {
@@ -533,6 +537,8 @@ export const generateTaskPipelineOverride = (
   }
 
   if (!projectInterface) return '[]';
+
+  const skipped = skipOptionKeys ? new Set(skipOptionKeys) : undefined;
 
   // 热键键码按控制器 **类型**（Win32 / MacOS / Adb / WlRoots）查表，这里先由 name 解析出 type。
   // WlRoots 可配置接受 Win32 VK 或原始 evdev 键码，热键 override 必须与控制器配置一致。
@@ -559,6 +565,7 @@ export const generateTaskPipelineOverride = (
     // 1. 全局选项（优先级最低）：取值来自全局设置 globalOptionValues（设置页统一编辑）
     if (projectInterface.global_option) {
       for (const optionKey of projectInterface.global_option) {
+        if (skipped?.has(optionKey)) continue;
         collectOptionOverrides(
           optionKey,
           globalOptionValues ?? {},
@@ -576,6 +583,7 @@ export const generateTaskPipelineOverride = (
       const resourceDef = projectInterface.resource.find((r) => r.name === resourceName);
       if (resourceDef?.option) {
         for (const optionKey of resourceDef.option) {
+          if (skipped?.has(optionKey)) continue;
           collectOptionOverrides(
             optionKey,
             selectedTask.optionValues,
@@ -594,6 +602,7 @@ export const generateTaskPipelineOverride = (
       const controllerDef = projectInterface.controller.find((c) => c.name === controllerName);
       if (controllerDef?.option) {
         for (const optionKey of controllerDef.option) {
+          if (skipped?.has(optionKey)) continue;
           collectOptionOverrides(
             optionKey,
             selectedTask.optionValues,
@@ -610,6 +619,7 @@ export const generateTaskPipelineOverride = (
     // 4. 任务级选项（优先级最高）
     if (taskDef.option) {
       for (const optionKey of taskDef.option) {
+        if (skipped?.has(optionKey)) continue;
         collectOptionOverrides(
           optionKey,
           selectedTask.optionValues,

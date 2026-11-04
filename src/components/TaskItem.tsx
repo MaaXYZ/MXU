@@ -4,6 +4,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
   GripVertical,
+  Workflow,
   ChevronRight,
   X,
   Loader2,
@@ -25,6 +26,7 @@ import { buildListItemMenuItems, InlineNameEditor } from './listItemShared';
 import { TriStateCheckbox, getTaskCheckboxState } from './ui/TriStateCheckbox';
 import { taskStartService } from '@/services/taskStartService';
 import type { MenuItem } from './ContextMenu';
+import { getContainerDefinition } from '@/types/containerTasks';
 import type { SelectedTask, CaseItem } from '@/types/interface';
 import { isMxuSpecialTask, getMxuSpecialTask, findMxuOptionByKey } from '@/types/specialTasks';
 import { isPretaskName, getPretaskItem, buildPretaskDef } from '@/types/pretasks';
@@ -168,7 +170,7 @@ function isOptionResourceIncompatible(
 }
 
 /** 选项列表渲染器：自动将连续的无子选项 switch 分组为网格 */
-function OptionListRenderer({
+export function OptionListRenderer({
   instanceId,
   taskId,
   optionKeys,
@@ -497,10 +499,11 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
     translations,
   );
 
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: task.id,
-    disabled: !canReorder,
-  });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } =
+    useSortable({
+      id: task.id,
+      disabled: !canReorder,
+    });
 
   // 禁止 X 方向位移，仅允许垂直拖动；同时忽略 dnd-kit 的缩放分量，
   // 避免拖拽中的半透明项在高度变化时把文本一起纵向拉伸。
@@ -547,11 +550,18 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
       : resolveI18nText(taskDef.label, langKey) || taskDef.name
     : '';
   const displayName = task.customName || originalLabel;
+  // 容器任务：仅展示提示；收纳集合与顺序由拖拽维护，不再是选项
+  const containerDef = getContainerDefinition(task.taskName);
+  const containerChildrenCount = containerDef
+    ? (instances
+        .find((i) => i.id === instanceId)
+        ?.selectedTasks.filter((t) => t.parentId === task.id).length ?? 0)
+    : 0;
   const hasOptions = !!taskDef?.option && taskDef.option.length > 0;
   // 判断是否有描述内容（包括正在加载的情况）
   const hasDescription = !!resolvedDescription.html || resolvedDescription.loading;
   // 有选项或有描述时都可以展开
-  const canExpand = hasOptions || hasDescription;
+  const canExpand = hasOptions || hasDescription || Boolean(containerDef);
 
   // 生成选项预览信息（最多显示3个）
   const optionPreviews = useMemo(() => {
@@ -566,7 +576,7 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
     }[] = [];
     const maxPreviews = 3;
 
-    for (const optionKey of taskDef.option || []) {
+    for (const optionKey of taskDef?.option ?? []) {
       if (previews.length >= maxPreviews) break;
 
       // 优先从 projectInterface 查找，MXU 特殊任务从注册表查找
@@ -877,6 +887,7 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
         isDragging && 'shadow-lg opacity-50',
         taskRunStatus === 'running' && 'task-item-running',
         isAnimating && 'animate-task-slide-in',
+        isOver && containerDef && 'ring-2 ring-warning',
       )}
     >
       {/* 任务状态指示器（左侧竖条） */}
@@ -1085,12 +1096,23 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
                   </div>
                 </Tooltip>
               )}
+              {/* 容器提示：把支持的作战任务拖到本卡片上纳入轮换 */}
+              {containerDef && (
+                <div className="mb-3 flex items-center gap-1.5 rounded-md bg-info/10 px-2 py-1.5 text-xs text-text-muted">
+                  <Workflow className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>
+                    {containerChildrenCount > 0
+                      ? t('container.childrenCount', { count: containerChildrenCount })
+                      : t('container.emptyHint')}
+                  </span>
+                </div>
+              )}
               {/* 选项列表 - 仅在有选项时显示 */}
               {hasOptions && (
                 <OptionListRenderer
                   instanceId={instanceId}
                   taskId={task.id}
-                  optionKeys={taskDef.option || []}
+                  optionKeys={taskDef?.option ?? []}
                   optionValues={task.optionValues}
                   disabled={!canEditOptions || isIncompatible}
                   currentControllerName={currentControllerName}

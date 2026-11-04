@@ -200,6 +200,10 @@ export interface AppState {
   ) => string;
   removeTaskFromInstance: (instanceId: string, taskId: string) => void;
   reorderTasks: (instanceId: string, oldIndex: number, newIndex: number) => void;
+  /** 设置/清除任务所属容器（null 表示移出容器）；随后归一化顺序并同步容器选项 */
+  setTaskParent: (instanceId: string, taskId: string, parentId: string | null) => void;
+  /** 归一化容器任务顺序并同步容器选项（拖拽结束、结构变化后调用） */
+  normalizeAndSyncContainers: (instanceId: string) => void;
   toggleTaskEnabled: (instanceId: string, taskId: string) => void;
   setTaskRunOnce: (instanceId: string, taskId: string, runOnce: boolean) => void;
   clearAllTaskRunOnce: (instanceId: string) => void;
