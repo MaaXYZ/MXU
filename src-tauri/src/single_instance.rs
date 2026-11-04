@@ -46,6 +46,15 @@ enum TryAcquire {
     AlreadyRunning,
 }
 
+/// 重复启动时的弹窗提示
+#[derive(Clone, Copy)]
+enum Prompt {
+    /// 已有实例未响应
+    NotResponding,
+    /// 找不到已有实例的消息窗口
+    WindowNotFound,
+}
+
 enum Notify {
     /// 已有实例已收到唤起消息
     Activated,
@@ -68,7 +77,7 @@ pub fn acquire_or_activate() -> bool {
                 }
                 Notify::NotResponding => {
                     write_log("WARN", "检测到重复启动，已有实例未响应，弹窗提示");
-                    show_message("程序已在运行，但没有响应。\n请在任务管理器中结束该进程后重试。");
+                    show_message(Prompt::NotResponding);
                 }
             }
             return false;
@@ -77,9 +86,7 @@ pub fn acquire_or_activate() -> bool {
         // 已有实例尚未创建消息窗口（启动中）或正在退出（重启中），稍等再试
         if start.elapsed() >= WAIT_TIMEOUT {
             write_log("WARN", "检测到重复启动，未找到已有实例的消息窗口，弹窗提示");
-            show_message(
-                "程序已在运行，但无法切换到已有窗口。\n请在任务栏或系统托盘中查看；如果程序无响应，请在任务管理器中结束该进程后重试。",
-            );
+            show_message(Prompt::WindowNotFound);
             return false;
         }
         std::thread::sleep(POLL_INTERVAL);
@@ -245,13 +252,63 @@ fn activate_message() -> u32 {
     })
 }
 
-fn show_message(text: &str) {
+/// 按系统界面语言选择弹窗文案。
+/// 弹窗出现在 Tauri 与前端初始化之前，无法读取前端 i18n，语言覆盖与 `src/i18n/locales/` 保持一致
+fn prompt_text(prompt: Prompt) -> &'static str {
+    use windows::Win32::Globalization::GetUserDefaultUILanguage;
+
+    // LANGID：低 10 位为主语言，高 6 位为子语言
+    let lang_id = unsafe { GetUserDefaultUILanguage() };
+    let primary = lang_id & 0x3ff;
+    let sub = lang_id >> 10;
+
+    const LANG_CHINESE: u16 = 0x04;
+    const LANG_JAPANESE: u16 = 0x11;
+    const LANG_KOREAN: u16 = 0x12;
+    // 繁体：台湾 0x01、香港 0x03、澳门 0x05
+    const TRADITIONAL_SUBLANGS: [u16; 3] = [0x01, 0x03, 0x05];
+
+    match (primary, prompt) {
+        (LANG_CHINESE, Prompt::NotResponding) if TRADITIONAL_SUBLANGS.contains(&sub) => {
+            "程式已在執行，但沒有回應。\n請在工作管理員中結束該處理程序後重試。"
+        }
+        (LANG_CHINESE, Prompt::WindowNotFound) if TRADITIONAL_SUBLANGS.contains(&sub) => {
+            "程式已在執行，但無法切換到現有視窗。\n請在工作列或系統匣中查看；如果程式沒有回應，請在工作管理員中結束該處理程序後重試。"
+        }
+        (LANG_CHINESE, Prompt::NotResponding) => {
+            "程序已在运行，但没有响应。\n请在任务管理器中结束该进程后重试。"
+        }
+        (LANG_CHINESE, Prompt::WindowNotFound) => {
+            "程序已在运行，但无法切换到已有窗口。\n请在任务栏或系统托盘中查看；如果程序无响应，请在任务管理器中结束该进程后重试。"
+        }
+        (LANG_JAPANESE, Prompt::NotResponding) => {
+            "プログラムは既に実行中ですが、応答がありません。\nタスク マネージャーでプロセスを終了してから、再度お試しください。"
+        }
+        (LANG_JAPANESE, Prompt::WindowNotFound) => {
+            "プログラムは既に実行中ですが、既存のウィンドウに切り替えられません。\nタスクバーまたはシステム トレイを確認してください。応答がない場合は、タスク マネージャーでプロセスを終了してから、再度お試しください。"
+        }
+        (LANG_KOREAN, Prompt::NotResponding) => {
+            "프로그램이 이미 실행 중이지만 응답하지 않습니다.\n작업 관리자에서 해당 프로세스를 종료한 후 다시 시도하세요."
+        }
+        (LANG_KOREAN, Prompt::WindowNotFound) => {
+            "프로그램이 이미 실행 중이지만 기존 창으로 전환할 수 없습니다.\n작업 표시줄이나 시스템 트레이를 확인하세요. 프로그램이 응답하지 않으면 작업 관리자에서 해당 프로세스를 종료한 후 다시 시도하세요."
+        }
+        (_, Prompt::NotResponding) => {
+            "The program is already running but is not responding.\nPlease end the process in Task Manager and try again."
+        }
+        (_, Prompt::WindowNotFound) => {
+            "The program is already running, but its window could not be brought to the front.\nPlease check the taskbar or system tray. If the program is not responding, end the process in Task Manager and try again."
+        }
+    }
+}
+
+fn show_message(prompt: Prompt) {
     let title = std::env::current_exe()
         .ok()
         .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
         .unwrap_or_else(|| "MXU".to_string());
     let title = HSTRING::from(title);
-    let text = HSTRING::from(text);
+    let text = HSTRING::from(prompt_text(prompt));
     unsafe {
         MessageBoxW(
             None,
