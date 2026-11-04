@@ -378,6 +378,19 @@ impl AppConfigState {
         &self,
         request: ConfigSaveRequest,
     ) -> Result<ConfigSnapshot, ConfigSaveError> {
+        // ID 会进入广播队列；它只是关联提示，不能携带任意大的调用方数据。
+        if request.client_id.len() > 128
+            || !request
+                .client_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        {
+            return Err(ConfigSaveError {
+                code: "invalid_client_id",
+                message: "Client ID must contain at most 128 ASCII letters, digits, '-' or '_'"
+                    .to_string(),
+            });
+        }
         let mut current = self
             .config
             .lock()
@@ -961,6 +974,29 @@ mod tests {
             revision: revision.map(str::to_string),
             client_id: "test-client".to_string(),
         }
+    }
+
+    #[test]
+    fn caller_ids_are_bounded_before_saving_or_broadcasting() {
+        let (state, data_path) = initialized_state("client-id-limit");
+        let initial = state.snapshot().unwrap();
+        for id in [
+            "a".repeat(129),
+            "invalid/id".to_string(),
+            "身份".to_string(),
+        ] {
+            let mut request = save_request(initial.config.clone(), Some(&initial.revision));
+            request.client_id = id;
+            assert_eq!(
+                state.save_config(request).unwrap_err().code,
+                "invalid_client_id"
+            );
+            assert_eq!(state.snapshot().unwrap().revision, initial.revision);
+        }
+        let mut request = save_request(initial.config.clone(), Some(&initial.revision));
+        request.client_id = "a".repeat(128);
+        assert!(state.save_config(request).is_ok());
+        std::fs::remove_dir_all(data_path).unwrap();
     }
 
     #[test]

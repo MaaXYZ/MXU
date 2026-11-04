@@ -13,7 +13,7 @@ function server() {
     requests,
     async write(request: ConfigSaveRequest<Config>) {
       requests.push(request);
-      if (request.revision !== snapshot.revision) throw new Error('conflict');
+      if (request.revision !== snapshot.revision) throw { code: 'conflict' };
       snapshot = { config: request.config, revision: `r${requests.length}` };
       return structuredClone(snapshot);
     },
@@ -85,6 +85,7 @@ test('adopting an external snapshot cancels queued stale edits and ignores an ol
   const first = client.save({ instances: ['first'] });
   const second = client.save({ instances: ['stale queued'] });
   await Promise.resolve();
+  await Promise.resolve();
   client.adopt({ config: { instances: ['external'] }, revision: 'r2' });
   finish({ config: { instances: ['first'] }, revision: 'r1' });
   await first;
@@ -110,12 +111,97 @@ test('unchanged pages never send an unload write, while new edits carry their ba
   assert.equal(client.unloadRequest({ instances: ['edited again'] }), null);
 });
 
-test('own notifications are identified by sender, never by the order external notifications arrive', () => {
+test('a public sender ID alone cannot hide an external change; own responses confirm the revision', async () => {
   const client = new ConfigSync(
     'a',
     async () => initial,
     () => {},
   );
-  assert.equal(client.isOwnChange({ client_id: 'b', revision: 'r1' }), false);
-  assert.equal(client.isOwnChange({ client_id: 'a', revision: 'r2' }), true);
+  assert.equal(await client.isOwnChange({ client_id: 'b', revision: 'r1' }), false);
+  assert.equal(await client.isOwnChange({ client_id: 'a', revision: 'r2' }), false);
+  client.adopt(initial);
+  await client.save({ instances: ['edited'] });
+  assert.equal(await client.isOwnChange({ client_id: 'a', revision: 'r0' }), true);
+  assert.equal(await client.isOwnChange({ client_id: 'a', revision: 'forged' }), false);
+  client.adopt({ config: { instances: ['external B'] }, revision: 'rB' });
+  assert.equal(
+    await client.isOwnChange({ client_id: 'a', revision: 'r0' }),
+    false,
+    'returning to a previously acknowledged content hash must refresh the newer UI',
+  );
+});
+
+test('an old in-flight acknowledgement cannot suppress an update after adopting another snapshot', async () => {
+  let finish!: (snapshot: typeof initial) => void;
+  const client = new ConfigSync<Config>(
+    'a',
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    () => {},
+  );
+  client.adopt(initial);
+  const save = client.save({ instances: ['A'] });
+  await Promise.resolve();
+  const notification = client.isOwnChange({ client_id: 'a', revision: 'rA' });
+  await Promise.resolve();
+  client.adopt({ config: { instances: ['B'] }, revision: 'rB' });
+  finish({ config: { instances: ['A'] }, revision: 'rA' });
+  await save;
+  assert.equal(await notification, false);
+});
+
+test('an own broadcast arriving before the save response waits for the actual acknowledgement', async () => {
+  let finish!: (snapshot: typeof initial) => void;
+  const client = new ConfigSync<Config>(
+    'a',
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    () => {},
+  );
+  client.adopt(initial);
+  const save = client.save({ instances: ['edited'] });
+  await Promise.resolve();
+  const own = client.isOwnChange({ client_id: 'a', revision: 'r1' });
+  const forged = client.isOwnChange({ client_id: 'a', revision: 'r2' });
+  await Promise.resolve();
+  finish({ config: { instances: ['edited'] }, revision: 'r1' });
+  assert.equal(await own, true);
+  assert.equal(await forged, false);
+  assert.equal(await save, true);
+});
+
+test('persistent disk failures remain paused through snapshot/visibility refreshes until explicit retry', async () => {
+  let writes = 0;
+  let failures = 0;
+  let full = true;
+  const client = new ConfigSync<Config>(
+    'a',
+    async (request) => {
+      writes++;
+      if (full) throw { code: 'save_failed' };
+      return { config: request.config, revision: 'r1' };
+    },
+    () => {
+      failures++;
+    },
+  );
+  client.adopt(initial);
+  const edited = { instances: ['unsaved'] };
+  assert.equal(await client.save(edited), false);
+  for (let refresh = 0; refresh < 3; refresh++) {
+    client.adopt(initial);
+    assert.equal(await client.save(edited), false);
+    assert.equal(client.unloadRequest(edited), null);
+  }
+  assert.equal(writes, 1);
+  assert.equal(failures, 1);
+  full = false;
+  client.adopt(initial);
+  client.retry();
+  assert.equal(await client.save(edited), true);
+  assert.equal(writes, 2);
 });

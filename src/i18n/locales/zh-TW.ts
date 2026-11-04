@@ -763,6 +763,8 @@ export default {
 
   // 設定自我修復提示
   config: {
+    syncSaveFailed: '主機無法儲存設定，已暫停自動儲存。請匯出草稿，或修復問題後重新同步。',
+    draftStorageFailed: '本機草稿儲存空間無法使用，關閉頁面會遺失這些變更。請先匯出未同步設定。',
     draftExportFailed: '匯出未同步設定失敗，草稿已保留，請重試。',
     syncReloadFailed: '無法讀取主機設定，變更已保留在本機，重新同步後才能儲存。',
     retrySync: '重新同步',

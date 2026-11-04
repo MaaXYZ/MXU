@@ -28,8 +28,12 @@ import {
   preserveUnsavedConfig,
   getUnsavedConfigDrafts,
   downloadConfigDraft,
-  loadConfigFromStorage,
   isOwnConfigChange,
+  hasBackendConfig,
+  markFallbackConfigReady,
+  retryConfigSync,
+  hasVolatileConfigDrafts,
+  isConfigDraftPersistent,
   suspendConfigSync,
   saveConfigForUnload,
   resolveI18nText,
@@ -39,7 +43,7 @@ import {
   stopInstanceTasksAndExitApp,
 } from '@/services';
 import type { ConfigRecoveryNotice } from '@/services';
-import type { ConfigChangedEvent } from '@/utils/configSync';
+import { isConfigRevisionError, type ConfigChangedEvent } from '@/utils/configSync';
 import { clearIconDataUrlCache, loadIconAsDataUrl } from '@/services/contentResolver';
 import * as wsService from '@/services/wsService';
 import { initMcpBridge, syncMcpEnabled } from '@/services/mcpBridge';
@@ -758,14 +762,6 @@ function App() {
         toast.error(t('config.recoveryFailed'));
       }
 
-      // 浏览器环境下，如果没有从 public 目录加载到配置，尝试从 localStorage 加载
-      if (config.instances.length === 0) {
-        const storageConfig = loadConfigFromStorage(projectName);
-        if (storageConfig && storageConfig.instances.length > 0) {
-          config = storageConfig;
-        }
-      }
-
       // 应用配置
       if (config.instances.length > 0) {
         importConfig(config);
@@ -958,6 +954,7 @@ function App() {
       log.info('加载完成, 项目:', result.interface.name);
       setLoadingState('success');
       // 完成配置加载后，允许后续状态变更自动保存
+      markFallbackConfigReady(captureConfigForDraft());
       setConfigPersistenceReady(true);
 
       // 浏览器环境：设置后端直连端口并建立 WebSocket 连接
@@ -1274,14 +1271,19 @@ function App() {
 
   // beforeunload：刷新/关闭前强制保存一次配置，防止防抖窗口内的修改丢失
   useEffect(() => {
-    const handleBeforeUnload = () => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       const config = captureConfigForDraft();
       const projectName = useAppStore.getState().projectInterface?.name;
-      if (config && projectName) preserveUnsavedConfig(config, projectName);
       if (isTauri()) {
+        if (config && projectName) preserveUnsavedConfig(config, projectName);
         flushSaveConfig();
       } else if (config && projectName) {
         saveConfigForUnload(config, projectName);
+      }
+      if (hasVolatileConfigDrafts()) {
+        // 浏览器仅允许使用其内置的离开确认；留在页面后仍可从草稿提示导出。
+        event.preventDefault();
+        event.returnValue = '';
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -1294,10 +1296,32 @@ function App() {
     let cleanup: (() => void) | undefined;
 
     let syncRequest = 0;
-    const handleConfigChanged = async (event?: ConfigChangedEvent) => {
+    let disposed = false;
+    let initializationReady = useAppStore.getState().configPersistenceReady;
+    const showDraft = (
+      draft: NonNullable<ReturnType<typeof preserveUnsavedConfig>>,
+      projectName: string,
+      persistent = isConfigDraftPersistent(draft),
+    ) => {
+      toast.warning(i18n.t(persistent ? 'config.unsavedDraft' : 'config.draftStorageFailed'), {
+        id: draft.key,
+        duration: Infinity,
+        action: {
+          label: i18n.t('config.exportUnsavedDraft'),
+          onClick: () => {
+            void downloadConfigDraft(draft, projectName).catch(() =>
+              toast.error(i18n.t('config.draftExportFailed')),
+            );
+          },
+        },
+      });
+    };
+    const handleConfigChanged = async (event?: ConfigChangedEvent, retry = false) => {
+      if (await isOwnConfigChange(event)) return;
+      if (disposed) return;
+      // 初始化期间的通知由首次 ready 和订阅完成后的刷新统一补齐。
+      if (!initializationReady || (!hasBackendConfig() && !wsService.isConnected())) return;
       const current = useAppStore.getState();
-      if (isOwnConfigChange(event) || (!current.configPersistenceReady && syncRequest === 0))
-        return;
       const projectName = current.projectInterface?.name;
       const localConfig = captureConfigForDraft();
       let draft =
@@ -1313,30 +1337,20 @@ function App() {
         if (configSnapshotChanged(snapshot)) {
           // 读取快照期间用户仍可能编辑；在真正替换 UI 状态前保留最新那份。
           const latestConfig = captureConfigForDraft();
-          if (
-            latestConfig &&
-            projectName &&
-            (draft || JSON.stringify(latestConfig) !== JSON.stringify(localConfig))
-          ) {
+          if (latestConfig && projectName) {
             draft = preserveUnsavedConfig(latestConfig, projectName);
           }
           state.importConfig(snapshot.config);
           if (draft && projectName) {
-            const recoveryDraft = draft;
-            toast.warning(i18n.t('config.unsavedDraft'), {
-              duration: Infinity,
-              action: {
-                label: i18n.t('config.exportUnsavedDraft'),
-                onClick: () => {
-                  void downloadConfigDraft(recoveryDraft, projectName).catch(() =>
-                    toast.error(i18n.t('config.draftExportFailed')),
-                  );
-                },
-              },
-            });
+            showDraft(draft, projectName);
           }
         }
+        const recoveredBackend = !hasBackendConfig();
         acceptConfigSnapshot(snapshot);
+        if (recoveredBackend && projectName)
+          for (const recovered of getUnsavedConfigDrafts(projectName))
+            showDraft(recovered, projectName);
+        if (retry) retryConfigSync();
         useAppStore.getState().setConfigPersistenceReady(true);
         flushSaveConfig();
         // 运行态刷新是独立的尽力同步；失败不能令配置一直无法保存。
@@ -1348,21 +1362,46 @@ function App() {
           log.warn('配置同步后的运行态刷新失败:', err);
         }
       } catch (err) {
+        if (request !== syncRequest) return;
         log.warn('重新拉取配置失败:', err);
         toast.error(i18n.t('config.syncReloadFailed'), {
           action: {
             label: i18n.t('config.retrySync'),
             onClick: () => {
-              void handleConfigChanged();
+              void handleConfigChanged(undefined, retry);
             },
           },
         });
       }
     };
+    const handleDraftUnavailable = (event: Event) => {
+      const projectName = useAppStore.getState().projectInterface?.name;
+      if (projectName)
+        showDraft(
+          (event as CustomEvent<NonNullable<ReturnType<typeof preserveUnsavedConfig>>>).detail,
+          projectName,
+          false,
+        );
+    };
+    window.addEventListener('config-draft-unavailable', handleDraftUnavailable);
 
-    const handleSyncError = () => {
-      toast.error(i18n.t('config.syncConflict'));
-      void handleConfigChanged();
+    const handleSyncError = (event: Event) => {
+      if (isConfigRevisionError((event as CustomEvent<unknown>).detail)) {
+        toast.error(i18n.t('config.syncConflict'));
+        void handleConfigChanged();
+      } else {
+        // 不自动重试未改变的失败写入，也不让前台恢复/外部通知绕过写入暂停。
+        toast.error(i18n.t('config.syncSaveFailed'), {
+          id: 'config-save-failed',
+          duration: Infinity,
+          action: {
+            label: i18n.t('config.retrySync'),
+            onClick: () => {
+              void handleConfigChanged(undefined, true);
+            },
+          },
+        });
+      }
     };
     window.addEventListener('config-sync-error', handleSyncError);
     // 手机浏览器可能冻结页面且延后派发 WS 消息，恢复可见时先拉取主机快照。
@@ -1370,6 +1409,15 @@ function App() {
       if (!isTauri() && document.visibilityState === 'visible') void handleConfigChanged();
     };
     document.addEventListener('visibilitychange', handleVisibility);
+    const unsubscribeReady = useAppStore.subscribe(
+      (state) => state.configPersistenceReady,
+      (ready) => {
+        if (!initializationReady && ready) {
+          initializationReady = true;
+          void handleConfigChanged();
+        }
+      },
+    );
 
     if (isTauri()) {
       let cancelled = false;
@@ -1385,6 +1433,8 @@ function App() {
             return;
           }
           unlisten = dispose;
+          // 异步安装监听之前发生的更新也必须被读取。
+          void handleConfigChanged();
         } catch (err) {
           log.warn('注册 config-changed 监听失败:', err);
         }
@@ -1395,13 +1445,24 @@ function App() {
       };
     } else {
       const unlisten = wsService.onConfigChanged(handleConfigChanged);
-      cleanup = unlisten;
+      const unlistenConnection = wsService.onConnectionStatus((connected) => {
+        if (connected) void handleConfigChanged();
+      });
+      cleanup = () => {
+        unlisten();
+        unlistenConnection();
+      };
     }
 
+    void handleConfigChanged();
+
     return () => {
+      disposed = true;
       syncRequest++;
       cleanup?.();
+      unsubscribeReady();
       window.removeEventListener('config-sync-error', handleSyncError);
+      window.removeEventListener('config-draft-unavailable', handleDraftUnavailable);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, []);

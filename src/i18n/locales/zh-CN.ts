@@ -767,6 +767,8 @@ export default {
 
   // 配置自愈提示
   config: {
+    syncSaveFailed: '主机未能保存配置，自动保存已暂停。请导出草稿，或修复问题后重新同步。',
+    draftStorageFailed: '本地草稿存储不可用，关闭页面会丢失这些更改。请先导出未同步配置。',
     draftExportFailed: '导出未同步配置失败，草稿已保留，请重试。',
     syncReloadFailed: '无法读取主机配置，更改已保留在本地，重新同步后才能保存。',
     retrySync: '重新同步',

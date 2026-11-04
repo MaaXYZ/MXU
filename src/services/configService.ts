@@ -4,7 +4,12 @@ import { loggers } from '@/utils/logger';
 import { parseJsonc } from '@/utils/jsonc';
 import { joinPath, isTauri, getCacheDir } from '@/utils/paths';
 import { getApiBase } from '@/utils/backendApi';
-import { ConfigSync, type ConfigSnapshot, type ConfigChangedEvent } from '@/utils/configSync';
+import {
+  ConfigSync,
+  stableConfigJson,
+  type ConfigSnapshot,
+  type ConfigChangedEvent,
+} from '@/utils/configSync';
 import { ConfigDrafts, type ConfigDraft as StoredConfigDraft } from '@/utils/configDrafts';
 
 const log = loggers.config;
@@ -28,15 +33,28 @@ const configSync = new ConfigSync<MxuConfig>(
   (error) => window.dispatchEvent(new CustomEvent('config-sync-error', { detail: error })),
 );
 let backendConfigLoaded = false;
+let fallbackBaseline = '';
+let currentProjectName: string | undefined;
 
 export type ConfigDraft = StoredConfigDraft<MxuConfig>;
 const configDrafts = new ConfigDrafts<MxuConfig>(() => localStorage, isValidMxuConfig);
 
 /** 未同步的编辑只作为可导出的本地草稿保留，绝不自动重放到新版本上。 */
 export function preserveUnsavedConfig(config: MxuConfig, projectName: string): ConfigDraft | null {
-  if (!backendConfigLoaded || !configSync.hasChanges(config)) return null;
+  if (!backendConfigLoaded && !fallbackBaseline) return null;
+  if (
+    backendConfigLoaded
+      ? !configSync.hasChanges(config)
+      : stableConfigJson(config) === fallbackBaseline
+  )
+    return null;
   try {
-    return configDrafts.save(config, projectName, configSync.clientId);
+    // 外部更新前保留的旧基线草稿不能被新基线上的下一次编辑覆盖。
+    const draftId = `${configSync.clientId}-${configSync.getRevision() ?? 'fallback'}`;
+    const draft = configDrafts.save(config, projectName, draftId);
+    if (!configDrafts.isPersistent(draft))
+      window.dispatchEvent(new CustomEvent('config-draft-unavailable', { detail: draft }));
+    return draft;
   } catch (error) {
     log.warn('保留未同步配置草稿失败:', error);
     return { key: '', config, savedAt: new Date().toISOString() };
@@ -82,8 +100,29 @@ export async function downloadConfigDraft(draft: ConfigDraft, projectName: strin
   }
 }
 
-export function isOwnConfigChange(event: ConfigChangedEvent | undefined): boolean {
+export function isOwnConfigChange(event: ConfigChangedEvent | undefined): Promise<boolean> {
   return configSync.isOwnChange(event);
+}
+
+export function hasBackendConfig(): boolean {
+  return backendConfigLoaded || isTauri();
+}
+
+/** 只把初始化后的本地预览状态作为比较基线，绝不赋予后端写入版本。 */
+export function markFallbackConfigReady(config: MxuConfig | null): void {
+  if (!backendConfigLoaded && config) fallbackBaseline = stableConfigJson(config);
+}
+
+export function retryConfigSync(): void {
+  configSync.retry();
+}
+
+export function hasVolatileConfigDrafts(): boolean {
+  return configDrafts.hasVolatileDrafts();
+}
+
+export function isConfigDraftPersistent(draft: ConfigDraft): boolean {
+  return configDrafts.isPersistent(draft);
 }
 
 export function suspendConfigSync(): void {
@@ -91,10 +130,13 @@ export function suspendConfigSync(): void {
 }
 
 /** 重连刷新时不会发送旧快照；普通关闭只补发尚未落盘的编辑。 */
-export function saveConfigForUnload(config: MxuConfig, projectName: string): void {
+export function saveConfigForUnload(config: MxuConfig, projectName: string): boolean {
   preserveUnsavedConfig(config, projectName);
+  const durable = !hasVolatileConfigDrafts();
+  // 用户可能在草稿存储失败的离页确认中选择留下，不能提前暂停其后续保存。
+  if (!durable) return false;
   const request = configSync.unloadRequest(config);
-  if (!request) return;
+  if (!request) return durable;
   const payload = JSON.stringify(request);
   const url = `${getApiBase()}/config`;
   const sent =
@@ -107,6 +149,7 @@ export function saveConfigForUnload(config: MxuConfig, projectName: string): voi
       keepalive: true,
     }).catch(() => {});
   }
+  return durable;
 }
 
 // 配置文件子目录
@@ -175,11 +218,26 @@ export function configSnapshotChanged(snapshot: ConfigSnapshot<MxuConfig>): bool
 
 /** 仅在调用方已决定保留/替换 UI 配置时接受版本，防止过期读取提前推进写入基线。 */
 export function acceptConfigSnapshot(snapshot: ConfigSnapshot<MxuConfig>): void {
+  const migrateLegacy = !backendConfigLoaded;
   backendConfigLoaded = true;
   configSync.adopt(snapshot);
+  if (migrateLegacy && currentProjectName && !isTauri()) {
+    try {
+      const legacy = readStoredConfig(currentProjectName);
+      if (legacy && configSync.hasChanges(legacy)) {
+        const draft = configDrafts.save(legacy, currentProjectName, 'legacy');
+        // 配额不足时保留原键作为持久恢复源。
+        if (configDrafts.isPersistent(draft))
+          localStorage.removeItem(storageKey(currentProjectName));
+      }
+    } catch (error) {
+      log.warn('迁移本地配置草稿失败:', error);
+    }
+  }
 }
 
 export async function loadConfig(basePath: string, projectName?: string): Promise<MxuConfig> {
+  currentProjectName = projectName;
   configSync.suspend();
   try {
     const snapshot = await readConfigSnapshot();
@@ -198,12 +256,17 @@ export async function loadConfig(basePath: string, projectName?: string): Promis
     const response = await fetch(fetchPath);
     if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
       const config = parseJsonc<MxuConfig>(await response.text(), fetchPath);
-      if (isValidMxuConfig(config)) return config;
+      if (isValidMxuConfig(config)) {
+        fallbackBaseline = stableConfigJson(config);
+        return config;
+      }
     }
   } catch {
     /* 开发预览没有配置文件时使用默认值。 */
   }
-  return defaultConfig;
+  const config = readStoredConfig(projectName) ?? defaultConfig;
+  fallbackBaseline = stableConfigJson(config);
+  return config;
 }
 
 /**
@@ -231,8 +294,7 @@ export async function saveConfig(
   }
 
   try {
-    const storageKey = projectName ? `mxu-config-${projectName}` : 'mxu-config';
-    localStorage.setItem(storageKey, JSON.stringify(config));
+    localStorage.setItem(storageKey(projectName), JSON.stringify(config));
     return true;
   } catch {
     return false;
@@ -245,12 +307,19 @@ export async function saveConfig(
  */
 export function loadConfigFromStorage(projectName?: string): MxuConfig | null {
   if (isTauri() || backendConfigLoaded) return null;
+  return readStoredConfig(projectName);
+}
 
+function storageKey(projectName?: string): string {
+  return projectName ? `mxu-config-${projectName}` : 'mxu-config';
+}
+
+function readStoredConfig(projectName?: string): MxuConfig | null {
   try {
-    const storageKey = projectName ? `mxu-config-${projectName}` : 'mxu-config';
-    const stored = localStorage.getItem(storageKey);
+    const stored = localStorage.getItem(storageKey(projectName));
     if (stored) {
-      return JSON.parse(stored) as MxuConfig;
+      const config: unknown = JSON.parse(stored);
+      return isValidMxuConfig(config) ? config : null;
     }
   } catch {
     // ignore

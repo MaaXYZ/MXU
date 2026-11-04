@@ -133,14 +133,16 @@ function onOpen() {
   log.info('WebSocket 已连接');
   reconnectDelay = 1000;
 
-  if (hasEverConnected && !currentlyConnected) {
+  const recovered = (hasEverConnected || hasUnexpectedDisconnect) && !currentlyConnected;
+  // 先通知订阅者拉取快照；草稿存储失败时用户可能取消下面的页面刷新。
+  notifyConnectionStatus(true);
+
+  if (recovered) {
     log.info('后端恢复，刷新页面以重新同步状态');
     suspendConfigSync();
     window.location.reload();
     return;
   }
-
-  notifyConnectionStatus(true);
 }
 
 function onClose(event: CloseEvent) {

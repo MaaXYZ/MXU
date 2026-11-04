@@ -639,7 +639,7 @@ async fn handle_put_config(
             let status = match error.code {
                 "conflict" => StatusCode::CONFLICT,
                 "revision_required" => StatusCode::PRECONDITION_REQUIRED,
-                "invalid_config" => StatusCode::BAD_REQUEST,
+                "invalid_config" | "invalid_client_id" => StatusCode::BAD_REQUEST,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
             (status, Json(error)).into_response()

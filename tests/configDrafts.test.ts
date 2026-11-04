@@ -38,6 +38,7 @@ test('closing during an in-flight save preserves the newest edit across a fresh 
   client.adopt({ config: { instances: ['host'] }, revision: 'r0' });
   const saving = client.save({ instances: ['first edit'] });
   await Promise.resolve();
+  await Promise.resolve();
   const latest = { instances: ['latest edit before close'] };
   drafts.save(latest, 'project', client.clientId);
   assert.equal(client.unloadRequest(latest), null);
@@ -109,4 +110,20 @@ test('draft recovery keeps the persisted password and CDK representation without
   assert.equal(stored.includes(password), false);
   assert.equal(stored.includes(cdk), false);
   assert.deepEqual(drafts.list('project', () => true)[0].config, persisted);
+});
+
+test('unavailable local storage keeps the newest draft exportable and reports it as volatile', () => {
+  const drafts = new ConfigDrafts<Config>(() => {
+    throw new Error('storage denied');
+  }, valid);
+  const first = drafts.save({ instances: ['first'] }, 'project', 'a');
+  const latest = drafts.save({ instances: ['latest'] }, 'project', 'a');
+  assert.equal(drafts.isPersistent(first), false);
+  assert.equal(drafts.hasVolatileDrafts(), true);
+  assert.deepEqual(
+    drafts.list('project', () => true).map((draft) => draft.config),
+    [latest.config],
+  );
+  drafts.removeIfSaved(latest.key, () => false);
+  assert.equal(drafts.hasVolatileDrafts(), false);
 });

@@ -796,6 +796,10 @@ export default {
 
   // Config self-heal notices
   config: {
+    syncSaveFailed:
+      'The host could not save the configuration. Automatic saves are paused. Export your draft, or fix the problem and retry sync.',
+    draftStorageFailed:
+      'Local draft storage is unavailable. Closing this page will lose these edits. Export your unsaved changes first.',
     draftExportFailed:
       'Unable to export the unsaved configuration. The draft is still available; please try again.',
     syncReloadFailed:

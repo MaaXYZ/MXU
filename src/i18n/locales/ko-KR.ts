@@ -786,6 +786,10 @@ export default {
 
   // 설정 자동 복구 알림
   config: {
+    syncSaveFailed:
+      '호스트에 설정을 저장하지 못해 자동 저장을 중지했습니다. 초안을 내보내거나 문제를 해결한 후 동기화를 다시 시도하세요.',
+    draftStorageFailed:
+      '로컬 초안 저장소를 사용할 수 없습니다. 이 페이지를 닫으면 편집 내용이 사라집니다. 먼저 미동기화 설정을 내보내세요.',
     draftExportFailed:
       '미동기화 설정을 내보내지 못했습니다. 초안은 보관되어 있습니다. 다시 시도해 주세요。',
     syncReloadFailed:

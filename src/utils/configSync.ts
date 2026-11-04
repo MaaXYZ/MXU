@@ -13,7 +13,7 @@ export interface ConfigChangedEvent {
   revision: string;
 }
 
-function stableJson(value: unknown): string {
+export function stableConfigJson(value: unknown): string {
   return JSON.stringify(value, (_key, item) =>
     item && typeof item === 'object' && !Array.isArray(item)
       ? Object.fromEntries(
@@ -25,6 +25,12 @@ function stableJson(value: unknown): string {
   );
 }
 
+/** 只有版本冲突可以通过重新读取自动恢复；写盘/网络错误需要用户明确重试。 */
+export function isConfigRevisionError(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return code === 'conflict' || code === 'revision_required';
+}
+
 export class ConfigSync<T> {
   private revision: string | null = null;
   private savedConfig = '';
@@ -32,11 +38,14 @@ export class ConfigSync<T> {
   private ready = false;
   private pending: Promise<boolean> = Promise.resolve(true);
   private writesInFlight = 0;
+  private writeFailed = false;
+  private activeWrite: Promise<ConfigSnapshot<T>> | null = null;
+  private acknowledgedRevision: string | null = null;
 
   constructor(
     readonly clientId: string,
     private readonly write: (request: ConfigSaveRequest<T>) => Promise<ConfigSnapshot<T>>,
-    private readonly onConflict: (error: unknown) => void,
+    private readonly onError: (error: unknown) => void,
   ) {}
 
   /** 接受服务端快照时取消基于旧快照排队的保存。 */
@@ -44,7 +53,7 @@ export class ConfigSync<T> {
     this.generation++;
     this.revision = snapshot.revision;
     this.ready = true;
-    this.savedConfig = stableJson(snapshot.config);
+    this.savedConfig = stableConfigJson(snapshot.config);
   }
 
   /** 断线后暂停写入；恢复时必须先拉取服务端快照。 */
@@ -58,15 +67,31 @@ export class ConfigSync<T> {
   }
 
   hasChanges(config: T): boolean {
-    return stableJson(config) !== this.savedConfig;
+    return stableConfigJson(config) !== this.savedConfig;
   }
 
-  isOwnChange(event: ConfigChangedEvent | undefined): boolean {
-    return event?.client_id === this.clientId;
+  /** 广播中的 ID 是公开的；必须再以本页实际写入的响应确认版本。 */
+  async isOwnChange(event: ConfigChangedEvent | undefined): Promise<boolean> {
+    if (!event || event.client_id !== this.clientId) return false;
+    if (this.acknowledgedRevision === event.revision && this.revision === event.revision)
+      return true;
+    const generation = this.generation;
+    try {
+      // 广播可能先于 HTTP/IPC 保存响应到达。
+      const saved = await this.activeWrite;
+      return generation === this.generation && saved?.revision === event.revision;
+    } catch {
+      return false;
+    }
+  }
+
+  retry(): void {
+    this.writeFailed = false;
   }
 
   private request(config: T): ConfigSaveRequest<T> | null {
-    if (!this.ready || this.revision === null || !this.hasChanges(config)) return null;
+    if (!this.ready || this.writeFailed || this.revision === null || !this.hasChanges(config))
+      return null;
     return { config, revision: this.revision, client_id: this.clientId };
   }
 
@@ -84,23 +109,35 @@ export class ConfigSync<T> {
     const snapshot = JSON.parse(JSON.stringify(config)) as T;
     this.writesInFlight++;
     const next = this.pending.then(async () => {
-      if (generation !== this.generation || !this.ready || this.revision === null) return false;
+      if (
+        generation !== this.generation ||
+        !this.ready ||
+        this.writeFailed ||
+        this.revision === null
+      )
+        return false;
       const request = this.request(snapshot);
       if (!request) return true;
+      const writing = Promise.resolve().then(() => this.write(request));
+      this.activeWrite = writing;
       try {
-        const saved = await this.write(request);
+        const saved = await writing;
         // 等待响应期间可能已收到其它客户端的快照，不可把版本退回去。
         if (generation === this.generation) {
+          this.acknowledgedRevision = saved.revision;
           this.revision = saved.revision;
-          this.savedConfig = stableJson(saved.config);
+          this.savedConfig = stableConfigJson(saved.config);
         }
         return true;
       } catch (error) {
         if (generation === this.generation) {
+          if (!isConfigRevisionError(error)) this.writeFailed = true;
           this.suspend();
-          this.onConflict(error);
+          this.onError(error);
         }
         return false;
+      } finally {
+        if (this.activeWrite === writing) this.activeWrite = null;
       }
     });
     this.pending = next.finally(() => this.writesInFlight--);
