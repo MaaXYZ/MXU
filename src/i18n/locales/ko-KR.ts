@@ -1,4 +1,11 @@
 export default {
+  pi: {
+    PI_DISPLAY_OPTIONS_INVALID: '크기 조정 방식을 하나만 지정하고 양의 정수 크기를 사용하세요.',
+    PI_DISPLAY_OPTIONS_UNSUPPORTED:
+      '현재 MaaFramework가 선택한 캡처 방식을 지원하지 않습니다. 리소스 패키지를 업데이트하세요.',
+  },
+  focus: { title: '프로젝트 알림', confirmFailed: '확인하지 못했습니다. 다시 시도하세요.' },
+
   // 공통
   common: {
     confirm: '확인',

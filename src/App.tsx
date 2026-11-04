@@ -1,3 +1,4 @@
+import { FocusDialogs } from '@/components/FocusDialogs';
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import {
   useAppStore,
@@ -1903,13 +1904,16 @@ function App() {
   }, []);
 
   const toaster = (
-    <Toaster
-      theme={resolveThemeMode(theme)}
-      position="bottom-center"
-      toastOptions={{
-        className: '!bg-bg-secondary !text-text-primary !border-border',
-      }}
-    />
+    <>
+      <FocusDialogs />
+      <Toaster
+        theme={resolveThemeMode(theme)}
+        position="bottom-center"
+        toastOptions={{
+          className: '!bg-bg-secondary !text-text-primary !border-border',
+        }}
+      />
+    </>
   );
 
   // 设置页面

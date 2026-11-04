@@ -1,3 +1,4 @@
+import { PiDescription, PiIcon as AsyncIcon } from './PiContent';
 import {
   useState,
   useMemo,
@@ -11,7 +12,7 @@ import {
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '@/stores/appStore';
-import { loadIconAsDataUrl, useResolvedContent } from '@/services/contentResolver';
+import { useResolvedContent } from '@/services/contentResolver';
 import type { OptionValue, CaseItem, InputItem, OptionDefinition } from '@/types/interface';
 import { findMxuOptionByKey } from '@/types/specialTasks';
 import clsx from 'clsx';
@@ -26,7 +27,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { getInterfaceLangKey } from '@/i18n';
-import { getSelectedCasesWithOptions } from '@/utils/optionHelpers';
+import { getSelectedCasesWithOptions, findSwitchCase } from '@/utils/optionHelpers';
 import { getCheckboxMaxCount, getCheckboxMinCount } from '@/utils/checkboxOptionValidation';
 import { stripInlineRichText } from '@/utils/richText';
 import { SwitchButton, TextInput, FileInput, TimeInput, HotkeyInput } from './FormControls';
@@ -82,30 +83,6 @@ function OptionCollapseArrow({
       />
     </button>
   );
-}
-
-/** 异步加载图标组件 */
-function AsyncIcon({
-  icon,
-  basePath,
-  className,
-}: {
-  icon?: string;
-  basePath: string;
-  className?: string;
-}) {
-  const [iconUrl, setIconUrl] = useState<string | undefined>(undefined);
-
-  useEffect(() => {
-    if (!icon) {
-      setIconUrl(undefined);
-      return;
-    }
-    loadIconAsDataUrl(icon, basePath).then(setIconUrl);
-  }, [icon, basePath]);
-
-  if (!iconUrl) return null;
-  return <img src={iconUrl} alt="" className={className} />;
 }
 
 interface OptionEditorProps {
@@ -332,7 +309,12 @@ function InputField({
           )}
           <RichLabel text={inputLabel} className="text-sm text-text-tertiary truncate" />
           {inputDescription && (
-            <Tooltip content={inputDescription} side="top" align="start" maxWidth="max-w-[200px]">
+            <Tooltip
+              content={<PiDescription source={inputDescription} />}
+              side="top"
+              align="start"
+              maxWidth="max-w-[200px]"
+            >
               <Info className="w-3.5 h-3.5 text-text-muted cursor-help flex-shrink-0" />
             </Tooltip>
           )}
@@ -496,6 +478,25 @@ export function OptionEditor({
     optionKeys: caseItem.option ?? [],
   });
 
+  const selectedCaseDescriptions =
+    'cases' in optionDef
+      ? optionDef.cases.filter((item) => {
+          if (effectiveValue?.type === 'checkbox')
+            return effectiveValue.caseNames.includes(item.name);
+          if (effectiveValue?.type === 'switch')
+            return findSwitchCase(optionDef.cases, effectiveValue.value)?.name === item.name;
+          const name =
+            effectiveValue?.type === 'select'
+              ? effectiveValue.caseName
+              : typeof optionDef.default_case === 'string'
+                ? optionDef.default_case
+                : optionDef.cases[0]?.name;
+          return item.name === name;
+        })
+      : [];
+  const caseDescriptions = selectedCaseDescriptions.map((item) => (
+    <PiDescription key={item.name} source={item.description} />
+  ));
   const nestedGroups = getSelectedCasesWithOptions(optionDef, effectiveValue).map(toNestedGroup);
   const nestedOptionKeys = nestedGroups.flatMap((g) => g.optionKeys);
 
@@ -576,6 +577,7 @@ export function OptionEditor({
             />
           </div>
         </div>
+        {caseDescriptions}
         {/* 渲染嵌套选项（可折叠，复用任务标题的 grid 展开动画） */}
         {nestedOptionKeys.length > 0 && (
           <div
@@ -704,6 +706,7 @@ export function OptionEditor({
             );
           })}
         </div>
+        {caseDescriptions}
         {countConstraint && (
           <div
             className={clsx(
@@ -893,6 +896,7 @@ export function OptionEditor({
           }}
         />
       </div>
+      {caseDescriptions}
       {/* 渲染嵌套选项（可折叠，复用任务标题的 grid 展开动画） */}
       {nestedOptionKeys.length > 0 && (
         <div
