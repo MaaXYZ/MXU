@@ -157,6 +157,12 @@ export async function loadConfig(basePath: string, projectName?: string): Promis
     } catch {
       // 浏览器环境加载失败是正常的
     }
+
+    // 纯前端预览没有后端或静态配置时，恢复本地保存的设置（也可能还没有实例）。
+    const storageConfig = loadConfigFromStorage(projectName);
+    if (isValidMxuConfig(storageConfig)) {
+      return storageConfig;
+    }
   }
 
   return defaultConfig;

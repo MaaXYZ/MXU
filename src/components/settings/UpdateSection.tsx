@@ -24,6 +24,7 @@ import {
   downloadUpdate,
   getUpdateSavePath,
   cancelDownload,
+  savePendingUpdateInfo,
   MIRRORCHYAN_ERROR_CODES,
   isDebugVersion,
 } from '@/services/updateService';
@@ -161,6 +162,16 @@ export function UpdateSection() {
           // 使用实际保存路径（可能与请求路径不同，如果从 302 重定向检测到正确文件名）
           setDownloadSavePath(result.actualSavePath);
           setDownloadStatus('completed');
+          savePendingUpdateInfo({
+            versionName: info.versionName,
+            releaseNote: info.releaseNote,
+            channel: info.channel,
+            downloadSavePath: result.actualSavePath,
+            fileSize: info.fileSize,
+            updateType: info.updateType,
+            downloadSource: info.downloadSource,
+            timestamp: Date.now(),
+          });
         } else {
           setDownloadStatus('failed');
         }

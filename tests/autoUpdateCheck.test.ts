@@ -144,14 +144,14 @@ test('startup and scheduled responses are discarded when their update parameters
   }
 });
 
-test('replacing the loaded project or beginning a download invalidates an in-flight result', async () => {
-  for (const change of ['project', 'download'] as const) {
+test('replacing the loaded project or starting/completing a download invalidates an in-flight result', async () => {
+  for (const change of ['project', 'downloading', 'completed'] as const) {
     const check = createCheck();
     const request = runAutoUpdateCheck(check.project, check.dependencies);
     check.setState(
       change === 'project'
         ? { projectInterface: { ...check.project, version: 'v2.0.0' } }
-        : { downloadStatus: 'downloading' },
+        : { downloadStatus: change },
     );
     check.resolve(update);
     await request;
