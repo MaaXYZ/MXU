@@ -338,12 +338,15 @@ function InputField({
             disabled={disabled}
             className="min-w-[min(12rem,100%)] flex-1 basis-[30%]"
           />
-        ) : input.input_type === 'file' ? (
+        ) : input.input_type === 'file' || input.input_type === 'directory' ? (
           <FileInput
             value={value}
             onChange={onChange}
             placeholder={inputPlaceholder}
             disabled={disabled}
+            directory={input.input_type === 'directory'}
+            filters={[]}
+            hasError={!!validationError}
             className="min-w-[min(12rem,100%)] flex-1 basis-[30%]"
           />
         ) : input.input_type === 'time' ? (

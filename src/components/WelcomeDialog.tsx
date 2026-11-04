@@ -11,6 +11,7 @@ import {
 import { getInterfaceLangKey } from '@/i18n';
 import { loggers } from '@/utils/logger';
 import { ModalPortal, useModalFocusTrap } from '@/components/ui/Modal';
+import { getWelcomeContentHash, resolveWelcomeEntries } from '@/utils/welcomeContent';
 
 type WelcomeContentState =
   | { status: 'loading'; html: ''; hash: '' }
@@ -28,17 +29,6 @@ interface ManualWelcomeDialogProps {
   onClose: () => void;
 }
 
-/** 计算字符串的简单 hash，用于判断 welcome 内容是否变化。 */
-function simpleHash(str: string): string {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  return hash.toString(36);
-}
-
 /**
  * 解析当前语言下的 welcome 内容。
  * URL、ETag 缓存、本地文件和 Markdown 渲染统一从这里进入，展示策略不参与解析。
@@ -50,19 +40,22 @@ function useWelcomeContent() {
   const language = useAppStore((state) => state.language);
 
   const welcome = projectInterface?.welcome;
+  const hasWelcome = Array.isArray(welcome) ? welcome.length > 0 : Boolean(welcome);
   const langKey = getInterfaceLangKey(language);
   const translations = interfaceTranslations[langKey];
   const title =
     resolveI18nText(projectInterface?.label, translations) || projectInterface?.name || 'Welcome';
 
   const [content, setContent] = useState<WelcomeContentState>(() =>
-    welcome ? { status: 'loading', html: '', hash: '' } : { status: 'empty', html: '', hash: '' },
+    hasWelcome
+      ? { status: 'loading', html: '', hash: '' }
+      : { status: 'empty', html: '', hash: '' },
   );
 
   useEffect(() => {
     let cancelled = false;
 
-    if (!welcome) {
+    if (!hasWelcome) {
       setContent({ status: 'empty', html: '', hash: '' });
       return;
     }
@@ -70,37 +63,52 @@ function useWelcomeContent() {
     setContent({ status: 'loading', html: '', hash: '' });
 
     const loadWelcome = async () => {
-      const resolvedContent = await resolveContent(welcome, { translations, basePath });
+      const entries = await resolveWelcomeEntries(welcome, (source) =>
+        resolveContent(source, { translations, basePath }),
+      );
       if (cancelled) return;
 
-      if (!resolvedContent) {
+      if (entries.every((entry) => !entry.content)) {
         setContent({ status: 'empty', html: '', hash: '' });
         return;
       }
 
-      let html: string;
-      try {
-        html = await markdownToHtmlWithLocalImages(resolvedContent, basePath);
-      } catch (err) {
-        if (cancelled) return;
-        loggers.ui.warn('Welcome markdown 转 HTML 失败，降级为纯 markdown 渲染:', err);
-        html = markdownToHtml(resolvedContent);
-      }
+      // 独立渲染，避免上一条公告未闭合的 Markdown 影响下一条。
+      const htmls = await Promise.all(
+        entries
+          .filter((entry) => entry.content)
+          .map(async ({ content }) => {
+            try {
+              return await markdownToHtmlWithLocalImages(content, basePath);
+            } catch (err) {
+              loggers.ui.warn('Welcome markdown 转 HTML 失败，降级为纯 markdown 渲染:', err);
+              return markdownToHtml(content);
+            }
+          }),
+      );
 
       if (cancelled) return;
-      setContent({ status: 'ready', html, hash: simpleHash(resolvedContent) });
+      setContent({
+        status: 'ready',
+        html: htmls.join('<hr />'),
+        hash: getWelcomeContentHash(entries),
+      });
     };
 
-    void loadWelcome();
+    void loadWelcome().catch((err) => {
+      if (cancelled) return;
+      loggers.ui.warn('Welcome 内容解析失败:', err);
+      setContent({ status: 'empty', html: '', hash: '' });
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [welcome, langKey, basePath, translations]);
+  }, [welcome, hasWelcome, langKey, basePath, translations]);
 
   return {
     ...content,
-    hasWelcome: Boolean(welcome),
+    hasWelcome,
     title,
   };
 }

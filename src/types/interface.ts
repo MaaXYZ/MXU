@@ -13,7 +13,8 @@ export interface ProjectInterface {
   version?: string;
   contact?: string;
   license?: string;
-  welcome?: string;
+  /** v2.10.2: 可按顺序展示多条公告 */
+  welcome?: string | string[];
   description?: string;
   agent?: AgentConfig | AgentConfig[];
   controller: ControllerItem[];
@@ -255,12 +256,12 @@ export interface InputItem {
   verify?: string;
   pattern_msg?: string;
   /**
-   * MXU 扩展：输入控件类型，'file' 会渲染文件选择器，'time' 会渲染时间选择器
+   * v2.10.5: 文件 / 文件夹选择器；'time' 为 MXU 扩展
    */
-  input_type?: 'text' | 'file' | 'time';
+  input_type?: 'text' | 'file' | 'directory' | 'time';
   /** MXU 扩展：输入框占位提示文本（i18n key） */
   placeholder?: string;
-  /** MXU 扩展：密码字段；启用后 UI 掩码显示，配置加密存储，日志/遥测脱敏 */
+  /** v2.10.0: 密码字段；启用后 UI 掩码显示，配置加密存储，日志/遥测脱敏 */
   password?: boolean;
 }
 
@@ -453,6 +454,8 @@ export interface PresetItem {
   label?: string;
   description?: string;
   icon?: string;
+  /** v2.10.4: 指定适用的控制器名称，与 task.controller 语义一致 */
+  controller?: string[];
   task?: PresetTaskItem[];
   /** v2.10.3: 预设中的预任务配置，name 对应顶层 pretask[].name */
   pretask?: PresetTaskItem[];

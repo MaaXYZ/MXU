@@ -77,6 +77,7 @@ import {
 } from './helpers';
 import { persistRuntimeLogs } from '@/utils/runtimeLogPersistence';
 import { cacheTaskEnabledForController } from '@/utils/taskControllerCache';
+import { isPresetCompatible } from '@/utils/presetCompatibility';
 // 从独立模块导入类型和辅助函数
 import type { AppState, LogEntry, TaskRunStatus } from './types';
 
@@ -458,7 +459,9 @@ export const useAppStore = create<AppState>()(
           newSelectedResource[id] = defaultResourceNameValue;
         }
 
-        const hasPresets = (get().projectInterface?.preset?.length ?? 0) > 0;
+        const hasPresets = pi?.preset?.some((preset) =>
+          isPresetCompatible(preset, defaultControllerNameValue),
+        );
         return {
           instances: [...state.instances, newInstance],
           activeInstanceId: id,
@@ -618,6 +621,8 @@ export const useAppStore = create<AppState>()(
 
       const preset = pi.preset.find((p) => p.name === presetName);
       if (!preset) return;
+      const { controllerName } = getCurrentControllerAndResource(get(), instanceId);
+      if (!isPresetCompatible(preset, controllerName)) return;
 
       const newTasks: SelectedTask[] = [];
 

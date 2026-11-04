@@ -9,6 +9,7 @@
 import { isDebugVersion } from '@/services/updateService';
 import { createDefaultOptionValue, sanitizeOptionValue } from '@/stores/helpers';
 import type {
+  InputItem,
   OptionDefinition,
   OptionValue,
   ProjectInterface,
@@ -38,8 +39,8 @@ const MAX_OPTION_VALUE_LENGTH = 512;
 /** 自由文本类输入只上报是否填写，避免把路径 / URL / 进程名等隐私内容带出去。 */
 const summarizeInputValue = (
   value: string,
-  pipelineType?: 'string' | 'int' | 'bool',
-  inputType?: 'text' | 'file' | 'time',
+  pipelineType?: InputItem['pipeline_type'],
+  inputType?: InputItem['input_type'],
   password?: boolean,
 ): string => {
   if (password) return value ? 'filled' : 'empty';
