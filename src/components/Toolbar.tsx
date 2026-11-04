@@ -1,3 +1,4 @@
+import { getControllerDisplayOptions } from '@/utils/controllerDisplay';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -12,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { isTaskCompatible } from '@/stores/helpers';
-import { maaService } from '@/services/maaService';
+import { maaService, controllerErrorMessage } from '@/services/maaService';
 import { preservesTaskRun } from '@/utils/taskErrors';
 import { buildTaskOptionSummary } from '@/services/telemetryService';
 import { collectPasswordPlaintextsFromRunnableTasks } from '@/utils/passwordOptionValues';
@@ -507,7 +508,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               const displayName =
                 resolveI18nText(item.label, translations) || item.name || item.exec;
 
-              log.info(`实例 ${targetInstance.name}: 执行预任务:`, item.exec, args);
+              log.info(`实例 ${targetInstance.name}: 执行预任务:`, item.exec);
               addLog(targetId, {
                 type: 'info',
                 message: t('action.pretaskStarting', { name: displayName }),
@@ -518,11 +519,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               throwIfPreActionStopped(targetId);
 
               if (exitCode !== 0) {
-                log.warn(`实例 ${targetInstance.name}: 预任务退出码非零:`, exitCode);
-                addLog(targetId, {
-                  type: 'warning',
-                  message: t('action.pretaskExitCode', { code: exitCode }),
-                });
+                throw new Error(t('action.pretaskExitCode', { code: exitCode }));
               } else {
                 addLog(targetId, {
                   type: 'success',
@@ -531,7 +528,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               }
             }
           } catch (err) {
-            if ((err instanceof Error ? err.message : String(err)) === PRE_ACTION_CANCELLED_ERROR) {
+            if (controllerErrorMessage(err) === PRE_ACTION_CANCELLED_ERROR) {
               // 取消由外层统一处理，finally 会清理前置控制状态
               throw err;
             }
@@ -540,6 +537,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               type: 'error',
               message: t('action.pretaskFailed', { error: String(err) }),
             });
+            throw err;
           } finally {
             await endPreActionControl(targetId);
           }
@@ -743,7 +741,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               }
             }
           } catch (err) {
-            if ((err instanceof Error ? err.message : String(err)) === PRE_ACTION_CANCELLED_ERROR) {
+            if (controllerErrorMessage(err) === PRE_ACTION_CANCELLED_ERROR) {
               throw err;
             }
             log.error(`实例 ${targetInstance.name}: 前置动作执行失败:`, err);
@@ -809,7 +807,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                 screencap_methods: matchedDevice.screencap_methods,
                 input_methods: matchedDevice.input_methods,
                 config: matchedDevice.config,
-                display_short_side: controller.display_short_side,
+                ...getControllerDisplayOptions(controller),
               };
               deviceName = matchedDevice.name || matchedDevice.address;
               targetType = 'device';
@@ -834,6 +832,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               }
               config = {
                 type: 'WlRoots',
+                ...getControllerDisplayOptions(controller),
                 wlr_socket_path: savedDevice.wlrSocketPath,
                 use_win32_vk_code: controller.wlroots?.use_win32_vk_code ?? false,
               };
@@ -843,7 +842,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               config = buildPlayCoverControllerConfig(
                 savedDevice.playcoverAddress,
                 controller.playcover?.uuid,
-                controller.display_short_side,
+                controller,
               );
               deviceName = savedDevice.playcoverAddress;
               targetType = 'device';
@@ -885,7 +884,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                 screencap_methods: firstDevice.screencap_methods,
                 input_methods: firstDevice.input_methods,
                 config: firstDevice.config,
-                display_short_side: controller.display_short_side,
+                ...getControllerDisplayOptions(controller),
               };
               deviceName = firstDevice.name || firstDevice.address;
               targetType = 'device';
@@ -922,6 +921,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               });
               config = {
                 type: 'WlRoots',
+                ...getControllerDisplayOptions(controller),
                 wlr_socket_path: firstSocket,
                 use_win32_vk_code: controller.wlroots?.use_win32_vk_code ?? false,
               };
@@ -1290,7 +1290,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
       } catch (err) {
         log.error(`实例 ${targetInstance.name}: 任务启动异常:`, err);
 
-        const errMsg = err instanceof Error ? err.message : String(err);
+        const errMsg = controllerErrorMessage(err);
         const cancelled = errMsg === PRE_ACTION_CANCELLED_ERROR;
         if (!cancelled) {
           const localizedErrMsg = errMsg
@@ -1533,7 +1533,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
           }
         } catch (err) {
           log.error('任务启动异常:', err);
-          setAutoConnectError(err instanceof Error ? err.message : String(err));
+          setAutoConnectError(controllerErrorMessage(err));
           setAutoConnectPhase('idle');
         } finally {
           setIsStarting(false);

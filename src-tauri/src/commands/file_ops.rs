@@ -98,6 +98,36 @@ where
         return false;
     }
 
+    let text_file = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| {
+            [
+                "log", "txt", "json", "jsonc", "yaml", "yml", "toml", "xml", "csv",
+            ]
+            .contains(&ext.to_ascii_lowercase().as_str())
+        });
+    if text_file {
+        use std::io::BufRead;
+        let mut reader = std::io::BufReader::new(file);
+        let mut line = Vec::new();
+        loop {
+            match reader.read_until(b'\n', &mut line) {
+                Ok(0) => break,
+                Ok(_) => {}
+                Err(_) => return false,
+            }
+            if zip
+                .write_all(super::log_secrets::redact(&String::from_utf8_lossy(&line)).as_bytes())
+                .is_err()
+            {
+                return false;
+            }
+            line.clear();
+        }
+        return true;
+    }
+
     if let Err(e) = io::copy(&mut file, zip) {
         log::warn!("写入 zip 失败 {}: {}", archive_name, e);
         return false;
@@ -849,4 +879,51 @@ fn parse_export_timestamp(dir_name: &str) -> Option<String> {
     }
     // 形状校验通过 ⇒ 全是 ASCII，from_utf8 必然成功
     Some(std::str::from_utf8(tail).ok()?.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Cursor, Read};
+
+    #[test]
+    fn exported_text_is_redacted_without_changing_line_endings_or_binary_files() {
+        let secret = "unique-export-test-token".to_string();
+        super::super::log_secrets::register(&[secret.clone()]);
+        let root = std::env::temp_dir().join(format!(
+            "mxu-export-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let log_path = root.join("maafw.log");
+        let binary_path = root.join("evidence.bin");
+        std::fs::write(&log_path, format!("first\r\npassword={secret}")).unwrap();
+        let binary = vec![0, 255, 1, 2, 3];
+        std::fs::write(&binary_path, &binary).unwrap();
+        let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let text_added = add_file_to_zip(&mut zip, &log_path, "maafw.log", Default::default());
+        let binary_added =
+            add_file_to_zip(&mut zip, &binary_path, "evidence.bin", Default::default());
+        std::fs::remove_dir_all(root).unwrap();
+        assert!(text_added && binary_added);
+        let mut archive = zip::ZipArchive::new(zip.finish().unwrap()).unwrap();
+        let mut text = String::new();
+        archive
+            .by_name("maafw.log")
+            .unwrap()
+            .read_to_string(&mut text)
+            .unwrap();
+        assert_eq!(text, "first\r\npassword=******");
+        let mut bytes = Vec::new();
+        archive
+            .by_name("evidence.bin")
+            .unwrap()
+            .read_to_end(&mut bytes)
+            .unwrap();
+        assert_eq!(bytes, binary);
+    }
 }

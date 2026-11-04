@@ -80,6 +80,12 @@ pub enum ControllerConfig {
         config: String,
         #[serde(default)]
         display_short_side: Option<i32>,
+        #[serde(default)]
+        display_long_side: Option<i32>,
+        #[serde(default)]
+        display_expand: Option<[i32; 2]>,
+        #[serde(default)]
+        display_raw: Option<bool>,
     },
     Win32 {
         handle: u64,
@@ -88,6 +94,12 @@ pub enum ControllerConfig {
         keyboard_method: u64,
         #[serde(default)]
         display_short_side: Option<i32>,
+        #[serde(default)]
+        display_long_side: Option<i32>,
+        #[serde(default)]
+        display_expand: Option<[i32; 2]>,
+        #[serde(default)]
+        display_raw: Option<bool>,
     },
     MacOS {
         handle: u64,
@@ -95,6 +107,12 @@ pub enum ControllerConfig {
         input_method: u64,
         #[serde(default)]
         display_short_side: Option<i32>,
+        #[serde(default)]
+        display_long_side: Option<i32>,
+        #[serde(default)]
+        display_expand: Option<[i32; 2]>,
+        #[serde(default)]
+        display_raw: Option<bool>,
     },
     WlRoots {
         wlr_socket_path: String,
@@ -102,6 +120,12 @@ pub enum ControllerConfig {
         use_win32_vk_code: bool,
         #[serde(default)]
         display_short_side: Option<i32>,
+        #[serde(default)]
+        display_long_side: Option<i32>,
+        #[serde(default)]
+        display_expand: Option<[i32; 2]>,
+        #[serde(default)]
+        display_raw: Option<bool>,
     },
     Gamepad {
         handle: u64,
@@ -111,6 +135,12 @@ pub enum ControllerConfig {
         screencap_method: Option<u64>,
         #[serde(default)]
         display_short_side: Option<i32>,
+        #[serde(default)]
+        display_long_side: Option<i32>,
+        #[serde(default)]
+        display_expand: Option<[i32; 2]>,
+        #[serde(default)]
+        display_raw: Option<bool>,
     },
     PlayCover {
         address: String,
@@ -118,6 +148,12 @@ pub enum ControllerConfig {
         uuid: Option<String>,
         #[serde(default)]
         display_short_side: Option<i32>,
+        #[serde(default)]
+        display_long_side: Option<i32>,
+        #[serde(default)]
+        display_expand: Option<[i32; 2]>,
+        #[serde(default)]
+        display_raw: Option<bool>,
     },
     /// Linux 原生控制器（截图：Wlr/PipeWire，输入：Wlr/UInput/Libei）
     Linux {
@@ -143,7 +179,74 @@ pub enum ControllerConfig {
         use_win32_vk_code: Option<bool>,
         #[serde(default)]
         display_short_side: Option<i32>,
+        #[serde(default)]
+        display_long_side: Option<i32>,
+        #[serde(default)]
+        display_expand: Option<[i32; 2]>,
+        #[serde(default)]
+        display_raw: Option<bool>,
     },
+}
+
+impl ControllerConfig {
+    pub fn display_options(&self) -> super::controller_display::DisplayOptions {
+        match self {
+            Self::Adb {
+                display_short_side,
+                display_long_side,
+                display_expand,
+                display_raw,
+                ..
+            }
+            | Self::Win32 {
+                display_short_side,
+                display_long_side,
+                display_expand,
+                display_raw,
+                ..
+            }
+            | Self::MacOS {
+                display_short_side,
+                display_long_side,
+                display_expand,
+                display_raw,
+                ..
+            }
+            | Self::WlRoots {
+                display_short_side,
+                display_long_side,
+                display_expand,
+                display_raw,
+                ..
+            }
+            | Self::Gamepad {
+                display_short_side,
+                display_long_side,
+                display_expand,
+                display_raw,
+                ..
+            }
+            | Self::PlayCover {
+                display_short_side,
+                display_long_side,
+                display_expand,
+                display_raw,
+                ..
+            }
+            | Self::Linux {
+                display_short_side,
+                display_long_side,
+                display_expand,
+                display_raw,
+                ..
+            } => super::controller_display::DisplayOptions {
+                short: *display_short_side,
+                long: *display_long_side,
+                expand: *display_expand,
+                raw: *display_raw,
+            },
+        }
+    }
 }
 
 #[cfg(test)]
@@ -165,7 +268,7 @@ mod tests {
         let coordinator = std::sync::Arc::clone(&instance.run_completion);
         let _permit = coordinator.acquire_start();
         assert!(instance.is_running()); // Startup itself counts as running.
-        instance.prepare_submission(false).unwrap(); // Must inspect true Tasker idle.
+        assert!(instance.prepare_submission(false).unwrap()); // Must inspect true Tasker idle.
         assert!(!instance.stop_in_progress);
         assert!(instance.stop_started_at.is_none());
         assert!(instance.task_run_state.pending_task_ids.is_empty());
@@ -206,7 +309,7 @@ mod tests {
         assert_eq!(instance.run_completion.generation(), generation);
 
         // An explicit append belongs to the same run and retains earlier IDs.
-        instance.prepare_submission_for(true, false).unwrap();
+        assert!(!instance.prepare_submission_for(true, false).unwrap());
         instance.task_run_state.pending_task_ids.push(3);
         instance.task_results.insert(3, true);
         assert_eq!(instance.queue_result(), None);
@@ -319,6 +422,9 @@ mod tests {
                 screencap_method: 1,
                 input_method: 2,
                 display_short_side: None,
+                display_long_side: None,
+                display_expand: None,
+                display_raw: None,
             }
         );
     }
@@ -411,12 +517,12 @@ pub struct InstanceRuntime {
 impl InstanceRuntime {
     /// Start a new framework queue after idle, including raw tasks and appends
     /// admitted only after the previous completion worker finished.
-    pub fn prepare_submission(&mut self, reset_state: bool) -> Result<(), String> {
+    pub fn prepare_submission(&mut self, reset_state: bool) -> Result<bool, String> {
         let running = self.tasker.as_ref().is_some_and(|tasker| tasker.running());
         self.prepare_submission_for(running, reset_state)
     }
 
-    fn prepare_submission_for(&mut self, running: bool, reset_state: bool) -> Result<(), String> {
+    fn prepare_submission_for(&mut self, running: bool, reset_state: bool) -> Result<bool, String> {
         if self.run_completion.submission_cancelled() {
             return Err("TASKER_STOPPING".to_string());
         }
@@ -427,7 +533,7 @@ impl InstanceRuntime {
             if reset_state {
                 return Err("TASK_QUEUE_ALREADY_RUNNING".to_string());
             }
-            return Ok(());
+            return Ok(false);
         }
         self.stop_in_progress = false;
         self.stop_started_at = None;
@@ -439,8 +545,8 @@ impl InstanceRuntime {
         self.task_run_state.current_task_index = 0;
         self.run_completion.reset();
         // Keep prior selected-task statuses visible; they do not determine when
-        // this new framework queue finishes.
-        Ok(())
+        // this new framework queue finishes. Only this fresh queue may reopen focus.
+        Ok(true)
     }
 
     pub fn queue_result(&self) -> Option<bool> {

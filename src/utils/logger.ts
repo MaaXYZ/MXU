@@ -4,6 +4,7 @@
  */
 
 import log from 'loglevel';
+import { redactLogValue } from './logSecrets';
 import { getDebugDir, isTauri as checkTauri } from './paths';
 
 // 日志级别类型
@@ -107,6 +108,7 @@ log.methodFactory = function (methodName, logLevel, loggerName) {
   const rawMethod = originalFactory(methodName, logLevel, loggerName);
 
   return function (...args: unknown[]) {
+    args = args.map(redactLogValue);
     const now = new Date();
     const timestamp = formatLocalDateTime(now, 'time');
     const prefix = loggerName ? `[${timestamp}][${String(loggerName)}]` : `[${timestamp}]`;
@@ -141,6 +143,7 @@ export function createLogger(moduleName: string, level?: LogLevel) {
     const rawMethod = originalFactory(methodName, logLevel, loggerName);
 
     return function (...args: unknown[]) {
+      args = args.map(redactLogValue);
       const now = new Date();
       const timestamp = formatLocalDateTime(now, 'time');
       const prefix = `[${timestamp}][${String(loggerName)}]`;

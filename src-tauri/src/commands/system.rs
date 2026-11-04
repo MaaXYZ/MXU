@@ -647,9 +647,23 @@ pub async fn run_pretask(
     args: Vec<String>,
     cwd: Option<String>,
 ) -> Result<i32, String> {
+    run_pretask_impl(app, &state, instance_id, program, args, cwd).await
+}
+
+pub async fn run_pretask_impl(
+    app: tauri::AppHandle,
+    state: &Arc<MaaState>,
+    instance_id: String,
+    program: String,
+    args: Vec<String>,
+    cwd: Option<String>,
+) -> Result<i32, String> {
     info!(
-        "run_pretask: instance_id={}, program={}, args={:?}, cwd={:?}",
-        instance_id, program, args, cwd
+        "run_pretask: instance_id={}, program={}, arg_count={}, cwd={:?}",
+        instance_id,
+        program,
+        args.len(),
+        cwd
     );
 
     // Windows 下相对可执行路径会相对“父进程当前目录”解析，而非下方设置的 `current_dir`，

@@ -1,4 +1,11 @@
 export default {
+  pi: {
+    PI_DISPLAY_OPTIONS_INVALID: '拡大縮小方式は一つだけ指定し、サイズは正の整数にしてください。',
+    PI_DISPLAY_OPTIONS_UNSUPPORTED:
+      'この MaaFramework は選択したキャプチャ方式に対応していません。リソースパッケージを更新してください。',
+  },
+  focus: { title: 'プロジェクト通知', confirmFailed: '確認できませんでした。再試行してください。' },
+
   // 共通
   common: {
     confirm: '確定',

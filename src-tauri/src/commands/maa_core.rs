@@ -739,6 +739,7 @@ pub fn maa_create_instance(state: State<Arc<MaaState>>, instance_id: String) -> 
 
 /// 销毁实例的内部实现（可从 Tauri 命令和 HTTP 处理器共享调用）
 pub fn destroy_instance_impl(state: &Arc<MaaState>, instance_id: &str) -> Result<(), String> {
+    super::focus::cancel_instance(instance_id);
     info!("destroy_instance_impl called, instance_id: {}", instance_id);
 
     let cleanup_config = {
@@ -1029,36 +1030,7 @@ pub async fn connect_controller_impl(
             })
             .map_err(|e| e.to_string())?;
 
-        let display_short_side = match &config {
-            ControllerConfig::Adb {
-                display_short_side, ..
-            }
-            | ControllerConfig::Win32 {
-                display_short_side, ..
-            }
-            | ControllerConfig::MacOS {
-                display_short_side, ..
-            }
-            | ControllerConfig::WlRoots {
-                display_short_side, ..
-            }
-            | ControllerConfig::Gamepad {
-                display_short_side, ..
-            }
-            | ControllerConfig::PlayCover {
-                display_short_side, ..
-            }
-            | ControllerConfig::Linux {
-                display_short_side, ..
-            } => display_short_side.unwrap_or(720),
-        };
-
-        if let Err(e) = controller.set_screenshot_target_short_side(display_short_side) {
-            warn!(
-                "Failed to set screenshot target short side to {}: {}",
-                display_short_side, e
-            );
-        }
+        config.display_options().apply(&controller)?;
 
         // 发起连接
         let conn_id = controller.post_connection().map_err(|e| e.to_string())?;
@@ -1334,7 +1306,9 @@ pub fn run_task_impl(
     if !Arc::ptr_eq(&instance.run_completion, &completion) {
         return Err("INSTANCE_REPLACED".to_string());
     }
-    instance.prepare_submission(false)?;
+    if instance.prepare_submission(false)? {
+        super::focus::begin_run(instance_id);
+    }
 
     let resource = instance.resource.as_ref().ok_or("Resource not loaded")?;
     let controller = instance
@@ -1377,7 +1351,12 @@ pub fn run_task_impl(
             .add_context_sink(move |msg, detail| {
                 // 遥测：把失败节点挂到任务 Span 下，形成失败链路
                 super::telemetry::on_node_event(&instance_id_for_context_sink, msg, detail);
-                emit_callback_event(&app_for_context_sink, msg, detail);
+                super::focus::emit_context(
+                    &app_for_context_sink,
+                    &instance_id_for_context_sink,
+                    msg,
+                    detail,
+                );
             })
             .map_err(|e| e.to_string())?;
 
@@ -1484,6 +1463,9 @@ pub fn stop_task_impl(
     let completion = {
         let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
         let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;
+        // Serialize focus reopening and cancellation with queue admission. Always
+        // release a modal waiter before posting the framework stop operation.
+        super::focus::cancel_instance(instance_id);
         let submitting = instance.run_completion.cancel_submission();
         let tasker = instance.tasker.as_ref();
         let running = tasker.is_some_and(|tasker| tasker.running());
