@@ -7,6 +7,7 @@
  */
 
 import { createLogger } from '@/utils/logger';
+import { getWebSocketUrl } from '@/utils/backendApi';
 
 const log = createLogger('wsService');
 
@@ -49,8 +50,6 @@ let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectDelay = 1000;
 let stopped = false;
-/** 后端实际监听端口（由 setServerPort 注入） */
-let serverPort: number | null = null;
 
 const maaCallbackHandlers = new Set<MaaCallbackHandler>();
 const agentOutputHandlers = new Set<AgentOutputHandler>();
@@ -74,39 +73,6 @@ function notifyConnectionStatus(connected: boolean, force = false) {
   }
   if (!changed && !force) return;
   connectionStatusHandlers.forEach((h) => h(connected));
-}
-
-// ============================================================================
-// WebSocket URL 推算
-// ============================================================================
-
-/**
- * 设置后端 Web 服务器的实际端口（由 App 初始化时从 /api/interface 获取）。
- * 设置后 WS 将直连该端口而非走 Vite proxy，避免端口不一致导致连接失败。
- */
-export function setServerPort(port: number): void {
-  serverPort = port;
-  log.info('WebSocket 目标端口已设置:', port);
-}
-
-function getWsUrl(): string {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-
-  // 已探测到后端端口：直连（tauri 生产模式下 tauri://localhost 相对路径不可用）
-  if (serverPort && serverPort > 0) {
-    const hostname = window.location.hostname || '127.0.0.1';
-    return `${protocol}//${hostname}:${serverPort}/api/ws`;
-  }
-
-  // 正常情况：通过 Nginx 反向代理
-  if (window.location.host) {
-    return `${protocol}//${window.location.host}/api/ws`;
-  }
-
-  // Fallback：直连后端
-  const hostname = window.location.hostname || '127.0.0.1';
-  const port = serverPort || 12701;
-  return `${protocol}//${hostname}:${port}/api/ws`;
 }
 
 // ============================================================================
@@ -197,7 +163,7 @@ export function connect(): void {
   }
 
   stopped = false;
-  const url = getWsUrl();
+  const url = getWebSocketUrl();
   log.info('连接 WebSocket:', url);
 
   ws = new WebSocket(url);
