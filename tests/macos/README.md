@@ -13,7 +13,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib commands::utils::tests --l
 cargo test --manifest-path src-tauri/Cargo.toml --lib commands::update::bundle_update_tests --locked
 ```
 
-`macosBundleSigning.test.ts` 验证文件迁移、权限传入、可写数据拒绝、并发目标冲突、修复互斥和中断后的持久化恢复。Windows 测试使用链接与锁适配器，`codesign` 调用使用模拟结果。macOS 专用的子进程测试使用实际内核锁，验证排他性和 `SIGKILL` 后锁释放，在 Windows 上跳过。实际签名和通知仍需在 macOS 验证。
+`macosBundleSigning.test.ts` 验证文件迁移、权限传入、可写数据拒绝、并发目标冲突、修复互斥和中断后的持久化恢复，包括有效签名下仍执行显式请求的布局修复。`macosBundleRecovery.test.ts` 验证同路径换包后拒绝旧记录恢复，以及正常签名改写仍可回滚。Windows 测试使用链接与锁适配器，`codesign` 调用使用模拟结果。macOS 专用的子进程测试使用实际内核锁，验证排他性和 `SIGKILL` 后锁释放，在 Windows 上跳过。实际签名和通知仍需在 macOS 验证。
 
 Rust 测试验证通知内容配置、未读角标状态、迁移后的资源路径边界，以及全量/增量/兜底更新和清理操作在修改 `.app` 前返回错误；同时验证包外便携目录仍可正常更新。请额外检查界面拒绝覆盖更新时显示当前语言的说明、保留下载包，以及 DMG 安装流程可用。这些测试不代替系统通知运行测试。
 

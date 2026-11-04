@@ -122,7 +122,8 @@ function repairLockedBundle(
   };
   onProgress('Inspecting the app bundle layout...');
   const plan = planBundleLayout(bundle, executableName, isCode, fileSystem);
-  if (alreadyValid && !entitlements) return { bundle, bundleId, resigned: false };
+  if (alreadyValid && !entitlements && plan.moves.length === 0)
+    return { bundle, bundleId, resigned: false };
   if (plan.moves.length && !repairLayout) {
     throw new Error(
       `Data files are stored in Contents/MacOS (${plan.moves

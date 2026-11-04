@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, join, relative } from 'node:path';
 import {
   inside,
@@ -53,6 +54,35 @@ function syncTree(path, fileSystem) {
   }
 }
 
+function bundleIdentity(bundle, fileSystem) {
+  // Signing may replace the executable and signature files. These directories and
+  // Info.plist must remain unchanged throughout a repair and identify its host.
+  const directories = ['', 'Contents', join('Contents', 'MacOS')].map((name) => {
+    const path = join(bundle, name);
+    const stat = fileSystem.lstatSync(path, { bigint: true });
+    if (!stat.isDirectory() || stat.isSymbolicLink())
+      throw new Error(`Bundle identity must use real directories: ${path}`);
+    return {
+      dev: String(stat.dev),
+      ino: String(stat.ino),
+      birthtime: String(stat.birthtimeNs ?? stat.birthtimeMs),
+    };
+  });
+  const plist = join(bundle, 'Contents', 'Info.plist');
+  const stat = fileSystem.lstatSync(plist, { bigint: true });
+  if (!stat.isFile() || stat.isSymbolicLink())
+    throw new Error(`Bundle identity must use a regular Info.plist: ${plist}`);
+  return {
+    directories,
+    plist: {
+      dev: String(stat.dev),
+      ino: String(stat.ino),
+      birthtime: String(stat.birthtimeNs ?? stat.birthtimeMs),
+      hash: createHash('sha256').update(fileSystem.readFileSync(plist)).digest('hex'),
+    },
+  };
+}
+
 export function recoverBundleRepair(bundle, fileSystem = fs, onProgress = () => {}) {
   const directory = `${bundle}.mxu-repair`;
   const stat = statIfPresent(fileSystem, directory);
@@ -62,13 +92,18 @@ export function recoverBundleRepair(bundle, fileSystem = fs, onProgress = () => 
   const state = JSON.parse(fileSystem.readFileSync(join(directory, 'transaction.json'), 'utf8'));
   const executable = join(bundle, state.executable);
   if (
-    state.version !== 1 ||
+    state.version !== 2 ||
     state.bundle !== bundle ||
     state.plan.bundle !== bundle ||
     !inside(join(bundle, 'Contents', 'MacOS'), executable) ||
     !['preparing', 'prepared', 'signing', 'committed'].includes(state.phase)
   ) {
     throw new Error(`Invalid recovery journal: ${directory}`);
+  }
+  if (JSON.stringify(state.identity) !== JSON.stringify(bundleIdentity(bundle, fileSystem))) {
+    throw new Error(
+      `The app bundle changed since this repair began. Refusing to restore a different app; recovery copy retained at ${directory}.`,
+    );
   }
   if (['prepared', 'signing'].includes(state.phase)) {
     onProgress(`Restoring interrupted repair from ${directory}`);
@@ -93,10 +128,12 @@ export function recoverBundleRepair(bundle, fileSystem = fs, onProgress = () => 
 
 export function beginBundleRepair(bundle, executable, hasSignature, plan, fileSystem = fs) {
   const directory = `${bundle}.mxu-repair`;
+  const identity = bundleIdentity(bundle, fileSystem);
   fileSystem.mkdirSync(directory, { mode: 0o700 });
   const state = {
-    version: 1,
+    version: 2,
     bundle,
+    identity,
     executable: relative(bundle, executable),
     hasSignature,
     plan,

@@ -379,6 +379,58 @@ test('does not replace an already valid signature with the expected identifier',
   );
 });
 
+test('a valid signature does not skip an explicitly requested portable layout repair', (t) => {
+  const bundle = fixture(t);
+  const { macos, resources } = portableLayout(bundle);
+  const fileSystem = layoutFs();
+  const tools = codesignStub({ validBefore: true, identifierBefore: 'com.maaend.app' });
+  const result = repairMacosBundle(bundle, {
+    platform: 'darwin',
+    run: tools.run,
+    repairLayout: true,
+    fileSystem,
+  });
+  assert.equal(result.resigned, true);
+  assert.equal(result.relocated, 4);
+  assert.equal(fileSystem.lstatSync(join(macos, 'interface.json')).isSymbolicLink(), true);
+  assert.equal(
+    fs.readFileSync(join(resources, 'MXU-portable', 'interface.json'), 'utf8'),
+    '{"name":"MaaEnd"}',
+  );
+  assert.equal(tools.calls.filter(({ args }) => args[0] === '--force').length, 1);
+
+  const again = codesignStub({ validBefore: true, identifierBefore: 'com.maaend.app' });
+  assert.equal(
+    repairMacosBundle(bundle, {
+      platform: 'darwin',
+      run: again.run,
+      repairLayout: true,
+      fileSystem,
+    }).resigned,
+    false,
+  );
+  assert.equal(
+    again.calls.some(({ args }) => args[0] === '--force'),
+    false,
+  );
+});
+
+test('a valid signature still requires explicit consent before relocating portable data', (t) => {
+  const bundle = fixture(t);
+  const { macos, resources } = portableLayout(bundle);
+  const tools = codesignStub({ validBefore: true, identifierBefore: 'com.maaend.app' });
+  assert.throws(
+    () => repairMacosBundle(bundle, { platform: 'darwin', run: tools.run }),
+    /--repair-layout/,
+  );
+  assert.equal(
+    tools.calls.some(({ args }) => args[0] === '--force'),
+    false,
+  );
+  assert.equal(fs.readFileSync(join(macos, 'interface.json'), 'utf8'), '{"name":"MaaEnd"}');
+  assert.equal(fs.existsSync(join(resources, 'MXU-portable')), false);
+});
+
 test('repairs a valid executable signature whose identifier does not match the bundle', (t) => {
   const bundle = fixture(t);
   const tools = codesignStub({ validBefore: true });

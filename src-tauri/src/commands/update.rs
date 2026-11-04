@@ -9,8 +9,8 @@ use std::time::Duration;
 use log::{error, info, warn};
 use serde::Serialize;
 
-use super::file_ops::get_exe_dir;
 use super::types::ChangesJson;
+use super::utils::{get_app_data_dir, get_exe_directory};
 
 /// 包内覆盖更新会破坏资源封印和宿主通知身份，必须使用完整应用包安装流程。
 #[tauri::command]
@@ -256,7 +256,7 @@ pub fn cleanup_dir_contents(dir: &std::path::Path) -> (usize, usize) {
     (deleted, failed)
 }
 
-/// 将文件或目录移动到程序目录下的 cache/old 文件夹，处理重名冲突
+/// 将文件或目录移动到 cache/old 文件夹，处理重名冲突
 /// 供前端调用，统一文件移动逻辑
 #[tauri::command]
 pub fn move_file_to_old(file_path: String) -> Result<(), String> {
@@ -266,8 +266,23 @@ pub fn move_file_to_old(file_path: String) -> Result<(), String> {
 
 /// 获取 cache/old 目录路径（启动清理也使用此路径，保证与移入旧文件的位置一致）
 pub fn get_old_dir() -> Result<PathBuf, String> {
-    let exe_dir = get_exe_dir()?;
-    Ok(Path::new(&exe_dir).join("cache").join("old"))
+    old_dir_for_executable(&get_exe_directory()?, get_app_data_dir)
+}
+
+fn old_dir_for_executable(
+    exe_dir: &Path,
+    app_data_dir: impl FnOnce() -> Result<PathBuf, String>,
+) -> Result<PathBuf, String> {
+    // macOS 的可执行文件可能在已签名的 .app 内，归档和回滚备份必须放在包外。
+    // 包外便携程序仍使用同卷目录，避免旧文件移动到用户目录时跨文件系统失败。
+    let root = if ensure_update_path(exe_dir).is_err() {
+        app_data_dir()?
+    } else {
+        exe_dir.to_path_buf()
+    };
+    let old_dir = root.join("cache").join("old");
+    ensure_update_path(&old_dir)?;
+    Ok(old_dir)
 }
 
 /// 清空 cache/old 目录，返回 (成功数, 失败数)。
@@ -279,7 +294,7 @@ fn clear_old_folder(old_dir: &Path) -> (usize, usize) {
     cleanup_dir_contents(old_dir)
 }
 
-/// 将文件或目录移动到程序目录下的 cache/old 文件夹，处理重名冲突（内部函数）
+/// 将文件或目录移动到 cache/old 文件夹，处理重名冲突（内部函数）
 ///
 /// 不在这里清理 cache/old：全量更新期间 cache/old 中的文件是回滚备份，
 /// 清理只在更新开始时和程序启动时进行
@@ -289,6 +304,10 @@ pub fn move_to_old_folder(source: &std::path::Path) -> Result<(), String> {
 
 /// 将文件或目录移动到 cache/old，返回移动后的路径（源不存在时返回 None）
 fn move_to_old_folder_dest(source: &Path) -> Result<Option<PathBuf>, String> {
+    move_to_old_folder_in_dir(source, &get_old_dir()?)
+}
+
+fn move_to_old_folder_in_dir(source: &Path, old_dir: &Path) -> Result<Option<PathBuf>, String> {
     ensure_update_path(source)?;
     // 只有确认不存在才跳过；其他错误（如权限不足）不能当作不存在，否则回滚时无从还原
     match source.symlink_metadata() {
@@ -297,8 +316,8 @@ fn move_to_old_folder_dest(source: &Path) -> Result<Option<PathBuf>, String> {
         Err(e) => return Err(format!("无法读取 [{}] 的文件信息: {}", source.display(), e)),
     }
 
-    let old_dir = get_old_dir()?;
-    std::fs::create_dir_all(&old_dir)
+    ensure_update_path(old_dir)?;
+    std::fs::create_dir_all(old_dir)
         .map_err(|e| format!("无法创建 old 目录 [{}]: {}", old_dir.display(), e))?;
 
     let file_name = source
@@ -942,6 +961,55 @@ mod bundle_update_tests {
             std::fs::read(target.join("resource.json")).unwrap(),
             b"new resource"
         );
+    }
+
+    #[test]
+    fn bundle_archives_use_app_data_while_portable_archives_stay_with_the_executable() {
+        let temp = Fixture::new();
+        let macos = temp.0.join("Host.app/Contents/MacOS");
+        let app_data = temp.0.join("home/Library/Application Support/MXU");
+        let portable = temp.0.join("external-volume/portable");
+        std::fs::create_dir_all(&macos).unwrap();
+        std::fs::write(macos.parent().unwrap().join("Info.plist"), b"identity").unwrap();
+        assert_eq!(
+            old_dir_for_executable(&macos, || Ok(app_data.clone())).unwrap(),
+            app_data.join("cache/old")
+        );
+        assert_eq!(
+            old_dir_for_executable(&portable, || panic!(
+                "portable archives do not use app data"
+            ))
+            .unwrap(),
+            portable.join("cache/old")
+        );
+        // 即便应用数据目录被错误设置在包内，也不允许归档或清理写入该目录。
+        assert_eq!(
+            old_dir_for_executable(&macos, || Ok(macos.clone())).unwrap_err(),
+            "SIGNED_APP_UPDATE_UNSUPPORTED"
+        );
+    }
+
+    #[test]
+    fn external_downloads_are_archived_and_rotated_without_overwriting() {
+        let temp = Fixture::new();
+        let source = temp.0.join("download.zip");
+        let archive = temp.0.join("data/cache/old");
+
+        std::fs::write(&source, b"original download").unwrap();
+        let first = move_to_old_folder_in_dir(&source, &archive)
+            .unwrap()
+            .unwrap();
+        assert_eq!(first, archive.join("download.zip"));
+        assert!(!source.exists());
+
+        std::fs::write(&source, b"replacement download").unwrap();
+        let second = move_to_old_folder_in_dir(&source, &archive)
+            .unwrap()
+            .unwrap();
+        assert_eq!(second, archive.join("download.zip.bak001"));
+        assert!(!source.exists());
+        assert_eq!(std::fs::read(&first).unwrap(), b"original download");
+        assert_eq!(std::fs::read(&second).unwrap(), b"replacement download");
     }
 
     #[cfg(unix)]
