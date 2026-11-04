@@ -422,6 +422,7 @@ export default {
     connected: '已连接',
     disconnected: '未连接',
     connectionFailed: '连接失败',
+    connectionSuperseded: '实例已移除或已发起新的连接，原连接请求已取消。',
     refreshDevices: '刷新设备',
     refreshWindows: '刷新窗口',
     refresh: '刷新设备',

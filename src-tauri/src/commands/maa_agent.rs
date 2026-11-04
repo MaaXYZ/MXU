@@ -567,7 +567,6 @@ pub async fn start_tasks_impl(
     reset_state: bool,
     controller_info: Option<ControllerInfo>,
 ) -> Result<Vec<i64>, String> {
-    super::focus::begin_run(&instance_id);
     info!("start_tasks_impl called");
 
     info!("instance_id: {}", instance_id);
@@ -586,6 +585,7 @@ pub async fn start_tasks_impl(
             .get_mut(&instance_id)
             .ok_or("Instance not found")?;
         debug!("[start_tasks] Instance found: {}", instance_id);
+        super::focus::begin_run(&instance_id);
 
         let res = instance
             .resource
@@ -621,17 +621,22 @@ pub async fn start_tasks_impl(
             let app_handle = app.clone();
             let maa_state_for_sink = Arc::clone(maa_state);
             let inst_id_for_sink = instance_id.clone();
+            let lifetime = instance.callback_lifetime.clone();
             t.add_sink(move |msg, detail| {
+                if !lifetime.is_active() {
+                    return;
+                }
                 // 先更新后端 TaskRunState（单一真相来源）
                 handle_task_callback(
                     &maa_state_for_sink,
                     &app_handle,
                     &inst_id_for_sink,
+                    &lifetime,
                     msg,
                     detail,
                 );
                 // 再转发原始回调到前端
-                emit_callback_event(&app_handle, msg, detail);
+                emit_callback_event(&app_handle, &inst_id_for_sink, msg, detail);
             })
             .map_err(|e| e.to_string())?;
             debug!("[start_tasks] Tasker sink added");
@@ -640,10 +645,20 @@ pub async fn start_tasks_impl(
             debug!("[start_tasks] Adding tasker context sink...");
             let app_handle = app.clone();
             let inst_id_for_ctx_sink = instance_id.clone();
+            let lifetime = instance.callback_lifetime.clone();
             t.add_context_sink(move |msg, detail| {
+                if !lifetime.is_active() {
+                    return;
+                }
                 // 遥测：把失败节点挂到任务 Span 下，形成失败链路
                 super::telemetry::on_node_event(&inst_id_for_ctx_sink, msg, detail);
-                super::focus::emit_context(&app_handle, &inst_id_for_ctx_sink, msg, detail);
+                super::focus::emit_context(
+                    &app_handle,
+                    &inst_id_for_ctx_sink,
+                    msg,
+                    detail,
+                    &lifetime,
+                );
             })
             .map_err(|e| e.to_string())?;
             debug!("[start_tasks] Tasker context sink added");

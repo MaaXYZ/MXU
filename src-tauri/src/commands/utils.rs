@@ -9,20 +9,30 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 
 /// 发送回调事件到前端（Tauri WebView + WebSocket 浏览器客户端）
-pub fn emit_callback_event<S: Into<String>>(app: &AppHandle, message: S, details: S) {
+pub fn emit_callback_event<S: Into<String>>(
+    app: &AppHandle,
+    instance_id: &str,
+    message: S,
+    details: S,
+) {
     let message = message.into();
     let details = details.into();
 
     // 广播到所有 WebSocket 客户端
     if let Some(ws) = app.try_state::<Arc<WsBroadcast>>() {
         ws.send(WsEvent::MaaCallback {
+            instance_id: instance_id.to_string(),
             message: message.clone(),
             details: details.clone(),
         });
     }
 
     // 发送到 Tauri WebView
-    let event = MaaCallbackEvent { message, details };
+    let event = MaaCallbackEvent {
+        instance_id: instance_id.to_string(),
+        message,
+        details,
+    };
     if let Err(e) = app.emit("maa-callback", event) {
         log::error!("Failed to emit maa-callback: {}", e);
     }
@@ -59,6 +69,7 @@ pub fn handle_task_callback(
     maa_state: &Arc<MaaState>,
     app: &AppHandle,
     instance_id: &str,
+    lifetime: &super::callback_lifecycle::CallbackGuard,
     message: &str,
     details: &str,
 ) {
@@ -88,6 +99,9 @@ pub fn handle_task_callback(
             Some(i) => i,
             None => return,
         };
+        if !instance.callback_lifetime.is_current(lifetime) {
+            return;
+        }
         let state = &mut instance.task_run_state;
 
         if is_started {

@@ -428,6 +428,8 @@ export default {
     connected: '연결됨',
     disconnected: '연결 안 됨',
     connectionFailed: '연결에 실패했습니다',
+    connectionSuperseded:
+      '인스턴스가 삭제되었거나 새 연결이 요청되어 이전 연결 요청이 취소되었습니다.',
     refreshDevices: '기기 새로고침',
     refreshWindows: '윈도우 새로고침',
     refresh: '기기 새로고침',

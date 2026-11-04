@@ -443,6 +443,8 @@ export default {
     connected: 'Connected',
     disconnected: 'Disconnected',
     connectionFailed: 'Connection failed',
+    connectionSuperseded:
+      'The connection request was cancelled because the instance was removed or a newer connection was requested.',
     refreshDevices: 'Refresh Devices',
     refreshWindows: 'Refresh Windows',
     refresh: 'Refresh Devices',
