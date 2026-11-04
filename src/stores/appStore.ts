@@ -1,5 +1,6 @@
 import i18n, { getInterfaceLangKey, setLanguage as setI18nLanguage } from '@/i18n';
 import { saveConfig } from '@/services/configService';
+import { taskExecutionGate } from '@/services/taskExecutionGate';
 import { maaService } from '@/services/maaService';
 import { isTelemetryBlockedByBuild, setTelemetryEnabled } from '@/services/telemetryService';
 import {
@@ -498,6 +499,7 @@ export const useAppStore = create<AppState>()(
     },
 
     removeInstance: (id) => {
+      if (taskExecutionGate.get(id)) return;
       get().clearControllerRuntimeState(id);
 
       set((state) => {
@@ -1590,6 +1592,8 @@ export const useAppStore = create<AppState>()(
         webServerEnabled: config.settings.webServerEnabled ?? true,
         webServerPort: config.settings.webServerPort ?? 12701,
         mcpEnabled: config.settings.mcpEnabled ?? false,
+        mcpExecutionEnabled: config.settings.mcpExecutionEnabled ?? false,
+        mcpScreenshotEnabled: config.settings.mcpScreenshotEnabled ?? false,
         autoStartInstanceId: config.settings.autoStartInstanceId,
         autoRunOnLaunch: config.settings.autoRunOnLaunch ?? false,
         autoStartRemovedInstanceName: config.settings.autoStartRemovedInstanceName,
@@ -2114,6 +2118,10 @@ export const useAppStore = create<AppState>()(
     setWebServerPort: (port) => set({ webServerPort: port }),
 
     // MCP 服务开关（默认 false，即时生效）
+    mcpExecutionEnabled: false,
+    setMcpExecutionEnabled: (enabled) => set({ mcpExecutionEnabled: enabled }),
+    mcpScreenshotEnabled: false,
+    setMcpScreenshotEnabled: (enabled) => set({ mcpScreenshotEnabled: enabled }),
     mcpEnabled: false,
     setMcpEnabled: (enabled) => set({ mcpEnabled: enabled }),
 
@@ -2588,6 +2596,8 @@ function generateConfig(): MxuConfig {
           webServerEnabled: state.webServerEnabled,
           webServerPort: state.webServerPort,
           mcpEnabled: state.mcpEnabled,
+          mcpExecutionEnabled: state.mcpExecutionEnabled,
+          mcpScreenshotEnabled: state.mcpScreenshotEnabled,
           autoStartInstanceId: state.autoStartInstanceId,
           autoRunOnLaunch: state.autoRunOnLaunch,
           autoStartRemovedInstanceName: state.autoStartRemovedInstanceName,
@@ -2670,6 +2680,8 @@ useAppStore.subscribe(
     webServerEnabled: state.webServerEnabled,
     webServerPort: state.webServerPort,
     mcpEnabled: state.mcpEnabled,
+    mcpExecutionEnabled: state.mcpExecutionEnabled,
+    mcpScreenshotEnabled: state.mcpScreenshotEnabled,
     autoStartInstanceId: state.autoStartInstanceId,
     autoRunOnLaunch: state.autoRunOnLaunch,
     autoStartRemovedInstanceName: state.autoStartRemovedInstanceName,

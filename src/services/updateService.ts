@@ -1358,11 +1358,7 @@ export async function getPendingUpdateInfo(
 
     // 外部安装器可能已升级程序，旧增量更新不能再覆盖当前安装。
     if (isPendingUpdateObsolete(info.versionName, installedVersion)) {
-      log.info(
-        '待安装更新不高于已安装版本，清除过期记录:',
-        info.versionName,
-        installedVersion,
-      );
+      log.info('待安装更新不高于已安装版本，清除过期记录:', info.versionName, installedVersion);
       localStorage.removeItem(PENDING_UPDATE_STORAGE_KEY);
       return null;
     }

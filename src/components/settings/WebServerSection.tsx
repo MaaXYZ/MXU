@@ -18,6 +18,10 @@ export function WebServerSection() {
     setWebServerPort: setConfiguredPort,
     mcpEnabled,
     setMcpEnabled,
+    mcpExecutionEnabled,
+    setMcpExecutionEnabled,
+    mcpScreenshotEnabled,
+    setMcpScreenshotEnabled,
   } = useAppStore();
   const [showRestartPrompt, setShowRestartPrompt] = useState(false);
   const [portInput, setPortInput] = useState(String(configuredPort));
@@ -261,11 +265,40 @@ export function WebServerSection() {
                 </div>
               </div>
               <SwitchButton
-                value={mcpAvailable && mcpEnabled}
+                value={mcpEnabled}
                 onChange={handleMcpToggle}
                 disabled={!mcpAvailable}
               />
             </div>
+
+            {[
+              {
+                key: 'execution',
+                value: mcpExecutionEnabled,
+                set: setMcpExecutionEnabled,
+                title: 'mcp.pi.executionEnabled',
+                hint: 'mcp.pi.executionHint',
+              },
+              {
+                key: 'screenshot',
+                value: mcpScreenshotEnabled,
+                set: setMcpScreenshotEnabled,
+                title: 'mcp.pi.screenshotEnabled',
+                hint: 'mcp.pi.screenshotHint',
+              },
+            ].map((permission) => (
+              <div key={permission.key} className="flex items-center justify-between gap-4 ml-8">
+                <div>
+                  <span className="text-sm text-text-primary">{t(permission.title)}</span>
+                  <p className="text-xs text-text-muted mt-0.5">{t(permission.hint)}</p>
+                </div>
+                <SwitchButton
+                  value={permission.value}
+                  onChange={permission.set}
+                  disabled={!mcpAvailable || !mcpEnabled}
+                />
+              </div>
+            ))}
 
             {/* 连接地址 */}
             {mcpAvailable && mcpEnabled && mcpAddress && (

@@ -566,7 +566,9 @@ pub async fn start_tasks_impl(
     pi_envs: Option<HashMap<String, String>>,
     reset_state: bool,
     controller_info: Option<ControllerInfo>,
+    execution_token: Option<String>,
 ) -> Result<Vec<i64>, String> {
+    crate::execution::validate_start(&instance_id, execution_token.as_deref())?;
     info!("start_tasks_impl called");
 
     // 上一轮的完成通知与 Agent 注销可能仍在进行；不要让旧注销晚于新注册。
@@ -821,6 +823,7 @@ pub async fn start_tasks_impl(
     // (maa_task_id, selected_task_id) 配对列表，用于后续初始化 TaskRunState
     let mut task_id_pairs: Vec<(i64, Option<String>)> = Vec::new();
     // 持锁提交，确保任务开始回调不会早于遥测元数据登记
+    crate::execution::validate_start(&instance_id, execution_token.as_deref())?;
     let mut telemetry_posting = super::telemetry::begin_posting(&instance_id);
     let task_ids_ret;
     let completion_to_schedule;
@@ -947,6 +950,7 @@ pub async fn maa_start_tasks(
     pi_envs: Option<HashMap<String, String>>,
     reset_state: Option<bool>,
     controller_info: Option<ControllerInfo>,
+    execution_token: Option<String>,
 ) -> Result<Vec<i64>, String> {
     start_tasks_impl(
         app,
@@ -959,6 +963,7 @@ pub async fn maa_start_tasks(
         pi_envs,
         reset_state.unwrap_or(true),
         controller_info,
+        execution_token,
     )
     .await
 }

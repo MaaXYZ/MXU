@@ -1474,6 +1474,8 @@ function App() {
     let cleanup: (() => void) | undefined;
 
     const isTaskKind = (kind: string) =>
+      kind === 'execution-starting' ||
+      kind === 'execution-settled' ||
       kind === 'task-started' ||
       kind === 'task-stopped' ||
       kind === 'task-progress' ||

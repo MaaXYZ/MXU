@@ -538,6 +538,9 @@ pub fn set_pre_action_stop(
     instance_id: String,
     stop: bool,
 ) -> Result<(), String> {
+    if stop {
+        crate::execution::cancel(&instance_id);
+    }
     let mut requests = state
         .pre_action_stop_requests
         .lock()
@@ -559,7 +562,9 @@ pub async fn run_action(
     cwd: Option<String>,
     wait_for_exit: bool,
     use_cmd: Option<bool>,
+    execution_token: Option<String>,
 ) -> Result<i32, String> {
+    crate::execution::validate_start(&instance_id, execution_token.as_deref())?;
     let use_cmd = use_cmd.unwrap_or(false);
 
     info!(
@@ -646,7 +651,9 @@ pub async fn run_pretask(
     program: String,
     args: Vec<String>,
     cwd: Option<String>,
+    execution_token: Option<String>,
 ) -> Result<i32, String> {
+    crate::execution::validate_start(&instance_id, execution_token.as_deref())?;
     run_pretask_impl(app, &state, instance_id, program, args, cwd).await
 }
 

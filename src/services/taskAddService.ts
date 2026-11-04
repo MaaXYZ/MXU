@@ -1,5 +1,6 @@
 import { useAppStore } from '@/stores/appStore';
 import { maaService } from '@/services/maaService';
+import { taskExecutionGate } from './taskExecutionGate';
 import { generateTaskPipelineOverride, loggers } from '@/utils';
 import i18n, { getInterfaceLangKey } from '@/i18n';
 import type { OptionValue, PretaskItem, SelectedTask } from '@/types/interface';
@@ -57,6 +58,7 @@ async function appendIfRunning(
 ): Promise<boolean> {
   const state = useAppStore.getState();
   const instance = state.instances.find((i) => i.id === instanceId);
+  if (taskExecutionGate.get(instanceId)?.source === 'mcp') return false;
   if (!instance?.isRunning) return false;
 
   const addedTask = findSelectedTask(instanceId, taskId);

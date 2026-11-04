@@ -246,6 +246,10 @@ pub async fn start_web_server(
         .route("/ws", get(handle_ws_upgrade))
         // Maa 状态查询
         .route("/maa/state", get(handle_get_maa_state))
+        .route(
+            "/maa/instances/:id/execution/:action",
+            axum::routing::post(handle_execution),
+        )
         .route("/maa/initialized", get(handle_get_maa_initialized))
         // Maa 设备扫描
         .route("/maa/devices", get(handle_get_adb_devices))
@@ -669,6 +673,7 @@ async fn handle_put_config(
 async fn handle_get_maa_state(State(state): State<WebState>) -> impl IntoResponse {
     use std::collections::HashMap;
 
+    let reserved = crate::execution::reserved_ids();
     let instances_result = state.maa_state.instances.lock();
     let adb_result = state.maa_state.cached_adb_devices.lock();
     let win32_result = state.maa_state.cached_win32_windows.lock();
@@ -702,7 +707,7 @@ async fn handle_get_maa_state(State(state): State<WebState>) -> impl IntoRespons
                         "connected": runtime.controller.as_ref().is_some_and(|c| c.connected()),
                         "resource_loaded": runtime.resource.as_ref().is_some_and(|r| r.loaded()),
                         "tasker_inited": runtime.tasker.as_ref().is_some_and(|t| t.inited()),
-                        "is_running": is_running,
+                        "is_running": is_running || reserved.contains(id),
                         "task_run_state": serde_json::to_value(&runtime.task_run_state).unwrap_or_default(),
                     }),
                 );
@@ -866,6 +871,13 @@ async fn handle_connect_controller(
     axum::extract::Path(instance_id): axum::extract::Path<String>,
     Json(config): Json<ControllerConfig>,
 ) -> impl IntoResponse {
+    if let Err(reason) = crate::execution::validate_start(&instance_id, None) {
+        return (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({"error":reason})),
+        )
+            .into_response();
+    }
     ensure_instance_exists(&state.maa_state, &instance_id);
 
     let app_handle = state.app_handle.clone();
@@ -895,6 +907,13 @@ async fn handle_load_resource(
     axum::extract::Path(instance_id): axum::extract::Path<String>,
     Json(body): Json<serde_json::Value>,
 ) -> impl IntoResponse {
+    if let Err(reason) = crate::execution::validate_start(&instance_id, None) {
+        return (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({"error":reason})),
+        )
+            .into_response();
+    }
     ensure_instance_exists(&state.maa_state, &instance_id);
 
     let paths: Vec<String> = match body.get("paths").and_then(|v| v.as_array()) {
@@ -990,6 +1009,8 @@ struct StartTasksRequest {
     /// 当前 controller 描述，仅用于遥测埋点
     #[serde(default)]
     controller_info: Option<ControllerInfo>,
+    #[serde(default)]
+    execution_token: Option<String>,
 }
 
 /// POST /api/maa/instances/:id/tasks/start
@@ -1026,6 +1047,7 @@ async fn handle_start_tasks(
         body.pi_envs,
         body.reset_state.unwrap_or(true),
         body.controller_info,
+        body.execution_token,
     )
     .await
     {
@@ -1395,6 +1417,13 @@ async fn handle_run_pretask(
     axum::extract::Path(instance_id): axum::extract::Path<String>,
     Json(body): Json<PretaskRequest>,
 ) -> impl IntoResponse {
+    if let Err(reason) = crate::execution::validate_start(&instance_id, None) {
+        return (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({"error":reason})),
+        )
+            .into_response();
+    }
     let cwd = body.cwd.or_else(|| {
         state
             .app_config
@@ -1430,6 +1459,9 @@ async fn handle_stop_pretask(
     axum::extract::Path(instance_id): axum::extract::Path<String>,
     Json(body): Json<PretaskStopRequest>,
 ) -> impl IntoResponse {
+    if body.stop {
+        crate::execution::cancel(&instance_id);
+    }
     let mut requests = state
         .maa_state
         .pre_action_stop_requests
@@ -1450,4 +1482,39 @@ async fn handle_acknowledge_focus(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> impl IntoResponse {
     Json(serde_json::json!({ "acknowledged": crate::commands::focus::acknowledge_focus(id) }))
+}
+
+#[derive(serde::Deserialize)]
+struct ExecutionRequest {
+    token: String,
+    #[serde(default)]
+    mcp: bool,
+}
+async fn handle_execution(
+    State(state): State<WebState>,
+    axum::extract::Path((id, action)): axum::extract::Path<(String, String)>,
+    Json(body): Json<ExecutionRequest>,
+) -> axum::response::Response {
+    if action == "status" {
+        return Json(crate::execution::status(&id, &body.token)).into_response();
+    }
+    let result = match action.as_str() {
+        "acquire" => crate::execution::acquire(
+            &state.app_handle,
+            &state.maa_state,
+            &id,
+            &body.token,
+            body.mcp,
+        ),
+        "release" => crate::execution::release(&state.app_handle, &id, &body.token),
+        _ => return StatusCode::NOT_FOUND.into_response(),
+    };
+    match result {
+        Ok(()) => Json(serde_json::json!({"ok":true})).into_response(),
+        Err(reason) => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({"error":reason})),
+        )
+            .into_response(),
+    }
 }

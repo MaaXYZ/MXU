@@ -436,6 +436,10 @@ export interface AppState {
   /** MCP 服务是否启用（默认 false，即时生效，依赖 Web 服务器） */
   mcpEnabled: boolean;
   setMcpEnabled: (enabled: boolean) => void;
+  mcpExecutionEnabled: boolean;
+  setMcpExecutionEnabled: (enabled: boolean) => void;
+  mcpScreenshotEnabled: boolean;
+  setMcpScreenshotEnabled: (enabled: boolean) => void;
 
   /** 后端真实 OS（运行时从后端获取，'' = 未知；用于控制器平台过滤、更新资产匹配等，不持久化） */
   backendOS: string;

@@ -31,6 +31,21 @@ use server::MxuMcpServer;
 
 /// MCP 服务开关（运行时生效，无需重启）
 static MCP_ENABLED: AtomicBool = AtomicBool::new(false);
+static EXECUTION_ENABLED: AtomicBool = AtomicBool::new(false);
+static SCREENSHOT_ENABLED: AtomicBool = AtomicBool::new(false);
+
+pub fn execution_enabled() -> bool {
+    EXECUTION_ENABLED.load(Ordering::Relaxed)
+}
+pub fn screenshot_enabled() -> bool {
+    SCREENSHOT_ENABLED.load(Ordering::Relaxed)
+}
+
+#[tauri::command]
+pub fn set_mcp_permissions(execution: bool, screenshot: bool) {
+    EXECUTION_ENABLED.store(execution, Ordering::Relaxed);
+    SCREENSHOT_ENABLED.store(screenshot, Ordering::Relaxed);
+}
 
 pub fn is_mcp_enabled() -> bool {
     MCP_ENABLED.load(Ordering::Relaxed)

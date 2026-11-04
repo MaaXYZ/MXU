@@ -134,6 +134,27 @@ export interface SelfStopRequestedEvent {
 
 /** MaaFramework 服务 */
 export const maaService = {
+  async reserveExecution(instanceId: string, token: string, mcp: boolean): Promise<void> {
+    if (!isTauri()) {
+      await apiPost('/maa/instances/' + instanceId + '/execution/acquire', { token, mcp });
+      return;
+    }
+    await invoke('execution_acquire', { instanceId, token, mcp });
+  },
+  async releaseExecution(instanceId: string, token: string): Promise<void> {
+    if (!isTauri()) {
+      await apiPost('/maa/instances/' + instanceId + '/execution/release', { token });
+      return;
+    }
+    await invoke('execution_release', { instanceId, token });
+  },
+  async executionStatus(
+    instanceId: string,
+    token = '',
+  ): Promise<{ busy: boolean; cancelled: boolean }> {
+    if (!isTauri()) return apiPost('/maa/instances/' + instanceId + '/execution/status', { token });
+    return invoke('execution_status', { instanceId, token });
+  },
   async pendingFocus(): Promise<
     {
       request_id: string;
@@ -370,7 +391,11 @@ export const maaService = {
    * @param config 控制器配置
    * @returns 连接请求 ID，通过监听 maa-callback 事件获取完成状态
    */
-  async connectController(instanceId: string, config: ControllerConfig): Promise<number> {
+  async connectController(
+    instanceId: string,
+    config: ControllerConfig,
+    executionToken?: string,
+  ): Promise<number> {
     log.info('连接控制器, 实例:', instanceId, '类型:', config.type);
     log.debug('控制器配置:', config);
 
@@ -387,6 +412,7 @@ export const maaService = {
       const ctrlId = await invoke<number>('maa_connect_controller', {
         instanceId,
         config,
+        executionToken: executionToken ?? null,
       });
       log.info('控制器连接请求已发送, ctrlId:', ctrlId);
       return ctrlId;
@@ -417,7 +443,11 @@ export const maaService = {
    * @param paths 资源路径列表
    * @returns 资源加载请求 ID 列表，通过监听 maa-callback 事件获取完成状态
    */
-  async loadResource(instanceId: string, paths: string[]): Promise<number[]> {
+  async loadResource(
+    instanceId: string,
+    paths: string[],
+    executionToken?: string,
+  ): Promise<number[]> {
     log.info('加载资源, 实例:', instanceId, ', 路径数:', paths.length);
     paths.forEach((path, i) => {
       log.debug(`  路径[${i}]: ${path}`);
@@ -431,7 +461,11 @@ export const maaService = {
       log.info('资源加载请求已发送 (HTTP), resIds:', resIds);
       return resIds;
     }
-    const resIds = await invoke<number[]>('maa_load_resource', { instanceId, paths });
+    const resIds = await invoke<number[]>('maa_load_resource', {
+      instanceId,
+      paths,
+      executionToken: executionToken ?? null,
+    });
     log.info('资源加载请求已发送, resIds:', resIds);
     return resIds;
   },
@@ -705,6 +739,7 @@ export const maaService = {
     piEnvs?: Record<string, string>,
     controllerInfo?: ControllerTelemetryInfo,
     logRedactSecrets?: string[],
+    executionToken?: string,
   ): Promise<number[]> {
     await this.registerLogSecrets(logRedactSecrets);
     log.info('启动任务, 实例:', instanceId, ', 任务数:', tasks.length, ', cwd:', cwd || '.');
@@ -734,6 +769,7 @@ export const maaService = {
           tcp_compat_mode: tcpCompatMode || false,
           pi_envs: agentConfigs && agentConfigs.length > 0 && piEnvs ? piEnvs : null,
           controller_info: controllerInfo ?? null,
+          execution_token: executionToken ?? null,
         }),
       );
       log.info('任务已提交 (HTTP), taskIds:', result.taskIds);
@@ -749,6 +785,7 @@ export const maaService = {
         tcpCompatMode: tcpCompatMode || false,
         piEnvs: hasAgent && piEnvs ? piEnvs : null,
         controllerInfo: controllerInfo ?? null,
+        executionToken: executionToken ?? null,
       }),
     );
     log.info('任务已提交, taskIds:', taskIds);
@@ -1113,6 +1150,7 @@ export const maaService = {
     cwd?: string,
     waitForExit: boolean = true,
     useCmd: boolean = false,
+    executionToken?: string,
   ): Promise<number> {
     if (!isTauri()) {
       throw new Error('此功能仅在 Tauri 环境中可用');
@@ -1126,6 +1164,7 @@ export const maaService = {
         cwd: cwd || null,
         waitForExit,
         useCmd,
+        executionToken: executionToken ?? null,
       });
       log.info('动作执行完成, 退出码:', exitCode);
       return exitCode;
@@ -1152,6 +1191,7 @@ export const maaService = {
     program: string,
     args: string[],
     cwd?: string,
+    executionToken?: string,
   ): Promise<number> {
     await this.registerLogSecrets();
     log.info('执行预任务:', program);
@@ -1168,6 +1208,7 @@ export const maaService = {
       program,
       args,
       cwd: cwd || null,
+      executionToken: executionToken ?? null,
     });
     log.info('预任务执行完成, 退出码:', exitCode);
     return exitCode;

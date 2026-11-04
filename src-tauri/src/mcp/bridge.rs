@@ -48,7 +48,7 @@ pub struct BridgeResponse {
     #[serde(default)]
     pub data: Value,
     #[serde(default)]
-    pub error: Option<String>,
+    pub error: Option<Value>,
 }
 
 static BRIDGE: OnceLock<Arc<McpBridge>> = OnceLock::new();
@@ -133,7 +133,13 @@ impl McpBridge {
         } else {
             Err(response
                 .error
-                .unwrap_or_else(|| texts::error("unknownError", "未知错误", &[])))
+                .unwrap_or_else(|| {
+                    serde_json::json!({
+                        "code": "execution_failed",
+                        "message": texts::error("unknownError", "未知错误", &[])
+                    })
+                })
+                .to_string())
         };
         let _ = sender.send(result);
     }

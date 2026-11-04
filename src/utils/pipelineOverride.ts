@@ -369,6 +369,15 @@ const splitHotkeyCombo = (value: string): { primary: string; modifiers: string[]
   return { primary: parts[parts.length - 1], modifiers: parts.slice(0, -1) };
 };
 
+export function isHotkeyValueSupported(value: string, controllerType?: string): boolean {
+  if (!value.trim()) return true;
+  const { primary, modifiers } = splitHotkeyCombo(value);
+  return (
+    !!primary &&
+    [primary, ...modifiers].every((name) => convertHotkeyKeyName(name, controllerType) !== null)
+  );
+}
+
 const collectOptionOverrides = (
   optionKey: string,
   optionValues: Record<string, OptionValue>,
@@ -538,9 +547,10 @@ export const generateTaskPipelineOverride = (
   controllerName?: string,
   resourceName?: string,
   globalOptionValues?: Record<string, OptionValue>,
+  piOnly = false,
 ): string => {
   // 处理 MXU 内置特殊任务
-  if (isMxuSpecialTask(selectedTask.taskName)) {
+  if (!piOnly && isMxuSpecialTask(selectedTask.taskName)) {
     return generateMxuSpecialTaskOverride(selectedTask);
   }
 

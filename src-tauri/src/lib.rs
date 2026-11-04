@@ -1,4 +1,5 @@
 pub mod commands;
+mod execution;
 mod mcp;
 mod mxu_actions;
 pub mod screenshot_service;
@@ -157,6 +158,10 @@ pub fn run() {
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
                 mcp::set_mcp_enabled(mcp_enabled);
+                mcp::set_mcp_permissions(
+                    settings_obj.and_then(|s| s.get("mcpExecutionEnabled")).and_then(|v| v.as_bool()).unwrap_or(false),
+                    settings_obj.and_then(|s| s.get("mcpScreenshotEnabled")).and_then(|v| v.as_bool()).unwrap_or(false),
+                );
                 mcp::bridge::init(app.handle().clone());
 
                 drop(settings);
@@ -350,6 +355,10 @@ pub fn run() {
             commands::system::get_web_server_port,
             // MCP 服务
             mcp::set_mcp_server_enabled,
+            mcp::set_mcp_permissions,
+            execution::execution_acquire,
+            execution::execution_release,
+            execution::execution_status,
             mcp::bridge::mcp_respond,
             mcp::bridge::mcp_bridge_ready,
             mcp::texts::mcp_set_texts,

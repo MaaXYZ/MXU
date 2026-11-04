@@ -206,7 +206,14 @@ pub(super) fn schedule_run_completion(
                     super::maa_agent::stop_agent_resources(clients, children);
                 }
             },
-            || emit_state_changed(&app, &instance_id, "tasks-completed"),
+            || {
+                let kind = if crate::execution::mcp_reserved(&instance_id) {
+                    "task-progress"
+                } else {
+                    "tasks-completed"
+                };
+                emit_state_changed(&app, &instance_id, kind);
+            },
         );
     });
 }

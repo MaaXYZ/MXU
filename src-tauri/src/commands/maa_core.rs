@@ -805,6 +805,9 @@ pub fn maa_create_instance(state: State<Arc<MaaState>>, instance_id: String) -> 
 
 /// 销毁实例的内部实现（可从 Tauri 命令和 HTTP 处理器共享调用）
 pub fn destroy_instance_impl(state: &Arc<MaaState>, instance_id: &str) -> Result<(), String> {
+    if crate::execution::reserved_ids().contains(instance_id) {
+        return Err("instance_busy".into());
+    }
     info!("destroy_instance_impl called, instance_id: {}", instance_id);
 
     let removed = {
@@ -1307,7 +1310,9 @@ pub async fn maa_connect_controller(
     state: State<'_, Arc<MaaState>>,
     instance_id: String,
     config: ControllerConfig,
+    execution_token: Option<String>,
 ) -> Result<i64, String> {
+    crate::execution::validate_start(&instance_id, execution_token.as_deref())?;
     info!(
         "maa_connect_controller called, instance_id: {}",
         instance_id
@@ -1417,7 +1422,9 @@ pub fn maa_load_resource(
     state: State<Arc<MaaState>>,
     instance_id: String,
     paths: Vec<String>,
+    execution_token: Option<String>,
 ) -> Result<Vec<i64>, String> {
+    crate::execution::validate_start(&instance_id, execution_token.as_deref())?;
     let res_ids = load_resource_impl(
         &state,
         &instance_id,
@@ -1500,6 +1507,9 @@ pub fn run_task_impl(
     pipeline_override: &str,
     selected_task_id: Option<&str>,
 ) -> Result<i64, String> {
+    if crate::execution::mcp_reserved(instance_id) {
+        return Err("instance_busy".into());
+    }
     let completion = {
         let instances = state.instances.lock().map_err(|e| e.to_string())?;
         Arc::clone(
@@ -1680,6 +1690,7 @@ pub fn stop_task_impl(
     state: &Arc<MaaState>,
     instance_id: &str,
 ) -> Result<(), String> {
+    crate::execution::cancel(instance_id);
     let completion = {
         let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
         let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;

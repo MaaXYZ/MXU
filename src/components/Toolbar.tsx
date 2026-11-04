@@ -54,6 +54,7 @@ import type {
   PretaskItem,
   ControllerItem,
   SavedDeviceInfo,
+  SelectedTask,
 } from '@/types/interface';
 import { resolveI18nText } from '@/services/contentResolver';
 import { getInterfaceLangKey } from '@/i18n';
@@ -67,6 +68,11 @@ import {
 import { scheduleService } from '@/services/scheduleService';
 import { stopInstanceTasks } from '@/services/taskStopService';
 import { taskStartService, type TaskStartOptions } from '@/services/taskStartService';
+import {
+  taskExecutionGate,
+  guardStartupCalls,
+  checkStartCancelled,
+} from '@/services/taskExecutionGate';
 import { taskControlService } from '@/services/taskControlService';
 import { isTaskSelectedForRun, filterTasksForRun } from '@/utils/taskRunFilter';
 import { isTauri } from '@/utils/paths';
@@ -186,13 +192,6 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
     addLog,
     // 添加任务面板
     setShowAddTaskPanel,
-    // 国际化
-    interfaceTranslations,
-    language,
-    // 调试设置
-    tcpCompatMode,
-    // MaaFramework 版本
-    maaVersion,
   } = useAppStore();
 
   const [isStarting, setIsStarting] = useState(false);
@@ -220,14 +219,13 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
   const tasks = instance?.selectedTasks || [];
   const anyExpanded = tasks.some((t) => t.expanded);
 
-  // 获取当前语言的翻译
-  const langKey = getInterfaceLangKey(language);
-  const translations = interfaceTranslations[langKey];
-
   const instanceId = instance?.id || '';
   const isPreActionControlledInstance =
     Boolean(instanceId) && preActionControlledInstanceId === instanceId;
-  const isStartStopRunning = Boolean(instance?.isRunning) || isPreActionControlledInstance;
+  const isStartStopRunning =
+    Boolean(instance?.isRunning) ||
+    isPreActionControlledInstance ||
+    taskExecutionGate.get(instanceId)?.source === 'mcp';
 
   // 检查是否有保存的设备和资源配置（用于权限检查等）
   const currentControllerName =
@@ -300,8 +298,9 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
 
   const throwIfPreActionStopped = useCallback((targetInstanceId: string) => {
     if (
-      preActionControlledInstanceIdRef.current === targetInstanceId &&
-      preActionStopRequestedRef.current
+      taskExecutionGate.get(targetInstanceId)?.controller.signal.aborted ||
+      (preActionControlledInstanceIdRef.current === targetInstanceId &&
+        preActionStopRequestedRef.current)
     ) {
       throw new Error(PRE_ACTION_CANCELLED_ERROR);
     }
@@ -328,8 +327,46 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
    * @param options 启动选项
    * @returns 是否成功启动
    */
-  const startTasksForInstance = useCallback(
+  const prepareAndStartTasks = useCallback(
     async (targetInstance: Instance, options?: TaskStartOptions): Promise<boolean> => {
+      const liveState = useAppStore.getState();
+      const projectInterface = options?.snapshot?.projectInterface ?? liveState.projectInterface;
+      const mcpTasks = new Set(options?.snapshot?.taskIds ?? []);
+      const resolveTaskDefinition = (task: SelectedTask) =>
+        mcpTasks.has(task.id)
+          ? projectInterface?.task.find((def) => def.name === task.taskName)
+          : resolveCompatTaskDef(projectInterface, task.taskName);
+      const globalOptionValues =
+        options?.snapshot?.globalOptionValues ?? liveState.globalOptionValues;
+      const basePath = options?.snapshot?.basePath ?? liveState.basePath;
+      const language = options?.snapshot?.language ?? liveState.language;
+      const maaVersion = options?.snapshot?.maaVersion ?? liveState.maaVersion;
+      const tcpCompatMode = options?.snapshot?.tcpCompatMode ?? liveState.tcpCompatMode;
+      const interfaceTranslations =
+        options?.snapshot?.interfaceTranslations ?? liveState.interfaceTranslations;
+      const translations = interfaceTranslations[getInterfaceLangKey(language)];
+      const startupMaa = guardStartupCalls(
+        {
+          ...maaService,
+          runPretask: (id: string, program: string, args: string[], cwd?: string) =>
+            maaService.runPretask(id, program, args, cwd, options?.executionLease?.token),
+          runAction: (
+            id: string,
+            program: string,
+            args: string,
+            cwd?: string,
+            wait?: boolean,
+            cmd?: boolean,
+          ) =>
+            maaService.runAction(id, program, args, cwd, wait, cmd, options?.executionLease?.token),
+          connectController: (id: string, config: ControllerConfig) =>
+            maaService.connectController(id, config, options?.executionLease?.token),
+          loadResource: (id: string, paths: string[]) =>
+            maaService.loadResource(id, paths, options?.executionLease?.token),
+        },
+        options?.signal,
+      );
+      checkStartCancelled(options?.signal);
       const { schedulePolicyName, onPhaseChange, startFromTaskId, singleTaskId } = options || {};
       const targetId = targetInstance.id;
       const targetTasks = targetInstance.selectedTasks || [];
@@ -352,23 +389,29 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
       }
 
       // 检查是否正在运行
-      if (targetInstance.isRunning || preActionControlledInstanceIdRef.current === targetId) {
+      if (
+        (!options?.executionLease &&
+          liveState.instances.find((item) => item.id === targetId)?.isRunning) ||
+        preActionControlledInstanceIdRef.current === targetId
+      ) {
         return failStart(t('taskList.autoConnect.alreadyRunning'));
       }
 
       // 获取控制器和资源配置：必须按 targetInstance 解析，定时任务启动的实例可能不是当前标签页
       const controllerName =
+        options?.snapshot?.controllerName ||
         selectedController[targetId] ||
         targetInstance.controllerName ||
         projectInterface?.controller[0]?.name;
       const resourceName =
+        options?.snapshot?.resourceName ||
         selectedResource[targetId] ||
         targetInstance.resourceName ||
         projectInterface?.resource[0]?.name;
 
       // 过滤掉不兼容当前控制器/资源的任务
       const compatibleTasks = tasksToRun.filter((t) => {
-        const taskDef = resolveCompatTaskDef(projectInterface, t.taskName);
+        const taskDef = resolveTaskDefinition(t);
         return isTaskCompatible(taskDef, controllerName, resourceName);
       });
 
@@ -385,7 +428,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
           message: t('taskList.tasksSkippedDueToIncompatibility', { count: skippedTasks.length }),
         });
         skippedTasks.forEach((task) => {
-          const taskDef = resolveCompatTaskDef(projectInterface, task.taskName);
+          const taskDef = resolveTaskDefinition(task);
           const taskLabel = taskDef?.label
             ? resolveI18nText(taskDef.label, translations)
             : task.taskName;
@@ -422,7 +465,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
         projectInterface,
         controllerName,
         resourceName,
-        useAppStore.getState().globalOptionValues,
+        globalOptionValues,
       );
       if (checkboxViolations.length > 0) {
         for (const violation of checkboxViolations) {
@@ -459,7 +502,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
       // ADB、Linux 和 PlayCover 均可在锁屏时运行。
       if (
         requiresUnlockedWorkstation(controller.type) &&
-        (await maaService.isWorkstationLocked())
+        (await startupMaa.isWorkstationLocked())
       ) {
         return failStart(t('taskList.autoConnect.workstationLocked'));
       }
@@ -489,7 +532,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
         // 并按协议以顶层 pretask 的声明顺序执行，与任务列表中的排列无关。
         const pretaskOrder = getPretaskItems(projectInterface).map((item) => pretaskName(item));
         const enabledPretasks = compatibleTasks
-          .filter((task) => isPretaskName(task.taskName))
+          .filter((task) => isPretaskName(task.taskName) && !mcpTasks.has(task.id))
           .map((task) => ({ task, item: getPretaskItem(projectInterface, task.taskName) }))
           .filter((p): p is { task: (typeof compatibleTasks)[0]; item: PretaskItem } => !!p.item)
           .sort(
@@ -517,7 +560,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               });
 
               throwIfPreActionStopped(targetId);
-              const exitCode = await maaService.runPretask(targetId, item.exec, args, basePath);
+              const exitCode = await startupMaa.runPretask(targetId, item.exec, args, basePath);
               throwIfPreActionStopped(targetId);
 
               if (exitCode !== 0) {
@@ -563,7 +606,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
 
               // 检查是否应跳过已运行的前置程序
               if (preAction.skipIfRunning) {
-                if (await maaService.isProcessRunning(programPath)) {
+                if (await startupMaa.isProcessRunning(programPath)) {
                   log.info(`实例 ${targetInstance.name}: 前置程序已在运行，跳过执行:`, processName);
                   addLog(targetId, {
                     type: 'info',
@@ -580,7 +623,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               });
 
               throwIfPreActionStopped(targetId);
-              const exitCode = await maaService.runAction(
+              const exitCode = await startupMaa.runAction(
                 targetId,
                 programPath,
                 preAction.args,
@@ -635,7 +678,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                 throwIfPreActionStopped(targetId);
                 try {
                   if (controllerType === 'Adb') {
-                    const devices = await maaService.findAdbDevices();
+                    const devices = await startupMaa.findAdbDevices();
                     if (savedDevice?.adbDeviceName) {
                       deviceFound = !!findMatchingAdbDevice(devices, savedDevice);
                     } else {
@@ -643,14 +686,14 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                     }
                   } else if (isDesktopWindowControllerType(controllerType)) {
                     const { classRegex, titleRegex } = getDesktopWindowFilters(controller);
-                    const windows = await maaService.findWin32Windows(classRegex, titleRegex);
+                    const windows = await startupMaa.findWin32Windows(classRegex, titleRegex);
                     if (savedDevice?.windowName) {
                       deviceFound = windows.some((w) => w.window_name === savedDevice.windowName);
                     } else {
                       deviceFound = windows.length > 0;
                     }
                   } else if (controllerType === 'WlRoots') {
-                    const sockets = await maaService.findWlrootsSockets();
+                    const sockets = await startupMaa.findWlrootsSockets();
                     if (savedDevice?.wlrSocketPath) {
                       deviceFound = sockets.includes(savedDevice.wlrSocketPath);
                     } else {
@@ -686,7 +729,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                 ) {
                   try {
                     if (controllerType === 'Adb') {
-                      const devices = await maaService.findAdbDevices();
+                      const devices = await startupMaa.findAdbDevices();
                       if (devices.length > 0) {
                         addLog(targetId, {
                           type: 'info',
@@ -697,7 +740,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                       }
                     } else if (isDesktopWindowControllerType(controllerType)) {
                       const { classRegex, titleRegex } = getDesktopWindowFilters(controller);
-                      const windows = await maaService.findWin32Windows(classRegex, titleRegex);
+                      const windows = await startupMaa.findWin32Windows(classRegex, titleRegex);
                       if (windows.length > 0) {
                         addLog(targetId, {
                           type: 'info',
@@ -707,7 +750,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                         });
                       }
                     } else if (controllerType === 'WlRoots') {
-                      const sockets = await maaService.findWlrootsSockets();
+                      const sockets = await startupMaa.findWlrootsSockets();
                       if (sockets.length > 0) {
                         addLog(targetId, {
                           type: 'info',
@@ -723,7 +766,10 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                 }
 
                 // 设备/窗口已就绪，先等待稳定再连接
-                const settleSec = useAppStore.getState().preActionConnectDelaySec ?? 5;
+                const settleSec =
+                  options?.snapshot?.preActionConnectDelaySec ??
+                  liveState.preActionConnectDelaySec ??
+                  5;
                 if (settleSec > 0) {
                   log.info(
                     `实例 ${targetInstance.name}: ${isWindowType ? '窗口' : '设备'}已就绪，等待 ${settleSec} 秒稳定后连接...`,
@@ -766,7 +812,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
 
         // 查询后端真实连接状态，纠正前端可能过时的缓存
         if (isTargetConnected && !needsReconnect) {
-          const backendState = await maaService.getInstanceState(targetId);
+          const backendState = await startupMaa.getInstanceState(targetId);
           if (!backendState || backendState.connectionStatus !== 'Connected') {
             log.warn(
               `实例 ${targetInstance.name}: 后端${backendState ? '连接已断开' : '实例不存在'}，但前端缓存为已连接，强制重新连接`,
@@ -781,7 +827,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
           const controllerType = controller?.type;
 
           await ensureMaaInitialized();
-          await maaService.createInstance(targetId).catch((err) => {
+          await startupMaa.createInstance(targetId).catch((err) => {
             log.warn('创建实例失败（可能已存在）:', err);
           });
 
@@ -795,7 +841,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
             onPhaseChange?.('searching');
 
             if (controllerType === 'Adb' && savedDevice.adbDeviceName) {
-              const devices = await maaService.findAdbDevices();
+              const devices = await startupMaa.findAdbDevices();
               const matchedDevice = findMatchingAdbDevice(devices, savedDevice);
               if (!matchedDevice) {
                 return failStart(
@@ -815,7 +861,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               targetType = 'device';
             } else if (isDesktopWindowControllerType(controllerType) && savedDevice.windowName) {
               const { classRegex, titleRegex } = getDesktopWindowFilters(controller);
-              const windows = await maaService.findWin32Windows(classRegex, titleRegex);
+              const windows = await startupMaa.findWin32Windows(classRegex, titleRegex);
               const matchedWindow = windows.find((w) => w.window_name === savedDevice.windowName);
               if (!matchedWindow) {
                 return failStart(
@@ -826,7 +872,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               deviceName = matchedWindow.window_name || matchedWindow.class_name;
               targetType = 'window';
             } else if (controllerType === 'WlRoots' && savedDevice.wlrSocketPath) {
-              const sockets = await maaService.findWlrootsSockets();
+              const sockets = await startupMaa.findWlrootsSockets();
               if (!sockets.includes(savedDevice.wlrSocketPath)) {
                 return failStart(
                   t('taskList.autoConnect.deviceNotFound', { name: savedDevice.wlrSocketPath }),
@@ -866,7 +912,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
             onPhaseChange?.('searching');
 
             if (controllerType === 'Adb') {
-              const devices = await maaService.findAdbDevices();
+              const devices = await startupMaa.findAdbDevices();
               if (devices.length === 0) {
                 return failStart(t('taskList.autoConnect.noDeviceFound'));
               }
@@ -892,7 +938,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               targetType = 'device';
             } else if (isDesktopWindowControllerType(controllerType)) {
               const { classRegex, titleRegex } = getDesktopWindowFilters(controller);
-              const windows = await maaService.findWin32Windows(classRegex, titleRegex);
+              const windows = await startupMaa.findWin32Windows(classRegex, titleRegex);
               if (windows.length === 0) {
                 return failStart(t('taskList.autoConnect.noWindowFound'));
               }
@@ -909,7 +955,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               deviceName = firstWindow.window_name || firstWindow.class_name;
               targetType = 'window';
             } else if (controllerType === 'WlRoots') {
-              const sockets = await maaService.findWlrootsSockets();
+              const sockets = await startupMaa.findWlrootsSockets();
               if (sockets.length === 0) {
                 return failStart(t('taskList.autoConnect.noDeviceFound'));
               }
@@ -976,7 +1022,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
             // Start the cache before posting, including native/synthetic callbacks
             // which can arrive before connectController returns its operation ID.
             await startGlobalCallbackListener();
-            const ctrlId = await maaService.connectController(targetId, config);
+            const ctrlId = await startupMaa.connectController(targetId, config);
             registerCtrlIdName(targetId, ctrlId, deviceName, targetType);
             // A state-changed notification belongs to the instance, not this request.
             // Only this globally unique action ID can complete this connection.
@@ -991,7 +1037,10 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
           }
 
           if (shouldDelayAfterAdbConnected) {
-            const delaySec = useAppStore.getState().preActionConnectDelaySec ?? 5;
+            const delaySec =
+              options?.snapshot?.preActionConnectDelaySec ??
+              liveState.preActionConnectDelaySec ??
+              5;
             if (delaySec > 0) {
               log.info(`实例 ${targetInstance.name}: 连接成功，等待 ${delaySec} 秒后继续...`);
               addLog(targetId, {
@@ -1004,7 +1053,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
         }
 
         // 查询后端真实状态，纠正前端可能过时的缓存
-        const backendState = await maaService.getInstanceState(targetId);
+        const backendState = await startupMaa.getInstanceState(targetId);
         if (backendState && !backendState.resourceLoaded && instanceResourceLoaded[targetId]) {
           log.warn(
             `实例 ${targetInstance.name}: 后端资源未加载，但前端缓存为已加载，重置缓存并强制重载`,
@@ -1023,7 +1072,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
           // 计算完整的资源路径（包括 controller.attach_resource_path）
           const resourcePaths = computeResourcePaths(resource, controller, basePath);
 
-          const resIds = await maaService.loadResource(targetId, resourcePaths);
+          const resIds = await startupMaa.loadResource(targetId, resourcePaths);
 
           // 注册 res_id 与资源名的映射
           const resDisplayName = resolveI18nText(resource.label, translations) || resource.name;
@@ -1057,10 +1106,12 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
         const runnableTasks: RunnableTask[] = [];
         for (const selectedTask of compatibleTasks) {
           // pretask 不进入 Tasker 队列，已在连接 Controller 前单独执行
-          if (isPretaskName(selectedTask.taskName)) {
+          if (isPretaskName(selectedTask.taskName) && !mcpTasks.has(selectedTask.id)) {
             continue;
           }
-          const specialTask = getMxuSpecialTask(selectedTask.taskName);
+          const specialTask = mcpTasks.has(selectedTask.id)
+            ? undefined
+            : getMxuSpecialTask(selectedTask.taskName);
           const taskDef =
             specialTask?.taskDef ||
             projectInterface?.task.find((t) => t.name === selectedTask.taskName);
@@ -1099,7 +1150,8 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                 projectInterface,
                 controllerName,
                 resourceName,
-                useAppStore.getState().globalOptionValues,
+                globalOptionValues,
+                !!options?.snapshot,
               ),
               selected_task_id: selectedTask.id,
               task_name: taskDef.name,
@@ -1142,23 +1194,31 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
         // 任务可能在 startTasks 返回前就瞬时结束，先启动全局回调缓存再提交。
         await startGlobalCallbackListener();
 
-        const startedTaskIds = await maaService.startTasks(
-          targetId,
-          taskConfigs,
-          agentConfigs,
-          basePath,
-          tcpCompatMode,
-          piEnvs,
-          {
-            name: controllerName,
-            type: controller.type,
-          },
-          collectPasswordPlaintextsFromRunnableTasks(
-            runnableTasks,
-            useAppStore.getState().globalOptionValues,
-            projectInterface?.option ?? {},
-          ),
-        );
+        const submit = async (tasks: TaskConfig[]) => {
+          checkStartCancelled(options?.signal);
+          return maaService.startTasks(
+            targetId,
+            tasks,
+            agentConfigs,
+            basePath,
+            tcpCompatMode,
+            piEnvs,
+            {
+              name: controllerName,
+              type: controller.type,
+            },
+            collectPasswordPlaintextsFromRunnableTasks(
+              runnableTasks,
+              globalOptionValues,
+              projectInterface?.option ?? {},
+            ),
+            options?.executionLease?.token,
+          );
+        };
+        const startedTaskIds = options?.executeTasks
+          ? await options.executeTasks(taskConfigs, submit)
+          : await submit(taskConfigs);
+        checkStartCancelled(options?.signal);
 
         startedTaskIds.forEach((maaTaskId, index) => {
           const runnable = runnableTasks[index];
@@ -1178,7 +1238,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
         log.info(`实例 ${targetInstance.name}: 任务已提交, task_ids:`, startedTaskIds);
 
         // 开始任务时折叠所有任务
-        collapseAllTasks(targetId, false);
+        if (!options?.snapshot) collapseAllTasks(targetId, false);
 
         return true;
       } catch (err) {
@@ -1278,6 +1338,44 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
     ],
   );
 
+  const startTasksForInstance = useCallback(
+    async (targetInstance: Instance, options?: TaskStartOptions): Promise<boolean> => {
+      const lease =
+        options?.executionLease ?? taskExecutionGate.acquire(targetInstance.id, 'client');
+      if (!lease || taskExecutionGate.get(targetInstance.id) !== lease) return false;
+      let cancellationPoll: ReturnType<typeof setInterval> | undefined;
+      try {
+        checkStartCancelled(lease.controller.signal);
+        await maaService.reserveExecution(targetInstance.id, lease.token, lease.source === 'mcp');
+        lease.backendReserved = true;
+        cancellationPoll = setInterval(() => {
+          void maaService
+            .executionStatus(targetInstance.id, lease.token)
+            .then((status) => {
+              if (status.cancelled) lease.controller.abort();
+            })
+            .catch(() => lease.controller.abort());
+        }, 100);
+        return await prepareAndStartTasks(targetInstance, {
+          ...options,
+          executionLease: lease,
+          signal: lease.controller.signal,
+        });
+      } catch (reason) {
+        if (lease.source === 'mcp') throw reason;
+        return false;
+      } finally {
+        if (cancellationPoll) clearInterval(cancellationPoll);
+        if (!options?.executionLease) {
+          if (lease.backendReserved)
+            await maaService.releaseExecution(targetInstance.id, lease.token);
+          lease.release();
+        }
+      }
+    },
+    [prepareAndStartTasks],
+  );
+
   // 调度服务：使用 ref 保持回调始终指向最新闭包
   const scheduleTriggerRef = useRef<typeof startTasksForInstance>(startTasksForInstance);
   scheduleTriggerRef.current = startTasksForInstance;
@@ -1369,7 +1467,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
    * handleStartStop 和 handleStopTasks 共用此逻辑以保持行为一致。
    */
   const performStop = async (targetInstanceId: string): Promise<boolean> => {
-    if (isStopping) return false;
+    taskExecutionGate.cancel(targetInstanceId);
     setIsStopping(true);
     let keepStoppingForPreAction = false;
     try {
@@ -1466,7 +1564,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
         const isActive = useAppStore.getState().activeInstanceId === targetInstance.id;
         // 按钮/快捷键正在启动当前标签页：不再重复启动
         if (isActive && (startingRef.current || hotkeyStartingRef.current)) {
-          throw new Error(tRef.current('mcp.errors.tabStarting'));
+          throw new Error(tRef.current('mcp.pi.errors.instance_busy'));
         }
         externalStartingIdsRef.current.add(targetInstance.id);
         // 当前标签页的启动按钮同步显示「启动中」

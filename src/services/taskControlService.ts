@@ -1,5 +1,5 @@
 import type { Instance } from '@/types/interface';
-import type { TaskRunFilterOptions } from '@/utils/taskRunFilter';
+import type { TaskStartOptions } from './taskStartService';
 
 /**
  * 外部触发的任务启动/停止入口（如 MCP）。
@@ -9,7 +9,7 @@ import type { TaskRunFilterOptions } from '@/utils/taskRunFilter';
  */
 export interface TaskControlHandlers {
   /** 启动实例任务；返回是否成功启动 */
-  start: (instance: Instance, options?: TaskRunFilterOptions) => Promise<boolean>;
+  start: (instance: Instance, options?: TaskStartOptions) => Promise<boolean>;
   /** 停止实例任务；返回是否已停止 */
   stop: (instanceId: string) => Promise<boolean>;
 }
@@ -25,7 +25,7 @@ export const taskControlService = {
     return handlers !== null;
   },
 
-  async start(instance: Instance, options?: TaskRunFilterOptions): Promise<boolean> {
+  async start(instance: Instance, options?: TaskStartOptions): Promise<boolean> {
     if (!handlers) return false;
     return handlers.start(instance, options);
   },

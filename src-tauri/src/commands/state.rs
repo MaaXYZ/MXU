@@ -23,6 +23,7 @@ pub fn maa_get_instance_state(
         instance_id
     );
 
+    let reserved = crate::execution::reserved_ids();
     let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
     let instance = instances
         .get_mut(&instance_id)
@@ -40,7 +41,7 @@ pub fn maa_get_instance_state(
         connected: instance.controller.as_ref().is_some_and(|c| c.connected()),
         resource_loaded: instance.resource.as_ref().is_some_and(|r| r.loaded()),
         tasker_inited: instance.tasker.as_ref().is_some_and(|t| t.inited()),
-        is_running,
+        is_running: is_running || reserved.contains(&instance_id),
         task_run_state: instance.task_run_state.clone(),
     })
 }
@@ -50,6 +51,7 @@ pub fn maa_get_instance_state(
 pub fn maa_get_all_states(state: State<Arc<MaaState>>) -> Result<AllInstanceStates, String> {
     debug!("maa_get_all_states called");
 
+    let reserved = crate::execution::reserved_ids();
     let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
     let cached_adb = state.cached_adb_devices.lock().map_err(|e| e.to_string())?;
     let cached_win32 = state
@@ -82,7 +84,7 @@ pub fn maa_get_all_states(state: State<Arc<MaaState>>) -> Result<AllInstanceStat
                 connected: instance.controller.as_ref().is_some_and(|c| c.connected()),
                 resource_loaded: instance.resource.as_ref().is_some_and(|r| r.loaded()),
                 tasker_inited: instance.tasker.as_ref().is_some_and(|t| t.inited()),
-                is_running,
+                is_running: is_running || reserved.contains(id),
                 task_run_state: instance.task_run_state.clone(),
             },
         );

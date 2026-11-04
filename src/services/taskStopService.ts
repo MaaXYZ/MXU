@@ -3,6 +3,7 @@ import { isTauri } from '@/utils/paths';
 import { useAppStore } from '@/stores/appStore';
 
 import { maaService } from './maaService';
+import { taskExecutionGate } from './taskExecutionGate';
 import { cancelTaskQueueMonitor } from './taskMonitor';
 
 const log = loggers.task;
@@ -19,7 +20,8 @@ async function waitForTaskStop(instanceId: string) {
 
   while (Date.now() - start < STOP_TIMEOUT_MS) {
     const running = await maaService.isRunning(instanceId);
-    if (!running) {
+    const admission = await maaService.executionStatus(instanceId);
+    if (!running && !admission.busy) {
       return true;
     }
 
@@ -47,6 +49,8 @@ function cleanupTaskState(instanceId: string) {
 }
 
 export async function stopInstanceTasks(instanceId: string): Promise<boolean> {
+  const lease = taskExecutionGate.get(instanceId);
+  taskExecutionGate.cancel(instanceId);
   const existing = stopPromises.get(instanceId);
   if (existing) {
     return existing;
@@ -54,6 +58,19 @@ export async function stopInstanceTasks(instanceId: string): Promise<boolean> {
 
   const stopPromise = (async () => {
     log.info(`[task-stop#${instanceId}] 停止任务`);
+    if (lease) {
+      await maaService.setPreActionStop(instanceId, true).catch(() => {});
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const drained = await Promise.race([
+        lease.settled.then(() => true),
+        new Promise<false>((resolve) => {
+          timer = setTimeout(() => resolve(false), STOP_TIMEOUT_MS);
+        }),
+      ]);
+      if (timer) clearTimeout(timer);
+      if (!drained) return false;
+      if (lease.source === 'mcp') return true;
+    }
 
     try {
       await maaService.stopTask(instanceId);
