@@ -3,6 +3,7 @@ import type { ActionConfig, Instance, OptionDefinition, OptionValue } from '@/ty
 import { encryptPasswordOptionValues } from '@/utils/passwordOptionValues';
 import { isTauri } from '@/utils/paths';
 import { cacheTaskEnabledForController } from '@/utils/taskControllerCache';
+import { normalizeWeeklySchedule } from '@/utils/taskRunFilter';
 import { toast } from 'sonner';
 
 const PROTOCOL_SEGMENT = 'tab-sharing';
@@ -38,6 +39,7 @@ interface WireTask {
   cn?: string; // customName
   e: boolean; // enabled
   ec?: Record<string, boolean>; // enabledByController
+  ws?: number[]; // weeklySchedule
   ov: Record<string, WireOptionValue>; // optionValues
 }
 
@@ -94,6 +96,7 @@ function encodeTask(task: SavedTask): WireTask {
   };
   if (task.customName !== undefined) wire.cn = task.customName;
   if (task.enabledByController !== undefined) wire.ec = task.enabledByController;
+  if (task.weeklySchedule !== undefined) wire.ws = task.weeklySchedule;
   return wire;
 }
 
@@ -151,6 +154,7 @@ function decodeTask(w: WireTask): SavedTask {
     customName: w.cn,
     enabled: w.e,
     enabledByController: w.ec,
+    weeklySchedule: normalizeWeeklySchedule(w.ws),
     optionValues: Object.fromEntries(
       Object.entries(w.ov).map(([k, v]) => [k, decodeOptionValue(v)]),
     ),
@@ -271,6 +275,7 @@ export async function buildTabConfigExportText(
       taskName: t.taskName,
       customName: t.customName,
       enabled: t.enabled,
+      weeklySchedule: normalizeWeeklySchedule(t.weeklySchedule),
       enabledByController: cacheTaskEnabledForController(
         t.enabledByController,
         instance.controllerName,

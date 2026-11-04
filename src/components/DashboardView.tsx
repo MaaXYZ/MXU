@@ -39,6 +39,9 @@ import { getInterfaceLangKey } from '@/i18n';
 import { getMxuSpecialTask } from '@/types/specialTasks';
 import { isTaskCompatible } from '@/stores/helpers';
 import { isPretaskName, getPretaskItem, buildPretaskArgs, buildPretaskDef } from '@/types/pretasks';
+import { getWeekdayOf, filterTasksForRun, createTaskRunSelection } from '@/utils/taskRunFilter';
+import { resolveTaskLabel } from '@/utils/taskLabel';
+import { useCurrentWeekday } from '@/hooks/useCurrentWeekday';
 import { startGlobalCallbackListener } from '@/components/connection/callbackCache';
 import { stopInstanceTasks } from '@/services/taskStopService';
 import { buildPiEnvVars } from '@/utils/piEnv';
@@ -76,6 +79,7 @@ function InstanceCard({ instanceId, instanceName, isActive, onSelect }: Instance
     // 任务控制相关
     updateInstance,
     setInstanceTaskStatus,
+    setTaskRunSelection,
     setInstanceCurrentTaskId,
     clearScheduleExecution,
     basePath,
@@ -116,8 +120,12 @@ function InstanceCard({ instanceId, instanceName, isActive, onSelect }: Instance
   const instance = instances.find((i) => i.id === instanceId);
   const isRunning = instance?.isRunning || false;
   const tasks = instance?.selectedTasks || [];
-  const enabledTasks = tasks.filter((t) => t.enabled);
-  const canRun = isConnected && isResourceLoaded && enabledTasks.length > 0;
+  // 周计划：只有已勾选、且今天未被周计划跳过的任务参与运行。
+  // 本视图的启动流程是独立实现（不走 Toolbar.startTasksForInstance），
+  // 因此这里必须自行过滤，否则周计划在 Dashboard 视图下会失效。
+  const todayWeekday = useCurrentWeekday();
+  const runPreview = filterTasksForRun(tasks, todayWeekday);
+  const canRun = isConnected && isResourceLoaded && runPreview.tasks.length > 0;
 
   // 获取当前控制器和资源名（用于 pipeline override 生成）
   const currentControllerName =
@@ -212,7 +220,7 @@ function InstanceCard({ instanceId, instanceName, isActive, onSelect }: Instance
     async (e: React.MouseEvent) => {
       e.stopPropagation();
 
-      if (!instance || (!canRun && !isRunning)) return;
+      if (!instance) return;
 
       if (isRunning) {
         // 停止任务
@@ -230,7 +238,28 @@ function InstanceCard({ instanceId, instanceName, isActive, onSelect }: Instance
         }
       } else {
         // 启动任务
-        if (!canRun) return;
+        if (!isConnected || !isResourceLoaded) return;
+
+        // 以点击启动时刻和最新任务列表构建快照，运行中跨天不再改变本批任务。
+        const runWeekday = getWeekdayOf();
+        const runTasks =
+          useAppStore.getState().instances.find((item) => item.id === instanceId)?.selectedTasks ||
+          [];
+        const runSelection = filterTasksForRun(runTasks, runWeekday);
+        const enabledTasks = runSelection.tasks;
+        setTaskRunSelection(instanceId, createTaskRunSelection(runSelection, runWeekday));
+
+        // 周计划：记录本次被跳过的任务，避免"任务莫名没跑"
+        runSelection.skippedByWeeklySchedule.forEach((task) => {
+          addLog(instanceId, {
+            type: 'info',
+            message: t('taskList.taskSkippedByWeeklySchedule', {
+              taskName: resolveTaskLabel(task, projectInterface, translations, t),
+            }),
+          });
+        });
+
+        if (enabledTasks.length === 0) return;
 
         setIsStarting(true);
 
@@ -433,12 +462,13 @@ function InstanceCard({ instanceId, instanceName, isActive, onSelect }: Instance
       instanceId,
       instanceName,
       isRunning,
-      canRun,
-      enabledTasks,
+      isConnected,
+      isResourceLoaded,
       projectInterface,
       basePath,
       updateInstance,
       setInstanceTaskStatus,
+      setTaskRunSelection,
       setInstanceCurrentTaskId,
       clearScheduleExecution,
       registerTaskIdName,
@@ -781,7 +811,9 @@ function InstanceCard({ instanceId, instanceName, isActive, onSelect }: Instance
                     ? t('taskList.stopTasks')
                     : canRun
                       ? t('taskList.startTasks')
-                      : t('dashboard.noEnabledTasks')
+                      : runPreview.skippedByWeeklySchedule.length > 0
+                        ? t('taskList.allTasksSkippedByWeeklySchedule')
+                        : t('dashboard.noEnabledTasks')
             }
           >
             {isStarting || isStopping ? (
