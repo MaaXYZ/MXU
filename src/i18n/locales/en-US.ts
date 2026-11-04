@@ -448,6 +448,8 @@ export default {
     connected: 'Connected',
     disconnected: 'Disconnected',
     connectionFailed: 'Connection failed',
+    connectionSuperseded:
+      'The connection request was cancelled because the instance was removed or a newer connection was requested.',
     refreshDevices: 'Refresh Devices',
     refreshWindows: 'Refresh Windows',
     refresh: 'Refresh Devices',
@@ -812,6 +814,20 @@ export default {
 
   // Config self-heal notices
   config: {
+    syncSaveFailed:
+      'The host could not save the configuration. Automatic saves are paused. Export your draft, or fix the problem and retry sync.',
+    draftStorageFailed:
+      'Local draft storage is unavailable. Closing this page will lose these edits. Export your unsaved changes first.',
+    draftExportFailed:
+      'Unable to export the unsaved configuration. The draft is still available; please try again.',
+    syncReloadFailed:
+      'Unable to load the host configuration. Local edits are preserved; retry synchronization before saving.',
+    retrySync: 'Retry sync',
+    unsavedDraft:
+      'Unsaved configuration changes were kept as a local draft. Export it to review and recover your edits.',
+    exportUnsavedDraft: 'Export unsaved changes',
+    syncConflict:
+      'Configuration changed elsewhere or could not be saved. Reloading the host configuration; please review it before editing again.',
     recoveredFromBackup:
       'The config file was corrupted and has been restored from the {{time}} backup',
     recoveryFailed:

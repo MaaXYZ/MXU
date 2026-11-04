@@ -440,6 +440,8 @@ export default {
     connected: '接続済み',
     disconnected: '未接続',
     connectionFailed: '接続に失敗しました',
+    connectionSuperseded:
+      'インスタンスが削除されたか、新しい接続が要求されたため、元の接続要求はキャンセルされました。',
     refreshDevices: 'デバイスを更新',
     refreshWindows: 'ウィンドウを更新',
     refresh: 'デバイスを更新',
@@ -811,6 +813,20 @@ export default {
 
   // 設定の自動修復通知
   config: {
+    syncSaveFailed:
+      'ホストに設定を保存できず、自動保存を停止しました。下書きをエクスポートするか、問題を解決して同期を再試行してください。',
+    draftStorageFailed:
+      'ローカルの下書き保存先を利用できません。このページを閉じると変更が失われます。先に未同期の設定をエクスポートしてください。',
+    draftExportFailed:
+      '未同期の設定をエクスポートできません。下書きは保持されています。再試行してください。',
+    syncReloadFailed:
+      'ホストの設定を読み込めません。ローカルの変更は保持されています。保存するには同期を再試行してください。',
+    retrySync: '同期を再試行',
+    unsavedDraft:
+      '未同期の設定変更をローカル下書きに保存しました。エクスポートして変更内容を確認・復元できます。',
+    exportUnsavedDraft: '未同期の設定をエクスポート',
+    syncConflict:
+      '別のクライアントで設定が更新されたか、保存に失敗しました。ホストの設定を再読み込みします。確認してから再度編集してください。',
     recoveredFromBackup:
       '設定ファイルが破損していたため、{{time}} のバックアップから自動的に復元しました',
     recoveryFailed:

@@ -40,6 +40,16 @@ struct FocusState {
     stopped: HashSet<String>,
     closing: bool,
 }
+
+impl FocusState {
+    fn permits(
+        &self,
+        instance_id: &str,
+        lifetime: &super::callback_lifecycle::CallbackGuard,
+    ) -> bool {
+        lifetime.is_active() && !self.closing && !self.stopped.contains(instance_id)
+    }
+}
 static STATE: LazyLock<Mutex<FocusState>> = LazyLock::new(|| Mutex::new(FocusState::default()));
 static SESSION_ID: LazyLock<u128> = LazyLock::new(|| {
     std::time::SystemTime::now()
@@ -70,20 +80,29 @@ pub fn begin_run(instance_id: &str) {
 }
 
 /// Context sink 在 MaaFW 的执行线程同步调用；在回调返回前等待确认，流水线才会真正暂停。
-pub fn emit_context(app: &tauri::AppHandle, instance_id: &str, message: &str, details: &str) {
+pub fn emit_context(
+    app: &tauri::AppHandle,
+    instance_id: &str,
+    message: &str,
+    details: &str,
+    lifetime: &super::callback_lifecycle::CallbackGuard,
+) {
+    if !lifetime.is_active() {
+        return;
+    }
     let Ok(mut value) = serde_json::from_str::<serde_json::Value>(details) else {
-        super::utils::emit_callback_event(app, message, details);
+        super::utils::emit_callback_event(app, instance_id, message, details);
         return;
     };
     let blocking = is_blocking(&value, message);
     if !value.is_object() {
-        super::utils::emit_callback_event(app, message, details);
+        super::utils::emit_callback_event(app, instance_id, message, details);
         return;
     }
     value["__mxu_instance_id"] = instance_id.into();
     let gate = if blocking {
         let mut state = STATE.lock().unwrap_or_else(|e| e.into_inner());
-        if state.closing || state.stopped.contains(instance_id) {
+        if !state.permits(instance_id, lifetime) {
             return;
         }
         let id = format!(
@@ -107,7 +126,7 @@ pub fn emit_context(app: &tauri::AppHandle, instance_id: &str, message: &str, de
     } else {
         None
     };
-    super::utils::emit_callback_event(app, message, value.to_string().as_str());
+    super::utils::emit_callback_event(app, instance_id, message, value.to_string().as_str());
     if let Some(gate) = gate {
         gate.waiter.wait();
     }
@@ -190,6 +209,19 @@ pub fn cancel_all() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn recreated_instance_cannot_reenable_retired_focus_callbacks() {
+        let old_lifetime = super::super::callback_lifecycle::CallbackGuard::default();
+        let new_lifetime = super::super::callback_lifecycle::CallbackGuard::default();
+        let mut state = FocusState::default();
+        old_lifetime.cancel();
+        state.stopped.insert("same-id".into());
+        // A new run reopens focus for the replacement, while an old sink is delayed.
+        state.stopped.remove("same-id");
+        assert!(!state.permits("same-id", &old_lifetime));
+        assert!(state.permits("same-id", &new_lifetime));
+    }
+
     #[test]
     fn modal_requires_content_and_accepts_channel_arrays() {
         assert!(is_blocking(

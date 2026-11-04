@@ -9,20 +9,30 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 
 /// 发送回调事件到前端（Tauri WebView + WebSocket 浏览器客户端）
-pub fn emit_callback_event<S: Into<String>>(app: &AppHandle, message: S, details: S) {
+pub fn emit_callback_event<S: Into<String>>(
+    app: &AppHandle,
+    instance_id: &str,
+    message: S,
+    details: S,
+) {
     let message = message.into();
     let details = details.into();
 
     // 广播到所有 WebSocket 客户端
     if let Some(ws) = app.try_state::<Arc<WsBroadcast>>() {
         ws.send(WsEvent::MaaCallback {
+            instance_id: instance_id.to_string(),
             message: message.clone(),
             details: details.clone(),
         });
     }
 
     // 发送到 Tauri WebView
-    let event = MaaCallbackEvent { message, details };
+    let event = MaaCallbackEvent {
+        instance_id: instance_id.to_string(),
+        message,
+        details,
+    };
     if let Err(e) = app.emit("maa-callback", event) {
         log::error!("Failed to emit maa-callback: {}", e);
     }
@@ -59,6 +69,7 @@ pub fn handle_task_callback(
     maa_state: &Arc<MaaState>,
     app: &AppHandle,
     instance_id: &str,
+    lifetime: &super::callback_lifecycle::CallbackGuard,
     message: &str,
     details: &str,
 ) {
@@ -89,6 +100,9 @@ pub fn handle_task_callback(
             Some(i) => i,
             None => return,
         };
+        if !instance.callback_lifetime.is_current(lifetime) {
+            return;
+        }
         // Old/duplicate events from a removed queue must not mutate a new run.
         if !instance.task_run_state.pending_task_ids.contains(&task_id) {
             return;
@@ -96,6 +110,7 @@ pub fn handle_task_callback(
         if !is_started {
             instance.task_results.insert(task_id, is_succeeded);
         }
+
         let state = &mut instance.task_run_state;
 
         if is_started {
@@ -198,15 +213,21 @@ pub(super) fn schedule_run_completion(
 
 /// 发送配置变更事件（双通道：WS 浏览器客户端 + Tauri WebView）
 ///
-/// 各客户端收到后应重新拉取配置并 `importConfig`（需配合 `consumeSelfSave` 跳过自身触发）。
-pub fn emit_config_changed(app: &AppHandle) {
+/// 发送方 ID 用于准确跳过自身通知，避免按事件到达顺序误吞其它客户端的更新。
+pub fn emit_config_changed(app: &AppHandle, client_id: &str, revision: &str) {
     // 广播到所有 WebSocket 客户端
     if let Some(ws) = app.try_state::<Arc<WsBroadcast>>() {
-        ws.send(WsEvent::ConfigChanged);
+        ws.send(WsEvent::ConfigChanged {
+            client_id: client_id.to_string(),
+            revision: revision.to_string(),
+        });
     }
 
     // 发送到 Tauri WebView
-    if let Err(e) = app.emit("config-changed-external", ()) {
+    if let Err(e) = app.emit(
+        "config-changed-external",
+        serde_json::json!({ "client_id": client_id, "revision": revision }),
+    ) {
         log::error!("Failed to emit config-changed-external: {}", e);
     }
 }

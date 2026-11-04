@@ -22,7 +22,7 @@ use tower_http::cors::Any;
 use tower_http::cors::CorsLayer;
 
 use crate::commands::{
-    app_config::AppConfigState,
+    app_config::{AppConfigState, ConfigSaveRequest},
     maa_agent::{start_tasks_impl, stop_agent_impl},
     maa_core::{
         connect_controller_impl, destroy_instance_impl, find_adb_devices_impl,
@@ -234,6 +234,7 @@ pub async fn start_web_server(
         )
         // 配置 & 接口
         .route("/interface", get(handle_get_interface))
+        .route("/config/snapshot", get(handle_get_config_snapshot))
         .route(
             "/config",
             get(handle_get_config)
@@ -628,23 +629,38 @@ async fn handle_get_config(State(state): State<WebState>) -> impl IntoResponse {
     Json(config).into_response()
 }
 
-/// PUT/POST /api/config
-/// 更新配置：写入内存 + 持久化到磁盘 + 广播 ConfigChanged 给所有 WS 客户端
-async fn handle_put_config(
-    State(state): State<WebState>,
-    Json(new_config): Json<serde_json::Value>,
-) -> impl IntoResponse {
-    match state.app_config.save_config(new_config) {
-        Ok(()) => {
-            // 通知所有客户端（WS 浏览器 + Tauri 桌面端）配置已变更
-            emit_config_changed(&state.app_handle);
-            (StatusCode::OK, Json(serde_json::json!({ "ok": true }))).into_response()
-        }
-        Err(e) => (
+/// 配置快照不可缓存；后台恢复的浏览器必须重新获取当前版本。
+async fn handle_get_config_snapshot(State(state): State<WebState>) -> impl IntoResponse {
+    match state.app_config.snapshot() {
+        Ok(snapshot) => ([(header::CACHE_CONTROL, "no-store")], Json(snapshot)).into_response(),
+        Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e })),
+            Json(serde_json::json!({ "error": error })),
         )
             .into_response(),
+    }
+}
+
+/// PUT/POST /api/config：仅接受带基础 revision 的条件写入（POST 供 sendBeacon 使用）。
+async fn handle_put_config(
+    State(state): State<WebState>,
+    Json(request): Json<ConfigSaveRequest>,
+) -> impl IntoResponse {
+    let client_id = request.client_id.clone();
+    match state.app_config.save_config(request) {
+        Ok(snapshot) => {
+            emit_config_changed(&state.app_handle, &client_id, &snapshot.revision);
+            Json(snapshot).into_response()
+        }
+        Err(error) => {
+            let status = match error.code {
+                "conflict" => StatusCode::CONFLICT,
+                "revision_required" => StatusCode::PRECONDITION_REQUIRED,
+                "invalid_config" | "invalid_client_id" => StatusCode::BAD_REQUEST,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (status, Json(error)).into_response()
+        }
     }
 }
 
@@ -853,8 +869,9 @@ async fn handle_connect_controller(
     ensure_instance_exists(&state.maa_state, &instance_id);
 
     let app_handle = state.app_handle.clone();
+    let callback_instance_id = instance_id.clone();
     let on_event = Arc::new(move |msg: &str, detail: &str| {
-        emit_callback_event(&app_handle, msg, detail);
+        emit_callback_event(&app_handle, &callback_instance_id, msg, detail);
     });
 
     match connect_controller_impl(state.maa_state, instance_id.clone(), config, on_event).await {
@@ -895,9 +912,10 @@ async fn handle_load_resource(
     };
 
     let app_handle = state.app_handle.clone();
+    let callback_instance_id = instance_id.clone();
     let on_event: Arc<dyn Fn(&str, &str) + Send + Sync + 'static> =
         Arc::new(move |msg: &str, detail: &str| {
-            emit_callback_event(&app_handle, msg, detail);
+            emit_callback_event(&app_handle, &callback_instance_id, msg, detail);
         });
 
     match load_resource_impl(

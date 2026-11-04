@@ -509,7 +509,8 @@ export async function autoLoadInterface(): Promise<LoadResult> {
       }
     };
 
-    // 1. 先通过 Vite proxy（相对路径）尝试（短超时，proxy 正常时应很快）
+    // 1. 优先页面同源（反向代理 / Vite proxy），加载成功后继续使用该地址。
+    setBackendPort(0);
     let apiResult = await tryFetchInterface('/api/interface', 2000);
 
     // 2. proxy 失败时，并行探测后端端口范围（使用页面 hostname 而非 localhost，以支持局域网访问）
