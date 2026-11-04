@@ -8,7 +8,7 @@
 
 > [!TIP]
 >
-> MXU 已支持最新最潮的 PI v2.5.0 协议！
+> MXU 已支持 PI v2.11.0 协议，包括多条公告、预设控制器过滤、文件 / 文件夹输入和 Agent 用户数据目录环境变量。
 
 - 📋 **任务管理** - 可视化配置任务列表，支持拖拽排序
 - 🔧 **多实例支持** - 同时管理多个独立运行的实例（标签页多开）
@@ -116,15 +116,17 @@ MXU 在 [PI V2 协议](https://github.com/MaaXYZ/MaaFramework/blob/main/docs/zh_
 - 图标读取失败时会被忽略，不会显示破图；建议控制在 16px 左右，与 `option` / `case` 的 `icon` 字段视觉一致。
 - 该能力只作用于 `option`、`case`、`input` 的 `label`；`task`、`resource`、`controller`、任务分组的 `label` 仍为纯文本。
 
-### 输入项扩展字段
+### 输入项控件与扩展字段
 
-`input` 类型的 `inputs[]` 在协议字段之外支持以下扩展：
+`input` 类型的 `inputs[]` 支持 PI 协议字段及以下 MXU 扩展：
 
-| 字段          | 类型                             | 说明                                                                 |
-| ------------- | -------------------------------- | -------------------------------------------------------------------- |
-| `input_type`  | `"text"` \| `"file"` \| `"time"` | 渲染对应控件：`file` 文件选择器、`time` 时间选择器，缺省为普通文本框 |
-| `placeholder` | `string`                         | 输入框占位提示，支持 `$` 国际化                                      |
-| `password`    | `boolean`                        | 密码字段：界面掩码显示、配置加密存储，日志与遥测中同样脱敏           |
+| 字段          | 类型                                              | 说明                                                                                    |
+| ------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `input_type`  | `"text"` \| `"file"` \| `"directory"` \| `"time"` | PI v2.10.5 支持文本、文件、文件夹选择器；`time` 时间选择器为 MXU 扩展。缺省为普通文本框 |
+| `placeholder` | `string`                                          | 输入框占位提示，支持 `$` 国际化                                                         |
+| `password`    | `boolean`                                         | PI v2.10.0 密码字段：界面掩码显示；MXU 额外提供配置加密存储及日志 / 遥测脱敏            |
+
+文件 / 文件夹输入保留可编辑的路径文本框，选择结果保持操作系统原生路径格式；浏览器环境退化为普通文本输入。
 
 ```json
 {
@@ -133,6 +135,7 @@ MXU 在 [PI V2 协议](https://github.com/MaaXYZ/MaaFramework/blob/main/docs/zh_
     "label": "启动参数",
     "inputs": [
       { "name": "ConfigPath", "label": "配置文件", "input_type": "file" },
+      { "name": "OutputDir", "label": "输出文件夹", "input_type": "directory" },
       { "name": "Token", "label": "访问令牌", "password": true },
       {
         "name": "StartAt",

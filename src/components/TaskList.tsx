@@ -47,6 +47,7 @@ import {
 import { generateId, initializeAllOptionValues, sanitizeOptionValues } from '@/stores/helpers';
 import { decryptPasswordOptionValues } from '@/utils/passwordOptionValues';
 import { isPretaskName } from '@/types/pretasks';
+import { isPresetCompatible } from '@/utils/presetCompatibility';
 import { loggers } from '@/utils/logger';
 import { toast } from 'sonner';
 import clsx from 'clsx';
@@ -228,14 +229,10 @@ function ImportConfigButton({ instanceId }: { instanceId: string }) {
 }
 
 /** 预设选择器 - 任务列表为空时显示 */
-function PresetSelector({ instanceId }: { instanceId: string }) {
-  const { projectInterface, applyPreset, skipPreset, renameInstance, resolveI18nText, language } =
-    useAppStore();
+function PresetSelector({ instanceId, presets }: { instanceId: string; presets: PresetItem[] }) {
+  const { applyPreset, skipPreset, renameInstance, resolveI18nText, language } = useAppStore();
   const { t } = useTranslation();
   const langKey = getInterfaceLangKey(language);
-
-  const presets = projectInterface?.preset;
-  if (!presets || presets.length === 0) return null;
 
   return (
     <div className="flex flex-col items-center gap-4 p-6">
@@ -284,6 +281,7 @@ export function TaskList() {
     lastAddedTaskId,
     clearLastAddedTaskId,
     projectInterface,
+    selectedController,
     skippedPresetInstanceIds,
   } = useAppStore();
 
@@ -498,15 +496,21 @@ export function TaskList() {
   const preActions = instance.preActions ?? [];
   const showPreActions = preActions.length > 0;
   const canReorderPreActions = !isInstanceRunning && preActions.length > 1;
-  const hasPresets =
-    (projectInterface?.preset?.length ?? 0) > 0 && !skippedPresetInstanceIds.has(instance.id);
+  const controllerName =
+    selectedController[instance.id] ||
+    instance.controllerName ||
+    projectInterface?.controller[0]?.name;
+  const presets = (projectInterface?.preset ?? []).filter((preset) =>
+    isPresetCompatible(preset, controllerName),
+  );
+  const hasPresets = presets.length > 0 && !skippedPresetInstanceIds.has(instance.id);
 
   if (tasks.length === 0 && !showPreActions) {
     return (
       <>
         <div className="flex-1 overflow-y-auto" onContextMenu={handleListContextMenu}>
           {hasPresets ? (
-            <PresetSelector instanceId={instance.id} />
+            <PresetSelector instanceId={instance.id} presets={presets} />
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-text-muted gap-3">
               <ListTodo className="w-12 h-12 opacity-30" />
@@ -559,7 +563,7 @@ export function TaskList() {
           )}
 
           {hasPresets ? (
-            <PresetSelector instanceId={instance.id} />
+            <PresetSelector instanceId={instance.id} presets={presets} />
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-text-muted gap-3 min-h-[120px]">
               <ListTodo className="w-12 h-12 opacity-30" />
