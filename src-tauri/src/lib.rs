@@ -52,6 +52,11 @@ pub fn run() {
                 // MCP SDK 的 DEBUG 日志会记录每次请求/响应的完整内容（含截图 base64），
                 // 只保留连接、会话结束等 INFO 级别记录
                 .level_for("rmcp", log::LevelFilter::Info)
+                .format(|out, message, record| {
+                    out.finish(format_args!("[{}][{}][{}] {}",
+                        chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                        record.level(), record.target(), commands::log_secrets::redact(&message.to_string())));
+                })
                 .build(),
         )
         .setup(|app| {
@@ -250,6 +255,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::log_secrets::register_log_secrets,
+            commands::focus::pending_focus,
+            commands::focus::acknowledge_focus,
             // Maa 核心命令
             commands::maa_core::maa_init,
             commands::maa_core::maa_set_resource_dir,
@@ -395,6 +403,7 @@ pub fn run() {
 
         // 退出前收尾遥测（结束 Session 与悬挂 Transaction 并 flush）
         if matches!(event, tauri::RunEvent::Exit) {
+            commands::focus::cancel_all();
             commands::telemetry::on_app_exit();
         }
     };

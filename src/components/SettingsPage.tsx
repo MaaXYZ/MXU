@@ -1,3 +1,4 @@
+import { PiDescription } from './PiContent';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -120,7 +121,7 @@ function TaskSettingsSection({
             </div>
             {section.resolvedDescription && (
               <div className="text-xs text-text-secondary line-clamp-2">
-                {section.resolvedDescription}
+                <PiDescription source={section.description} />
               </div>
             )}
           </div>
@@ -259,7 +260,7 @@ export function SettingsPage({ onClose }: SettingsPageProps) {
       ...section,
       resolvedLabel: resolveSettingsText(section.label, section.name, langMap),
       resolvedDescription: resolveSettingsText(section.description, undefined, langMap),
-      resolvedIcon: section.icon,
+      resolvedIcon: resolveSettingsText(section.icon, undefined, langMap),
     }));
   }, [projectInterface?.setting, interfaceTranslations, langKey]);
 

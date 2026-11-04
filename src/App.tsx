@@ -1,3 +1,4 @@
+import { FocusDialogs } from '@/components/FocusDialogs';
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import {
   useAppStore,
@@ -73,7 +74,7 @@ async function getGlobalShortcut() {
   return _globalShortcutModule;
 }
 import { loggers } from '@/utils/logger';
-import { setBackendPort, getApiBase } from '@/utils/backendApi';
+import { getApiBase } from '@/utils/backendApi';
 import { getAllLogsFromBackend } from '@/utils/logStdout';
 import { useMaaCallbackLogger, useMaaAgentLogger } from '@/utils/useMaaCallbackLogger';
 import i18n, { getInterfaceLangKey } from '@/i18n';
@@ -957,12 +958,8 @@ function App() {
       markFallbackConfigReady(captureConfigForDraft());
       setConfigPersistenceReady(true);
 
-      // 浏览器环境：设置后端直连端口并建立 WebSocket 连接
-      if (!isTauri() && result.webServerPort) {
-        setBackendPort(result.webServerPort);
-        wsService.setServerPort(result.webServerPort);
-        wsService.connect();
-      } else if (!isTauri()) {
+      // 浏览器沿用加载 interface 时成功的地址，不用后端内部监听端口覆盖反代 origin。
+      if (!isTauri()) {
         wsService.connect();
       }
 
@@ -2020,13 +2017,16 @@ function App() {
   }, []);
 
   const toaster = (
-    <Toaster
-      theme={resolveThemeMode(theme)}
-      position="bottom-center"
-      toastOptions={{
-        className: '!bg-bg-secondary !text-text-primary !border-border',
-      }}
-    />
+    <>
+      <FocusDialogs />
+      <Toaster
+        theme={resolveThemeMode(theme)}
+        position="bottom-center"
+        toastOptions={{
+          className: '!bg-bg-secondary !text-text-primary !border-border',
+        }}
+      />
+    </>
   );
 
   // 设置页面

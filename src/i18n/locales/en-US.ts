@@ -1,4 +1,15 @@
 export default {
+  pi: {
+    PI_DISPLAY_OPTIONS_INVALID:
+      'Configure one screenshot scaling mode with positive integer dimensions.',
+    PI_DISPLAY_OPTIONS_UNSUPPORTED:
+      'This MaaFramework does not support the selected screenshot mode. Update the resource package.',
+  },
+  focus: {
+    title: 'Project notification',
+    confirmFailed: 'Could not confirm the notification. Please try again.',
+  },
+
   // Common
   common: {
     confirm: 'Confirm',

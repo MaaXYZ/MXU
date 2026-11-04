@@ -1,3 +1,4 @@
+import { PiIcon } from './PiContent';
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSortable } from '@dnd-kit/sortable';
@@ -932,6 +933,7 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
           )}
         </div>
 
+        <PiIcon icon={taskDef?.icon} />
         {/* 任务名称 + 展开区域容器 */}
         <div className="flex-1 flex items-center min-w-0">
           {isEditing ? (

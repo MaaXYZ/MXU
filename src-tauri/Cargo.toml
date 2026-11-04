@@ -48,7 +48,7 @@ os_info = "3"
 urlencoding = "2.1"
 notify-rust = "4"
 shell-words = "1.1.1"
-maa-framework = { version = "1.22.0", features = ["dynamic"] }
+maa-framework = { version = "1.27.0", features = ["dynamic"] }
 rust-embed = "8"
 clap = { version = "4", features = ["derive"] }
 # 匿名遥测（数据埋点）

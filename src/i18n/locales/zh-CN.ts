@@ -1,4 +1,10 @@
 export default {
+  pi: {
+    PI_DISPLAY_OPTIONS_INVALID: '请只配置一种截图缩放模式，并使用正整数尺寸。',
+    PI_DISPLAY_OPTIONS_UNSUPPORTED: '当前 MaaFramework 不支持此截图模式，请更新资源包。',
+  },
+  focus: { title: '项目信息', confirmFailed: '确认失败，请重试。' },
+
   // 通用
   common: {
     confirm: '确定',

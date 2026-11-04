@@ -146,15 +146,19 @@ export type ControllerType =
   | 'PlayCover'
   | 'Gamepad';
 
-export interface ControllerItem {
+export interface ControllerDisplayOptions {
+  display_short_side?: number;
+  display_long_side?: number;
+  display_expand?: [number, number];
+  display_raw?: boolean;
+}
+
+export interface ControllerItem extends ControllerDisplayOptions {
   name: string;
   label?: string;
   description?: string;
   icon?: string;
   type: ControllerType;
-  display_short_side?: number;
-  display_long_side?: number;
-  display_raw?: boolean;
   permission_required?: boolean;
   /** v2.2.0: 额外的资源路径数组，在 resource.path 加载完成后加载 */
   attach_resource_path?: string[];

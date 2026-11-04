@@ -45,12 +45,14 @@ import {
   pretaskName,
   isPretaskName,
   getPretaskItem,
+  buildPretaskDef,
   resolveCompatTaskDef,
 } from '@/types/pretasks';
 import { decryptCdk, encryptCdk } from '@/utils/cdkCrypto';
 import {
   decryptPasswordOptionValues,
   encryptPasswordOptionValues,
+  collectPasswordPlaintexts,
 } from '@/utils/passwordOptionValues';
 import { loggers } from '@/utils/logger';
 import { findSwitchCase } from '@/utils/optionHelpers';
@@ -80,6 +82,7 @@ import {
 import { persistRuntimeLogs } from '@/utils/runtimeLogPersistence';
 import { cacheTaskEnabledForController } from '@/utils/taskControllerCache';
 import { isPresetCompatible } from '@/utils/presetCompatibility';
+import { setLogSecretProvider, redactLogText } from '@/utils/logSecrets';
 // 从独立模块导入类型和辅助函数
 import type { AppState, LogEntry, TaskRunStatus } from './types';
 
@@ -405,6 +408,20 @@ export const useAppStore = create<AppState>()(
       // 只添加 default_check 为 true 的任务
       const defaultTasks: SelectedTask[] = [];
       if (pi) {
+        for (const item of getPretaskItems(pi)) {
+          defaultTasks.push({
+            id: generateId(),
+            taskName: pretaskName(item),
+            expanded: true,
+            enabled: isTaskCompatible(
+              buildPretaskDef(item),
+              pi.controller[0]?.name,
+              pi.resource[0]?.name,
+            ),
+            optionValues:
+              item.option && pi.option ? initializeAllOptionValues(item.option, pi.option) : {},
+          });
+        }
         // 获取默认控制器名称，用于检查任务兼容性
         const defaultControllerName = pi.controller[0]?.name;
 
@@ -657,9 +674,14 @@ export const useAppStore = create<AppState>()(
         };
       };
 
-      // v2.10.3: 按 preset.pretask 设置预任务（按顶层 pretask 顺序排列，未列出的不添加）。
-      // 预设只能应用于空任务列表，未声明 pretask 时无需保留已有预任务
-      if (preset.pretask) {
+      // v2.10.3: 未声明 pretask 时保留当前状态；显式列表按顶层顺序设置，未列出项禁用。
+      const existingPretasks =
+        get()
+          .instances.find((instance) => instance.id === instanceId)
+          ?.selectedTasks.filter((task) => isPretaskName(task.taskName)) ?? [];
+      if (preset.pretask === undefined) {
+        newTasks.push(...existingPretasks);
+      } else {
         const pretaskItems = getPretaskItems(pi);
         for (const presetPretask of preset.pretask) {
           if (!pretaskItems.some((item) => item.name === presetPretask.name)) {
@@ -670,8 +692,18 @@ export const useAppStore = create<AppState>()(
         }
         for (const item of pretaskItems) {
           const presetPretask = preset.pretask.find((p) => p.name === item.name);
-          if (!presetPretask) continue;
-          newTasks.push(buildSelectedTask(pretaskName(item), item.option, presetPretask));
+          const existing = existingPretasks.find((task) => task.taskName === pretaskName(item));
+          if (!presetPretask && existing) {
+            newTasks.push({ ...existing, enabled: false });
+          } else {
+            newTasks.push(
+              buildSelectedTask(
+                pretaskName(item),
+                item.option,
+                presetPretask ?? { name: item.name ?? item.exec, enabled: false },
+              ),
+            );
+          }
         }
       }
 
@@ -2355,6 +2387,11 @@ export const useAppStore = create<AppState>()(
 
     addLog: (instanceId, log) =>
       set((state) => {
+        log = {
+          ...log,
+          message: redactLogText(log.message),
+          ...(log.html && { html: redactLogText(log.html) }),
+        };
         const logs = state.instanceLogs[instanceId] || [];
         const now = new Date();
         const newLog: LogEntry = {
@@ -2456,6 +2493,19 @@ export const useAppStore = create<AppState>()(
     getTaskNameByEntry: (entry) => get().entryToTaskName[entry],
   })),
 );
+
+setLogSecretProvider(() => {
+  const state = useAppStore.getState();
+  const options = state.projectInterface?.option ?? {};
+  return [
+    ...collectPasswordPlaintexts(state.globalOptionValues, options),
+    ...state.instances.flatMap((instance) =>
+      instance.selectedTasks.flatMap((task) =>
+        collectPasswordPlaintexts(task.optionValues, options),
+      ),
+    ),
+  ];
+});
 
 const _isWebUI = !isTauri();
 
