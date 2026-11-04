@@ -103,6 +103,8 @@ export default {
     hotkeysGlobalRegisterFailed: '全局快捷键 {{combo}} 注册失败：{{error}}',
     minimizeToTray: '关闭时最小化到托盘',
     minimizeToTrayHint: '点击关闭按钮时隐藏到系统托盘而非退出程序',
+    singleInstance: '多开检测',
+    singleInstanceHint: '同一目录已在运行时不再启动新实例，改为唤起已有窗口（重启后生效）',
     autoStart: '开机自启动',
     autoStartHint: '系统启动时自动运行本程序',
     autoStartInstance: '启动后自动执行',

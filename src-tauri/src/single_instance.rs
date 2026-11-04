@@ -9,6 +9,8 @@
 //! - 发送前调用 `AllowSetForegroundWindow` 把前台权限交给已有实例；
 //! - 用 `SendMessageTimeoutW` + `SMTO_ABORTIFHUNG`，已有实例卡死时不会把新进程一起拖住；
 //! - 任何唤起失败都弹窗提示并写日志，避免"双击没反应"。
+//!
+//! 可在设置中关闭（配置 `settings.singleInstance`，默认开启），重启后生效。
 
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -64,6 +66,10 @@ enum Notify {
 
 /// 启动时调用：返回 true 表示继续启动；返回 false 表示已有实例在运行（已唤起或已提示），应退出。
 pub fn acquire_or_activate() -> bool {
+    if !is_enabled() {
+        return true;
+    }
+
     let start = Instant::now();
     loop {
         if let TryAcquire::Acquired = try_acquire() {
@@ -104,12 +110,49 @@ pub fn release() {
 
 /// 释放后重新获取（如提权失败、当前进程继续运行），返回是否成功
 pub fn reacquire() -> bool {
+    if !is_enabled() {
+        return true;
+    }
     matches!(try_acquire(), TryAcquire::Acquired)
+}
+
+/// 是否启用多开检测：读取配置 `settings.singleInstance`，默认启用。
+/// 在 Tauri 初始化前调用，不依赖 AppConfigState；结果在进程内缓存，修改后重启生效。
+pub fn is_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| read_enabled_setting().unwrap_or(true))
+}
+
+fn read_enabled_setting() -> Option<bool> {
+    use crate::commands::app_config::{make_config_filename, parse_jsonc};
+    use crate::commands::utils::{get_app_data_dir, get_exe_directory};
+
+    // 配置文件名由 interface.json 的 name 决定，与 AppConfigState 保持一致
+    let interface = std::fs::read_to_string(get_exe_directory().ok()?.join("interface.json"))
+        .ok()
+        .and_then(|content| parse_jsonc(&content).ok());
+    let project_name = interface
+        .as_ref()
+        .and_then(|v| v.get("name"))
+        .and_then(|v| v.as_str());
+    let config_path = get_app_data_dir()
+        .ok()?
+        .join("config")
+        .join(make_config_filename(project_name));
+
+    let content = std::fs::read_to_string(config_path).ok()?;
+    let config: serde_json::Value = serde_json::from_str(&content).ok()?;
+    config.get("settings")?.get("singleInstance")?.as_bool()
 }
 
 /// 创建接收唤起消息的隐藏窗口。须在 UI 线程（Tauri setup）中调用，
 /// 消息由 Tauri 事件循环分发；UI 线程卡死时发送方能通过 SMTO_ABORTIFHUNG 感知。
 pub fn create_message_window(app: &AppHandle) {
+    if !is_enabled() {
+        log::info!("single_instance: 多开检测已关闭");
+        return;
+    }
+
     let _ = APP_HANDLE.set(app.clone());
 
     let class_name = HSTRING::from(instance_name());
