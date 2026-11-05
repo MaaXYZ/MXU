@@ -126,12 +126,8 @@ pub fn update_tray_icon(icon_path: &str) -> Result<(), String> {
         return Err("Invalid icon path: path traversal not allowed".to_string());
     }
 
-    // 获取 exe 目录
-    let exe_dir = std::env::current_exe()
-        .map_err(|e| format!("Failed to get exe path: {}", e))?
-        .parent()
-        .ok_or("Failed to get exe directory")?
-        .to_path_buf();
+    // 获取运行时项目目录（macOS `.app` 下为应用包所在目录）
+    let exe_dir = crate::commands::utils::get_exe_directory()?;
 
     let full_path = exe_dir.join(icon_path);
 

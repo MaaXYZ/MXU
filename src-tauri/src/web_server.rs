@@ -327,9 +327,7 @@ pub async fn start_web_server(
     // 否则使用编译时内嵌的前端资源
     #[cfg(not(debug_assertions))]
     {
-        let exe_dir = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+        let exe_dir = crate::commands::utils::get_exe_directory().ok();
 
         let has_external_dist = exe_dir
             .as_ref()

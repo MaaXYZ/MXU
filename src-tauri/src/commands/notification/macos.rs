@@ -243,7 +243,7 @@ fn callback_error(stage: &str, bundle_id: &str, error: *mut NSError) -> Option<S
         );
         if domain == "UNErrorDomain" && code == 1 {
             message.push_str(
-                "; notifications are not allowed. If the executable was replaced, verify the .app layout and signature (scripts/macos-resign.mjs --repair-layout), then relaunch it. Otherwise check notification authorization for this bundle."
+                "; notifications are not allowed. Verify MXU is running from a valid .app bundle, then check notification authorization in System Settings."
             );
         }
         message
