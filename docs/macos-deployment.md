@@ -40,7 +40,7 @@ node scripts/macos-resign.mjs --repair-layout --entitlements ~/MaaEnd-entitlemen
 `--repair-layout` 按 Apple TN2206 的兼容方案处理：
 
 - 逐文件把只读资源移到 `Contents/Resources/MXU-portable/`，在原位置创建包内相对符号链接。例如 `Contents/MacOS/interface.json` 指向 `../Resources/MXU-portable/interface.json`，原目录层次和 JSON 内容不变。
-- 保持主程序和 Mach-O Agent/动态库的实际位置，避免破坏 `@loader_path` 和原有启动路径；混合目录只迁移数据项。已有符号链接不会被随意移动。
+- 保持主程序和 Mach-O Agent/动态库的实际位置，避免破坏 `@loader_path` 和原有启动路径；混合目录只迁移数据项。对于 Python 入口脚本和原生扩展同目录的 Agent，在迁移后的 Resources 目录中为保留在 MacOS 的原生扩展建立兼容符号链接，使 Python 解析真实脚本路径后仍能按原布局导入。已有符号链接不会被随意移动。
 - 先检查全部目标路径和嵌套代码签名，遇到重名资源或包外链接时停止，不覆盖已有数据，也不对 JSON 执行签名。嵌套 Agent/框架的有效签名保持不变。
 - 使用原子的硬链接创建目标，再替换原位置为兼容链接；目标在检查后被其他进程创建时也不会覆盖它。
 - 在应用旁的 `<应用名>.app.mxu-repair/` 持久化迁移计划、主程序和原签名；迁移或签名失败会恢复原布局及文件。进程被终止后，再次运行相同修复命令会先恢复未完成的事务，再重新检查和签名。恢复失败时保留目录并报错，不能删除其中的恢复副本。

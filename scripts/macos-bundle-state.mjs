@@ -89,14 +89,25 @@ export function recoverBundleRepair(bundle, fileSystem = fs, onProgress = () => 
   if (!stat) return;
   if (!stat.isDirectory() || stat.isSymbolicLink())
     throw new Error(`Invalid recovery directory: ${directory}`);
-  const state = JSON.parse(fileSystem.readFileSync(join(directory, 'transaction.json'), 'utf8'));
+  const journal = join(directory, 'transaction.json');
+  if (!statIfPresent(fileSystem, journal)) {
+    // A crash or ENOSPC before the first journal publish must not poison future repairs.
+    const entries = fileSystem.readdirSync(directory);
+    if (entries.every((name) => name === 'transaction.tmp')) {
+      fileSystem.rmSync(directory, { recursive: true, force: true });
+      syncDirectory(dirname(directory), fileSystem);
+      return;
+    }
+    throw new Error(`Recovery directory is missing its journal: ${directory}`);
+  }
+  const state = JSON.parse(fileSystem.readFileSync(journal, 'utf8'));
   const executable = join(bundle, state.executable);
   if (
     state.version !== 2 ||
     state.bundle !== bundle ||
     state.plan.bundle !== bundle ||
     !inside(join(bundle, 'Contents', 'MacOS'), executable) ||
-    !['preparing', 'prepared', 'signing', 'committed'].includes(state.phase)
+    !['preparing', 'prepared', 'signing', 'restored', 'committed'].includes(state.phase)
   ) {
     throw new Error(`Invalid recovery journal: ${directory}`);
   }
@@ -121,6 +132,10 @@ export function recoverBundleRepair(bundle, fileSystem = fs, onProgress = () => 
       if (state.hasSignature) syncTree(signature, fileSystem);
       syncDirectory(dirname(signature), fileSystem);
     }
+    // Persist the restored terminal state before cleanup. If cleanup is interrupted,
+    // the next run must not try to restore backups that may already be gone.
+    state.phase = 'restored';
+    writeState(directory, state, fileSystem);
   }
   fileSystem.rmSync(directory, { recursive: true });
   syncDirectory(dirname(directory), fileSystem);
@@ -129,20 +144,22 @@ export function recoverBundleRepair(bundle, fileSystem = fs, onProgress = () => 
 export function beginBundleRepair(bundle, executable, hasSignature, plan, fileSystem = fs) {
   const directory = `${bundle}.mxu-repair`;
   const identity = bundleIdentity(bundle, fileSystem);
-  fileSystem.mkdirSync(directory, { mode: 0o700 });
-  const state = {
-    version: 2,
-    bundle,
-    identity,
-    executable: relative(bundle, executable),
-    hasSignature,
-    plan,
-    phase: 'preparing',
-  };
-  const save = () => writeState(directory, state, fileSystem);
-  save();
-  syncDirectory(dirname(directory), fileSystem);
+  let created = false;
   try {
+    fileSystem.mkdirSync(directory, { mode: 0o700 });
+    created = true;
+    const state = {
+      version: 2,
+      bundle,
+      identity,
+      executable: relative(bundle, executable),
+      hasSignature,
+      plan,
+      phase: 'preparing',
+    };
+    const save = () => writeState(directory, state, fileSystem);
+    save();
+    syncDirectory(dirname(directory), fileSystem);
     fileSystem.copyFileSync(executable, join(directory, 'executable'));
     if (hasSignature)
       fileSystem.cpSync(join(bundle, 'Contents', '_CodeSignature'), join(directory, 'signature'), {
@@ -151,28 +168,38 @@ export function beginBundleRepair(bundle, executable, hasSignature, plan, fileSy
     syncTree(directory, fileSystem);
     state.phase = 'prepared';
     save();
+    return {
+      directory,
+      save,
+      markSigning() {
+        state.phase = 'signing';
+        save();
+      },
+      commit() {
+        syncTree(executable, fileSystem);
+        const signature = join(bundle, 'Contents', '_CodeSignature');
+        if (statIfPresent(fileSystem, signature)) syncTree(signature, fileSystem);
+        syncDirectory(dirname(signature), fileSystem);
+        state.phase = 'committed';
+        save();
+        recoverBundleRepair(bundle, fileSystem);
+      },
+      rollback() {
+        recoverBundleRepair(bundle, fileSystem);
+      },
+    };
   } catch (error) {
-    recoverBundleRepair(bundle, fileSystem);
+    if (created) {
+      try {
+        fileSystem.rmSync(directory, { recursive: true, force: true });
+        syncDirectory(dirname(directory), fileSystem);
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [error, cleanupError],
+          `Failed to initialize the repair journal and clean up ${directory}.`,
+        );
+      }
+    }
     throw error;
   }
-  return {
-    directory,
-    save,
-    markSigning() {
-      state.phase = 'signing';
-      save();
-    },
-    commit() {
-      syncTree(executable, fileSystem);
-      const signature = join(bundle, 'Contents', '_CodeSignature');
-      if (statIfPresent(fileSystem, signature)) syncTree(signature, fileSystem);
-      syncDirectory(dirname(signature), fileSystem);
-      state.phase = 'committed';
-      save();
-      recoverBundleRepair(bundle, fileSystem);
-    },
-    rollback() {
-      recoverBundleRepair(bundle, fileSystem);
-    },
-  };
 }

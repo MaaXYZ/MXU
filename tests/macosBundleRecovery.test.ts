@@ -25,6 +25,44 @@ function fixture(t: { after: (fn: () => void) => void }) {
   return { root, bundle, executable, transaction };
 }
 
+test('a failed first journal write cleans up the recovery directory', (t) => {
+  const root = fs.realpathSync(fs.mkdtempSync(join(tmpdir(), 'mxu-recovery-test-')));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const bundle = join(root, 'Host.app');
+  writeBundle(bundle);
+  const executable = join(bundle, 'Contents', 'MacOS', 'Host');
+  const plan = planBundleLayout(bundle, 'Host', () => false);
+  const directory = `${bundle}.mxu-repair`;
+  let failed = false;
+  const fileSystem = {
+    ...fs,
+    openSync(path: string, flags: string | number, mode?: number) {
+      if (!failed && path === join(directory, 'transaction.tmp')) {
+        failed = true;
+        throw Object.assign(new Error('disk full'), { code: 'ENOSPC' });
+      }
+      return fs.openSync(path, flags, mode);
+    },
+  };
+
+  assert.throws(() => beginBundleRepair(bundle, executable, true, plan, fileSystem), /disk full/);
+  assert.equal(fs.existsSync(directory), false);
+  assert.doesNotThrow(() => beginBundleRepair(bundle, executable, true, plan));
+});
+
+test('recovery removes an unpublished journal left by an interrupted first write', (t) => {
+  const root = fs.realpathSync(fs.mkdtempSync(join(tmpdir(), 'mxu-recovery-test-')));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const bundle = join(root, 'Host.app');
+  const directory = `${bundle}.mxu-repair`;
+  fs.mkdirSync(directory);
+  fs.writeFileSync(join(directory, 'transaction.tmp'), 'partial journal');
+
+  recoverBundleRepair(bundle);
+
+  assert.equal(fs.existsSync(directory), false);
+});
+
 function assertBundleContents(bundle: string, contents: string) {
   assert.equal(
     fs.readFileSync(join(bundle, 'Contents', 'MacOS', 'Host'), 'utf8'),
@@ -35,6 +73,35 @@ function assertBundleContents(bundle: string, contents: string) {
     `${contents} seal`,
   );
 }
+
+test('interrupted cleanup resumes from restored state without recovery backups', (t) => {
+  const { bundle, executable, transaction } = fixture(t);
+  transaction.markSigning();
+  fs.writeFileSync(executable, 'partially signed executable');
+  fs.writeFileSync(join(bundle, 'Contents', '_CodeSignature', 'CodeResources'), 'partial seal');
+  const interruptedFs = {
+    ...fs,
+    rmSync(path: string, options?: { recursive?: boolean; force?: boolean }) {
+      if (path === transaction.directory) {
+        throw Object.assign(new Error('cleanup interrupted'), { code: 'EIO' });
+      }
+      fs.rmSync(path, options);
+    },
+  };
+
+  assert.throws(() => recoverBundleRepair(bundle, interruptedFs), /cleanup interrupted/);
+
+  assertBundleContents(bundle, 'original');
+  const state = JSON.parse(
+    fs.readFileSync(join(transaction.directory, 'transaction.json'), 'utf8'),
+  );
+  assert.equal(state.phase, 'restored');
+  fs.rmSync(join(transaction.directory, 'executable'), { force: true });
+  fs.rmSync(join(transaction.directory, 'signature'), { recursive: true, force: true });
+
+  assert.doesNotThrow(() => recoverBundleRepair(bundle));
+  assert.equal(fs.existsSync(transaction.directory), false);
+});
 
 test('interrupted signing can restore the same host even when codesign replaced its executable', (t) => {
   const { root, bundle, executable, transaction } = fixture(t);

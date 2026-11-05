@@ -4,7 +4,11 @@ import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { applyBundleLayout, planBundleLayout } from './macos-bundle-layout.mjs';
+import {
+  applyBundleCompatibilityLinks,
+  applyBundleLayout,
+  planBundleLayout,
+} from './macos-bundle-layout.mjs';
 import {
   acquireBundleLock,
   beginBundleRepair,
@@ -179,6 +183,7 @@ function repairLockedBundle(
       );
     }
     applyBundleLayout(plan, fileSystem, transaction.save);
+    applyBundleCompatibilityLinks(plan, fileSystem, transaction.save);
     // Signing only the outer app seals resources and binds Info.plist; no --deep re-signing of agents.
     const signingArgs = ['--force', '--sign', '-', '--identifier', bundleId];
     if (entitlementBytes) {

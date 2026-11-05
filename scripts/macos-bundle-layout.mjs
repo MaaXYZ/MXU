@@ -63,6 +63,7 @@ export function planBundleLayout(bundle, executableName, isCode, fileSystem = fs
   checkDestinationParents(bundle, macos, fileSystem);
   checkDestinationParents(bundle, resources, fileSystem);
   const codeObjects = [];
+  const codeFiles = [];
   for (const directory of [macos, resources]) {
     if (statIfPresent(fileSystem, directory)) {
       for (const name of fileSystem.readdirSync(directory)) {
@@ -93,7 +94,10 @@ export function planBundleLayout(bundle, executableName, isCode, fileSystem = fs
     }
     if (!stat.isFile()) throw new Error(`Unsupported file in app bundle: ${path}`);
     const keep = isCode(path);
-    if (keep) codeObjects.push(path);
+    if (keep) {
+      codeObjects.push(path);
+      codeFiles.push({ path, dev: stat.dev, ino: stat.ino });
+    }
     return { path, directory: false, keep };
   };
 
@@ -116,7 +120,21 @@ export function planBundleLayout(bundle, executableName, isCode, fileSystem = fs
     .sort()
     .map((name) => inspect(join(macos, name)))
     .forEach(collect);
-  return { bundle, moves, codeObjects, createdDirectories: [] };
+
+  // Python resolves the moved entry script to its real Resources path, so native
+  // extensions kept in MacOS for @loader_path must also be visible beside it.
+  const movedParents = new Set(moves.map((move) => dirname(move.source)));
+  const compatibilityLinks = codeFiles
+    .filter(({ path }) => movedParents.has(dirname(path)))
+    .map(({ path, dev, ino }) => {
+      const destination = join(resources, relative(macos, path));
+      checkDestinationParents(bundle, dirname(destination), fileSystem);
+      if (statIfPresent(fileSystem, destination)) {
+        throw new Error(`Refusing to overwrite existing native module: ${destination}`);
+      }
+      return { source: path, destination, dev, ino };
+    });
+  return { bundle, moves, compatibilityLinks, codeObjects, createdDirectories: [] };
 }
 
 /** All moves stay inside the same .app; relative links retain the old lookup paths. */
@@ -145,6 +163,37 @@ export function applyBundleLayout(plan, fileSystem = fs, save = () => {}) {
   }
 }
 
+/** Mirror retained native files into the relocated directory layout without moving them. */
+export function applyBundleCompatibilityLinks(plan, fileSystem = fs, save = () => {}) {
+  for (const link of plan.compatibilityLinks ?? []) {
+    checkBundleCompatibilityLink(plan, link, fileSystem);
+    if (!sameFile(fileSystem.lstatSync(link.source), link)) {
+      throw new Error(`Native module changed during repair: ${link.source}`);
+    }
+    if (statIfPresent(fileSystem, link.destination)) {
+      throw new Error(`Refusing to overwrite existing native module: ${link.destination}`);
+    }
+    fileSystem.symlinkSync(
+      relative(dirname(link.destination), link.source),
+      link.destination,
+      'file',
+    );
+    syncDirectory(dirname(link.destination), fileSystem);
+    save();
+  }
+}
+
+function checkBundleCompatibilityLink(plan, link, fileSystem) {
+  if (
+    !inside(join(plan.bundle, 'Contents', 'MacOS'), link.source) ||
+    !inside(join(plan.bundle, 'Contents', 'Resources', 'MXU-portable'), link.destination)
+  ) {
+    throw new Error('Compatibility link leaves the app bundle.');
+  }
+  checkDestinationParents(plan.bundle, dirname(link.source), fileSystem);
+  checkDestinationParents(plan.bundle, dirname(link.destination), fileSystem);
+}
+
 function sameFile(stat, expected) {
   return stat && !stat.isSymbolicLink() && stat.dev === expected.dev && stat.ino === expected.ino;
 }
@@ -162,6 +211,19 @@ export function syncDirectory(path, fileSystem = fs) {
 
 /** Infer incomplete link/unlink operations from the durable plan and original inodes. */
 export function rollbackBundleLayout(plan, fileSystem = fs) {
+  for (const link of [...(plan.compatibilityLinks ?? [])].reverse()) {
+    checkBundleCompatibilityLink(plan, link, fileSystem);
+    const stat = statIfPresent(fileSystem, link.destination);
+    if (!stat) continue;
+    if (
+      !stat.isSymbolicLink() ||
+      resolve(dirname(link.destination), fileSystem.readlinkSync(link.destination)) !== link.source
+    ) {
+      throw new Error(`Cannot remove a changed native module link: ${link.destination}`);
+    }
+    fileSystem.unlinkSync(link.destination);
+    syncDirectory(dirname(link.destination), fileSystem);
+  }
   for (const move of [...plan.moves].reverse()) {
     if (
       !inside(join(plan.bundle, 'Contents', 'MacOS'), move.source) ||

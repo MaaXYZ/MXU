@@ -216,6 +216,43 @@ test('portable data is moved out of MacOS while native agent paths and resource 
   assert.equal(again.relocated, 0);
 });
 
+test('native Python modules stay importable beside a relocated entry script', (t) => {
+  const bundle = fixture(t);
+  const macos = join(bundle, 'Contents', 'MacOS');
+  const resources = join(bundle, 'Contents', 'Resources');
+  const agent = join(macos, 'agent');
+  mkdirSync(agent);
+  writeFileSync(join(agent, 'main.py'), 'import agent_native\n');
+  const native = Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 1, 2, 3, 4]);
+  writeFileSync(join(agent, 'agent_native.so'), native);
+  const fileSystem = layoutFs();
+  const tools = codesignStub();
+
+  const result = repairMacosBundle(bundle, {
+    platform: 'darwin',
+    run: tools.run,
+    repairLayout: true,
+    fileSystem,
+  });
+
+  assert.equal(result.relocated, 1);
+  const relocatedScript = join(resources, 'MXU-portable', 'agent', 'main.py');
+  const relocatedNative = join(resources, 'MXU-portable', 'agent', 'agent_native.so');
+  assert.equal(fs.readFileSync(relocatedScript, 'utf8'), 'import agent_native\n');
+  assert.equal(
+    fileSystem.readlinkSync(relocatedNative),
+    join('..', '..', '..', 'MacOS', 'agent', 'agent_native.so'),
+  );
+  assert.deepEqual(fs.readFileSync(relocatedNative), native);
+  assert.equal(fileSystem.lstatSync(join(agent, 'agent_native.so')).isSymbolicLink(), false);
+  assert.equal(
+    fs.existsSync(
+      join(dirname(fileSystem.realpathSync(join(agent, 'main.py'))), 'agent_native.so'),
+    ),
+    true,
+  );
+});
+
 test('portable layouts require an explicit repair option before any signing mutation', (t) => {
   const bundle = fixture(t);
   const { macos } = portableLayout(bundle);

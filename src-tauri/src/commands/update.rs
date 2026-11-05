@@ -918,20 +918,26 @@ mod bundle_update_tests {
         for result in [
             validate_update_target(target_string.clone()),
             validate_update_target(resources.join("new/version").to_string_lossy().into_owned()),
-            extract_zip(missing_archive.clone(), target_string.clone()),
             apply_incremental_update(
                 missing_archive.clone(),
                 target_string.clone(),
                 vec!["interface.json".into()],
             ),
-            apply_full_update(missing_archive.clone(), target_string.clone()),
-            fallback_update(missing_archive, target_string.clone(), "2".into()).map(|_| ()),
+            fallback_update(missing_archive.clone(), target_string.clone(), "2".into()).map(|_| ()),
             cleanup_extract_dir(target_string.clone()),
-            cleanup_update_artifacts(target_string.clone(), target_string),
+            cleanup_update_artifacts(target_string.clone(), target_string.clone()),
             move_to_old_folder(&target.join("interface.json")),
+            move_to_old_folder_dest(&target.join("interface.json")).map(|_| ()),
         ] {
             assert_eq!(result.unwrap_err(), "SIGNED_APP_UPDATE_UNSUPPORTED");
         }
+        let extract_error =
+            extract_zip(missing_archive.clone(), target_string.clone()).unwrap_err();
+        assert_eq!(extract_error.message, "SIGNED_APP_UPDATE_UNSUPPORTED");
+        assert!(!extract_error.corrupt);
+        let apply_error = apply_full_update(missing_archive, target_string).unwrap_err();
+        assert_eq!(apply_error.message, "SIGNED_APP_UPDATE_UNSUPPORTED");
+        assert!(!apply_error.rolled_back);
         assert_eq!(
             std::fs::read(target.join("interface.json")).unwrap(),
             b"original resource"
