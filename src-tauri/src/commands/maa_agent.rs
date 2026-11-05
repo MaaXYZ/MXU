@@ -697,10 +697,36 @@ pub async fn start_tasks_impl(
     };
     debug!("[start_tasks] Resource, controller and tasker acquired, proceeding...");
 
-    // 检查 Tasker 初始化状态
+    // 检查 Tasker 初始化状态。
+    //
+    // inited() 是瞬时快照：并发连接场景下（典型：preActions 触发的"重置连接
+    // 状态"与重连请求并发），刚 bind 的控制器可能仍处于异步连接中，甚至
+    // 刚被并发的替换流程销毁重建。快照失败时立即报错会让"连接成功"后启动
+    // 的任务必然失败——这里改为有限时间等待连接就绪，超时才报错。
     if !tasker.inited() {
-        error!("[start_tasks] Tasker not properly initialized");
-        return Err("Tasker not properly initialized".to_string());
+        warn!("[start_tasks] Tasker not inited yet, waiting for controller connection...");
+        const WAIT_TIMEOUT_MS: u64 = 10_000;
+        const POLL_INTERVAL_MS: u64 = 250;
+        let mut waited_ms: u64 = 0;
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(POLL_INTERVAL_MS)).await;
+            waited_ms += POLL_INTERVAL_MS;
+            if tasker.inited() {
+                info!(
+                    "[start_tasks] controller connection ready after {}ms, proceeding",
+                    waited_ms
+                );
+                break;
+            }
+            if waited_ms >= WAIT_TIMEOUT_MS {
+                error!(
+                    "[start_tasks] Tasker not properly initialized after waiting {}ms \
+                     (controller connection not ready)",
+                    waited_ms
+                );
+                return Err("Tasker not properly initialized".to_string());
+            }
+        }
     }
 
     // 启动所有 Agent（如果配置了）
