@@ -305,26 +305,6 @@ pub fn get_exe_directory() -> Result<PathBuf, String> {
         .ok_or_else(|| "无法获取 exe 所在目录".to_string())
 }
 
-/// macOS 便携目录规范化后，旧资源路径通过符号链接指向此目录。
-/// 只接受当前 .app 内的真实资源目录，不能通过符号链接扩大到包外。
-#[cfg(any(target_os = "macos", test))]
-pub(crate) fn get_macos_bundle_resource_dir(exe_dir: &std::path::Path) -> Option<PathBuf> {
-    let contents = exe_dir.parent()?;
-    if exe_dir.file_name()? != "MacOS"
-        || contents.file_name()? != "Contents"
-        || contents.parent()?.extension()? != "app"
-    {
-        return None;
-    }
-    let contents = contents.canonicalize().ok()?;
-    let resources = contents
-        .join("Resources")
-        .join("MXU-portable")
-        .canonicalize()
-        .ok()?;
-    (resources.is_dir() && resources.starts_with(&contents)).then_some(resources)
-}
-
 /// 获取可执行文件所在目录下的 maafw 子目录
 pub fn get_maafw_dir() -> Result<PathBuf, String> {
     Ok(get_exe_directory()?.join("maafw"))
@@ -337,6 +317,58 @@ pub fn build_user_agent() -> String {
     let arch = std::env::consts::ARCH;
     let tauri_version = tauri::VERSION;
     format!("MXU/{} ({}; {}) Tauri/{}", version, os, arch, tauri_version)
+}
+
+/// macOS 便携目录规范化后，旧资源路径通过符号链接指向此目录。
+/// 只接受当前 .app 内的真实资源目录，不能通过符号链接扩大到包外。
+#[cfg(any(target_os = "macos", test))]
+pub(crate) fn get_macos_bundle_resource_dir(exe_path: &std::path::Path) -> Option<PathBuf> {
+    let macos_dir = exe_path.parent()?;
+    if macos_dir.file_name()? != "MacOS" {
+        return None;
+    }
+    let contents = macos_dir.parent()?;
+    if contents.file_name()? != "Contents" || contents.parent()?.extension()? != "app" {
+        return None;
+    }
+    let contents = contents.canonicalize().ok()?;
+    let resources = contents
+        .join("Resources")
+        .join("MXU-portable")
+        .canonicalize()
+        .ok()?;
+    (resources.is_dir() && resources.starts_with(&contents)).then_some(resources)
+}
+
+#[cfg(test)]
+mod bundle_resource_tests {
+    use super::*;
+
+    #[test]
+    fn macos_relocated_resources_are_scoped_to_the_current_bundle() {
+        let root = std::env::temp_dir().join(format!(
+            "mxu-bundle-resources-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let contents = root.join("MaaEnd.app").join("Contents");
+        let macos = contents.join("MacOS");
+        let executable = macos.join("mxu");
+        let resources = contents.join("Resources").join("MXU-portable");
+        std::fs::create_dir_all(&macos).unwrap();
+        assert!(get_macos_bundle_resource_dir(&executable).is_none());
+        std::fs::create_dir_all(&resources).unwrap();
+        assert_eq!(
+            get_macos_bundle_resource_dir(&executable),
+            Some(resources.canonicalize().unwrap())
+        );
+        assert!(get_macos_bundle_resource_dir(&root.join("mxu")).is_none());
+        assert!(get_macos_bundle_resource_dir(&resources.join("mxu")).is_none());
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }
 
 /// 构建启动程序的 Command
@@ -388,34 +420,4 @@ pub fn build_launch_command(
     }
 
     cmd
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn macos_relocated_resources_are_scoped_to_the_current_bundle() {
-        let root = std::env::temp_dir().join(format!(
-            "mxu-bundle-resources-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let contents = root.join("MaaEnd.app").join("Contents");
-        let macos = contents.join("MacOS");
-        let resources = contents.join("Resources").join("MXU-portable");
-        std::fs::create_dir_all(&macos).unwrap();
-        assert!(get_macos_bundle_resource_dir(&macos).is_none());
-        std::fs::create_dir_all(&resources).unwrap();
-        assert_eq!(
-            get_macos_bundle_resource_dir(&macos),
-            Some(resources.canonicalize().unwrap())
-        );
-        assert!(get_macos_bundle_resource_dir(&root).is_none());
-        assert!(get_macos_bundle_resource_dir(&resources).is_none());
-        std::fs::remove_dir_all(root).unwrap();
-    }
 }
