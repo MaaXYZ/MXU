@@ -203,16 +203,6 @@ pub async fn start_web_server(
         ws_broadcast,
     };
 
-    // MCP 服务（/mcp）：开关与本机限制由 mcp::router 内部处理
-    let mcp_routes = crate::mcp::bridge::get().map(|bridge| {
-        crate::mcp::router(
-            bridge,
-            state.maa_state.clone(),
-            state.app_config.clone(),
-            state.app_handle.package_info().version.to_string(),
-        )
-    });
-
     // API 路由
     let api_routes = Router::new()
         .route("/focus/pending", get(handle_pending_focus))
@@ -322,9 +312,6 @@ pub async fn start_web_server(
 
     // 主路由：API + 静态前端页面
     let mut app: Router = Router::new().nest("/api", api_routes);
-    if let Some(mcp_routes) = mcp_routes {
-        app = app.merge(mcp_routes);
-    }
 
     // dev 构建：反向代理到 Vite dev server，实现实时 HMR
     #[cfg(debug_assertions)]
@@ -452,12 +439,7 @@ pub async fn start_web_server(
                     actual_port
                 );
             }
-            if let Err(e) = axum::serve(
-                listener,
-                app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
-            )
-            .await
-            {
+            if let Err(e) = axum::serve(listener, app).await {
                 log::error!("Web server error: {}", e);
             }
         }

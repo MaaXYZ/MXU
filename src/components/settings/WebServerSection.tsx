@@ -1,11 +1,10 @@
 import { useTranslation } from 'react-i18next';
-import { Globe, Server, EthernetPort, ExternalLink, Bot, Copy, Check } from 'lucide-react';
+import { Globe, Server, EthernetPort, ExternalLink } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { isTauri, loggers } from '@/utils';
 import { useAppStore } from '@/stores/appStore.ts';
 import { SwitchButton } from '@/components/FormControls.tsx';
 import clsx from 'clsx';
-import { syncMcpEnabled } from '@/services/mcpBridge';
 
 export function WebServerSection() {
   const { t } = useTranslation();
@@ -16,14 +15,11 @@ export function WebServerSection() {
     setWebServerEnabled,
     webServerPort: configuredPort,
     setWebServerPort: setConfiguredPort,
-    mcpEnabled,
-    setMcpEnabled,
   } = useAppStore();
   const [showRestartPrompt, setShowRestartPrompt] = useState(false);
   const [portInput, setPortInput] = useState(String(configuredPort));
   const [webServerPort, setWebServerPort] = useState<number>(0);
   const [lanIp, setLanIp] = useState<string | null>(null);
-  const [mcpAddressCopied, setMcpAddressCopied] = useState(false);
 
   useEffect(() => {
     setPortInput(String(configuredPort));
@@ -104,29 +100,6 @@ export function WebServerSection() {
       loggers.ui.error('重启失败:', err);
     }
   }, []);
-
-  // AI 助手（MCP）挂在 Web 服务上：Web 服务开关重启后才生效，以实际监听端口判断当前是否可用
-  const mcpAvailable = webServerEnabled && webServerPort > 0;
-  const mcpAddress = webServerPort > 0 ? `http://127.0.0.1:${webServerPort}/mcp` : null;
-
-  const handleMcpToggle = useCallback(
-    (v: boolean) => {
-      setMcpEnabled(v);
-      syncMcpEnabled(v).catch((err) => loggers.ui.warn('同步 MCP 开关失败:', err));
-    },
-    [setMcpEnabled],
-  );
-
-  const handleCopyMcpAddress = useCallback(async () => {
-    if (!mcpAddress) return;
-    try {
-      await navigator.clipboard.writeText(mcpAddress);
-      setMcpAddressCopied(true);
-      setTimeout(() => setMcpAddressCopied(false), 1500);
-    } catch (err) {
-      loggers.ui.warn('复制 MCP 地址失败:', err);
-    }
-  }, [mcpAddress]);
 
   const handleOpenWebServer = useCallback(async () => {
     if (!webServerAddress) return;
@@ -237,58 +210,6 @@ export function WebServerSection() {
             </div>
           )}
         </div>
-
-        {/* AI 助手（MCP），仅桌面端 */}
-        {isTauri() && (
-          <div className="pt-4 border-t border-border space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Bot
-                  className={clsx('w-5 h-5', mcpAvailable ? 'text-accent' : 'text-text-muted')}
-                />
-                <div>
-                  <span
-                    className={clsx(
-                      'font-medium',
-                      mcpAvailable ? 'text-text-primary' : 'text-text-muted',
-                    )}
-                  >
-                    {t('mcp.enabled')}
-                  </span>
-                  <p className="text-xs text-text-muted mt-0.5">
-                    {mcpAvailable ? t('mcp.enabledHint') : t('mcp.requiresWebServer')}
-                  </p>
-                </div>
-              </div>
-              <SwitchButton
-                value={mcpAvailable && mcpEnabled}
-                onChange={handleMcpToggle}
-                disabled={!mcpAvailable}
-              />
-            </div>
-
-            {/* 连接地址 */}
-            {mcpAvailable && mcpEnabled && mcpAddress && (
-              <div className="flex items-center justify-between ml-8 p-2.5 bg-bg-tertiary rounded-lg text-sm">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-text-secondary shrink-0">{t('mcp.address')}</span>
-                  <span className="font-mono text-text-primary truncate">{mcpAddress}</span>
-                </div>
-                <button
-                  onClick={handleCopyMcpAddress}
-                  className="flex items-center gap-1 ml-4 px-3 py-1 text-text-muted hover:text-text-primary rounded transition-colors shrink-0"
-                >
-                  {mcpAddressCopied ? (
-                    <Check className="w-3.5 h-3.5 text-accent" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                  {mcpAddressCopied ? t('mcp.copied') : t('mcp.copy')}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </section>
   );
