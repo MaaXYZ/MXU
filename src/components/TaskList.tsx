@@ -45,9 +45,14 @@ import {
   importTabConfigFromFile,
   getImportErrorType,
 } from '@/utils/tabExportImport';
-import { generateId, initializeAllOptionValues, sanitizeOptionValues } from '@/stores/helpers';
+import {
+  generateId,
+  initializeAllOptionValues,
+  isTaskCompatible,
+  sanitizeOptionValues,
+} from '@/stores/helpers';
 import { decryptPasswordOptionValues } from '@/utils/passwordOptionValues';
-import { isPretaskName } from '@/types/pretasks';
+import { buildPretaskDef, getPretaskItem, isPretaskName } from '@/types/pretasks';
 import { isPresetCompatible } from '@/utils/presetCompatibility';
 import { loggers } from '@/utils/logger';
 import { toast } from 'sonner';
@@ -286,6 +291,7 @@ export function TaskList() {
     clearLastAddedTaskId,
     projectInterface,
     selectedController,
+    selectedResource,
     skippedPresetInstanceIds,
   } = useAppStore();
 
@@ -493,17 +499,24 @@ export function TaskList() {
   }
 
   const tasks = instance.selectedTasks;
+  const controllerName =
+    selectedController[instance.id] ||
+    instance.controllerName ||
+    projectInterface?.controller[0]?.name;
+  const resourceName =
+    selectedResource[instance.id] || instance.resourceName || projectInterface?.resource[0]?.name;
   // pretask 伪任务作为卡片置于前置程序之上，其余任务保持在下方
-  const pretaskTasks = tasks.filter((t) => isPretaskName(t.taskName));
+  // 与当前控制器/资源不兼容的 pretask 仍保留在配置中（切换后可恢复），但不显示
+  const pretaskTasks = tasks.filter((t) => {
+    if (!isPretaskName(t.taskName)) return false;
+    const item = getPretaskItem(projectInterface, t.taskName);
+    return !item || isTaskCompatible(buildPretaskDef(item), controllerName, resourceName);
+  });
   const normalTasks = tasks.filter((t) => !isPretaskName(t.taskName));
 
   const preActions = instance.preActions ?? [];
   const showPreActions = preActions.length > 0;
   const canReorderPreActions = !isInstanceRunning && preActions.length > 1;
-  const controllerName =
-    selectedController[instance.id] ||
-    instance.controllerName ||
-    projectInterface?.controller[0]?.name;
   const presets = (projectInterface?.preset ?? []).filter((preset) =>
     isPresetCompatible(preset, controllerName),
   );
