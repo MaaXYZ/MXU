@@ -416,16 +416,16 @@ async function pruneBackups(projectName?: string): Promise<void> {
 /**
  * 在更新前备份配置文件到 cache/config_backup/。
  *
- * 更新是高风险操作，这里不受滚动备份的 1 天间隔限制，每次都写；
+ * 配置位于数据目录，更新是高风险操作，这里不受滚动备份的 1 天间隔限制，每次都写；
  * 多出来的同日条目由按份数裁剪消化。
  */
 export async function backupConfigBeforeUpdate(
-  basePath: string,
+  dataPath: string,
   projectName?: string,
 ): Promise<void> {
   if (!isTauri()) return;
 
-  const configPath = getConfigPathSync(basePath, projectName);
+  const configPath = getConfigPathSync(dataPath, projectName);
 
   try {
     const { exists, readTextFile } = await import('@tauri-apps/plugin-fs');
