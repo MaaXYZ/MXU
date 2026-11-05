@@ -67,7 +67,6 @@ import {
 import { scheduleService } from '@/services/scheduleService';
 import { stopInstanceTasks } from '@/services/taskStopService';
 import { taskStartService, type TaskStartOptions } from '@/services/taskStartService';
-import { taskControlService } from '@/services/taskControlService';
 import { isTaskSelectedForRun, filterTasksForRun } from '@/utils/taskRunFilter';
 import { isTauri } from '@/utils/paths';
 import { buildPiEnvVars } from '@/utils/piEnv';
@@ -213,8 +212,6 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
   const preActionStopRequestedRef = useRef(false);
   const lastStartCancelledRef = useRef(false);
   const startingRef = useRef(false);
-  /** 由外部（MCP）发起、正在启动中的实例；与按钮/快捷键的启动锁互斥，避免同一实例重复启动 */
-  const externalStartingIdsRef = useRef(new Set<string>());
 
   const instance = getActiveInstance();
   const tasks = instance?.selectedTasks || [];
@@ -1416,7 +1413,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
       }
 
       // isStarting 是 state，disabled 要等重新渲染才生效，挡不住同一 tick 内的连点
-      if (startingRef.current || externalStartingIdsRef.current.has(instance.id)) return;
+      if (startingRef.current) return;
       startingRef.current = true;
 
       try {
@@ -1456,37 +1453,6 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
 
   const hotkeyStartingRef = useRef(false);
 
-  // 外部触发入口（MCP）：与托盘/全局快捷键走同一套启动、停止流程
-  const performStopRef = useRef(performStop);
-  performStopRef.current = performStop;
-
-  useEffect(() => {
-    taskControlService.setHandlers({
-      start: async (targetInstance, options) => {
-        const isActive = useAppStore.getState().activeInstanceId === targetInstance.id;
-        // 按钮/快捷键正在启动当前标签页：不再重复启动
-        if (isActive && (startingRef.current || hotkeyStartingRef.current)) {
-          throw new Error(tRef.current('mcp.errors.tabStarting'));
-        }
-        externalStartingIdsRef.current.add(targetInstance.id);
-        // 当前标签页的启动按钮同步显示「启动中」
-        if (isActive) setIsStarting(true);
-        try {
-          return await scheduleTriggerRef.current(targetInstance, {
-            ...options,
-            // 自动连接阶段仅在当前标签页的工具栏上展示
-            onPhaseChange: isActive ? setAutoConnectPhase : undefined,
-          });
-        } finally {
-          externalStartingIdsRef.current.delete(targetInstance.id);
-          if (isActive) setIsStarting(false);
-        }
-      },
-      stop: (targetInstanceId) => performStopRef.current(targetInstanceId),
-    });
-    return () => taskControlService.setHandlers(null);
-  }, []);
-
   // 监听来自 App 的全局快捷键事件：F10 开始任务，F11 结束任务
   useEffect(() => {
     const handleStartTasks = async (evt: Event) => {
@@ -1506,7 +1472,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
         return;
       }
       const currentInstance = useAppStore.getState().getActiveInstance();
-      if (!currentInstance || externalStartingIdsRef.current.has(currentInstance.id)) {
+      if (!currentInstance) {
         notifySettled(false);
         return;
       }

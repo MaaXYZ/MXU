@@ -1,5 +1,4 @@
 pub mod commands;
-mod mcp;
 mod mxu_actions;
 pub mod screenshot_service;
 mod tray;
@@ -49,9 +48,6 @@ pub fn run() {
                 })
                 .timezone_strategy(TimezoneStrategy::UseLocal)
                 .level(log::LevelFilter::Debug)
-                // MCP SDK 的 DEBUG 日志会记录每次请求/响应的完整内容（含截图 base64），
-                // 只保留连接、会话结束等 INFO 级别记录
-                .level_for("rmcp", log::LevelFilter::Info)
                 .format(|out, message, record| {
                     out.finish(format_args!("[{}][{}][{}] {}",
                         chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
@@ -150,14 +146,6 @@ pub fn run() {
                     .unwrap_or(web_server::DEFAULT_PORT);
 
                 web_server::set_web_server_enabled(web_server_enabled);
-
-                // MCP 服务开关（运行时可由前端修改），桥需在 Web 服务器启动前初始化
-                let mcp_enabled = settings_obj
-                    .and_then(|s| s.get("mcpEnabled"))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                mcp::set_mcp_enabled(mcp_enabled);
-                mcp::bridge::init(app.handle().clone());
 
                 drop(settings);
 
@@ -348,11 +336,6 @@ pub fn run() {
             commands::system::get_os,
             commands::system::get_system_info,
             commands::system::get_web_server_port,
-            // MCP 服务
-            mcp::set_mcp_server_enabled,
-            mcp::bridge::mcp_respond,
-            mcp::bridge::mcp_bridge_ready,
-            mcp::texts::mcp_set_texts,
             commands::system::get_local_lan_ip,
             commands::system::get_webview2_dir,
             // 托盘相关命令
