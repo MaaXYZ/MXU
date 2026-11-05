@@ -666,7 +666,7 @@ export const useAppStore = create<AppState>()(
           taskName,
           enabled: presetTask.enabled !== false,
           optionValues,
-          expanded: true,
+          expanded: !isPretaskName(taskName), // pretask 默认收起
         };
       };
 
