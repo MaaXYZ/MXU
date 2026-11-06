@@ -27,6 +27,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -246,6 +247,11 @@ pub fn run() {
                 log::error!("Failed to initialize system tray: {}", e);
             }
 
+            #[cfg(target_os = "macos")]
+            if let Err(e) = commands::notification::initialize_macos_notifications(app.handle()) {
+                log::warn!("[MXU_NOTIFY] Failed to initialize badge synchronization: {}", e);
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -362,6 +368,10 @@ pub fn run() {
         ])
         .on_window_event(|window, event| {
             match event {
+                #[cfg(target_os = "macos")]
+                tauri::WindowEvent::Focused(true) => {
+                    commands::notification::mark_macos_notifications_read();
+                }
                 // 窗口关闭请求：检查是否最小化到托盘
                 tauri::WindowEvent::CloseRequested { api, .. } => {
                     if tray::handle_close_requested(window.app_handle()) {
@@ -394,6 +404,8 @@ pub fn run() {
         // 退出前收尾遥测（结束 Session 与悬挂 Transaction 并 flush）
         if matches!(event, tauri::RunEvent::Exit) {
             commands::focus::cancel_all();
+            #[cfg(target_os = "macos")]
+            commands::notification::shutdown_macos_notifications();
             commands::telemetry::on_app_exit();
             // 更新后重启会在 Exit 回调之后拉起新进程，须先释放单实例锁
             #[cfg(windows)]

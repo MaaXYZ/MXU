@@ -3131,16 +3131,21 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
+ "block2",
  "bytes",
  "chrono",
  "clap",
+ "dunce",
  "flate2",
  "futures-util",
+ "image",
  "libc",
  "log",
  "maa-framework",
  "machine-uid",
- "notify-rust",
+ "objc2",
+ "objc2-foundation",
+ "objc2-user-notifications",
  "os_info",
  "regex",
  "reqwest 0.12.28",
@@ -3161,8 +3166,10 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "tauri-plugin-http",
  "tauri-plugin-log",
+ "tauri-plugin-notification",
  "tauri-plugin-opener",
  "tauri-plugin-process",
+ "tempfile",
  "tokio",
  "tower-http 0.5.2",
  "urlencoding",
@@ -3532,6 +3539,8 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9df9128cbbfef73cda168416ccf7f837b62737d748333bfe9ab71c245d76613e"
 dependencies = [
+ "bitflags 2.10.0",
+ "block2",
  "objc2",
  "objc2-foundation",
 ]
@@ -5832,6 +5841,25 @@ dependencies = [
  "tauri-plugin",
  "thiserror 2.0.17",
  "time",
+]
+
+[[package]]
+name = "tauri-plugin-notification"
+version = "2.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01fc2c5ff41105bd1f7242d8201fdf3efd70749b82fa013a17f2126357d194cc"
+dependencies = [
+ "log",
+ "notify-rust",
+ "rand 0.9.5",
+ "serde",
+ "serde_json",
+ "serde_repr",
+ "tauri",
+ "tauri-plugin",
+ "thiserror 2.0.17",
+ "time",
+ "url",
 ]
 
 [[package]]

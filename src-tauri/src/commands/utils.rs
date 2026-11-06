@@ -286,26 +286,71 @@ pub fn normalize_path(path: &str) -> PathBuf {
 pub fn get_logs_dir() -> PathBuf {
     get_app_data_dir()
         .unwrap_or_else(|_| {
-            // 回退到 exe 目录
-            let exe_path = std::env::current_exe().unwrap_or_default();
-            exe_path
-                .parent()
-                .unwrap_or(std::path::Path::new("."))
-                .to_path_buf()
+            // 回退到运行时项目目录
+            get_exe_directory().unwrap_or_else(|_| PathBuf::from("."))
         })
         .join("debug")
 }
 
-/// 获取 exe 所在目录路径（内部使用）
+/// 获取运行时项目目录（内部使用）。
+///
+/// Windows/Linux 下为可执行文件所在目录；macOS 使用 `.app` 发布时，
+/// 为 `.app` 所在目录，使 `interface.json`、`maafw/` 等项目资源仍可与
+/// 应用包并列放置。
 pub fn get_exe_directory() -> Result<PathBuf, String> {
     let exe_path = std::env::current_exe().map_err(|e| format!("获取 exe 路径失败: {}", e))?;
-    exe_path
+    let exe_dir = exe_path
         .parent()
         .map(|p| p.to_path_buf())
-        .ok_or_else(|| "无法获取 exe 所在目录".to_string())
+        .ok_or_else(|| "无法获取 exe 所在目录".to_string())?;
+
+    #[cfg(target_os = "macos")]
+    if let Some(bundle) = macos_app_bundle(&exe_path) {
+        if let Some(project_dir) = bundle.parent() {
+            return Ok(project_dir.to_path_buf());
+        }
+    }
+
+    Ok(exe_dir)
 }
 
-/// 获取可执行文件所在目录下的 maafw 子目录
+#[cfg(any(target_os = "macos", test))]
+fn macos_app_bundle(exe_path: &std::path::Path) -> Option<PathBuf> {
+    let macos_dir = exe_path.parent()?;
+    if macos_dir.file_name()? != "MacOS" {
+        return None;
+    }
+    let contents_dir = macos_dir.parent()?;
+    if contents_dir.file_name()? != "Contents" {
+        return None;
+    }
+    let bundle = contents_dir.parent()?;
+    (bundle.extension()? == "app").then(|| bundle.to_path_buf())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn detects_macos_app_bundle_inside_project_directory() {
+        let bundle = macos_app_bundle(Path::new("project/MXU.app/Contents/MacOS/mxu"));
+        assert_eq!(bundle.as_deref(), Some(Path::new("project/MXU.app")));
+        assert_eq!(
+            bundle.as_deref().and_then(std::path::Path::parent),
+            Some(Path::new("project"))
+        );
+    }
+
+    #[test]
+    fn ignores_non_app_executables() {
+        assert!(macos_app_bundle(Path::new("project/mxu")).is_none());
+        assert!(macos_app_bundle(Path::new("project/MXU.app/mxu")).is_none());
+    }
+}
+
+/// 获取运行时项目目录下的 maafw 子目录
 pub fn get_maafw_dir() -> Result<PathBuf, String> {
     Ok(get_exe_directory()?.join("maafw"))
 }
