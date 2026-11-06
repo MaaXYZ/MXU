@@ -9,6 +9,12 @@ fn main() {
 
     #[cfg(target_os = "windows")]
     {
+        // 单实例：同一安装目录已有实例时唤起其窗口并退出。
+        // 放在自提权之前，避免已有实例时多弹一次 UAC
+        if !mxu_lib::single_instance::acquire_or_activate() {
+            return;
+        }
+
         // 设置 WebView2 数据目录为程序所在目录下的 webview_data 文件夹
         // 这样可以避免用户名包含特殊字符（如中文）导致 WebView2 无法创建数据目录的问题
         if let Ok(exe_path) = std::env::current_exe() {
@@ -56,6 +62,9 @@ fn main() {
             use winsafe::co::{SEE_MASK, SW};
             use winsafe::{ShellExecuteEx, SHELLEXECUTEINFO};
 
+            // 先释放单实例锁，否则提权后的新进程会被当成重复启动
+            mxu_lib::single_instance::release();
+
             let result = ShellExecuteEx(&SHELLEXECUTEINFO {
                 file: &exe_path.to_string_lossy(),
                 verb: Option::from("runas"),
@@ -67,6 +76,11 @@ fn main() {
             if result.is_ok() {
                 // 新的管理员进程已启动，退出当前普通权限进程
                 std::process::exit(0);
+            }
+
+            // 提权失败（如用户取消 UAC），以普通权限继续运行，重新获取单实例锁
+            if !mxu_lib::single_instance::acquire_or_activate() {
+                return;
             }
         }
     }

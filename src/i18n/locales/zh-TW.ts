@@ -110,6 +110,8 @@ export default {
     hotkeysGlobalRegisterFailed: '全域快捷鍵 {{combo}} 註冊失敗：{{error}}',
     minimizeToTray: '關閉時最小化到托盤',
     minimizeToTrayHint: '點選關閉按鈕時隱藏到系統托盤而非退出程式',
+    singleInstance: '多開偵測',
+    singleInstanceHint: '同一目錄已在執行時不再啟動新實例，改為喚起現有視窗（重新啟動後生效）',
     autoStart: '開機自啟動',
     autoStartHint: '系統啟動時自動執行本程式',
     autoStartInstance: '啟動後自動執行',

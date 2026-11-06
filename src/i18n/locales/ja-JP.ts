@@ -114,6 +114,9 @@ export default {
       'グローバルショートカット {{combo}} の登録に失敗しました：{{error}}',
     minimizeToTray: '閉じる時にトレイに最小化',
     minimizeToTrayHint: '閉じるボタンをクリックすると、終了せずにシステムトレイに隠れます',
+    singleInstance: '多重起動の検出',
+    singleInstanceHint:
+      '同じフォルダで既に実行中の場合、新しいインスタンスを起動せずに既存のウィンドウを前面に表示します（再起動後に有効）',
     autoStart: 'スタートアップ時に起動',
     autoStartHint: 'システム起動時にこのアプリケーションを自動的に起動します',
     autoStartInstance: '起動後に自動実行',

@@ -117,6 +117,9 @@ export default {
     hotkeysGlobalRegisterFailed: 'Failed to register global hotkey {{combo}}: {{error}}',
     minimizeToTray: 'Minimize to tray on close',
     minimizeToTrayHint: 'Hide to system tray instead of exiting when clicking close button',
+    singleInstance: 'Multi-instance detection',
+    singleInstanceHint:
+      'When already running from the same folder, bring the existing window to the front instead of starting a new instance (takes effect after restart)',
     autoStart: 'Launch at startup',
     autoStartHint: 'Automatically start this application when the system boots',
     autoStartInstance: 'Auto-execute on startup',

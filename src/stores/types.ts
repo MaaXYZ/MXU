@@ -433,6 +433,10 @@ export interface AppState {
   minimizeToTray: boolean;
   setMinimizeToTray: (enabled: boolean) => void;
 
+  // 多开检测（仅 Windows，重启生效）
+  singleInstance: boolean;
+  setSingleInstance: (enabled: boolean) => void;
+
   // 是否为开机自启动模式（无人值守，跳过阻塞式弹窗）
   isAutoStartMode: boolean;
   setIsAutoStartMode: (mode: boolean) => void;

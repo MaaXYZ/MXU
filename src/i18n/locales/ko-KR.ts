@@ -112,6 +112,9 @@ export default {
     hotkeysGlobalRegisterFailed: '전역 단축키 {{combo}} 등록 실패: {{error}}',
     minimizeToTray: '닫을 때 트레이로 최소화',
     minimizeToTrayHint: '닫기 버튼을 클릭하면 종료하지 않고 시스템 트레이에 숨깁니다',
+    singleInstance: '중복 실행 감지',
+    singleInstanceHint:
+      '같은 폴더에서 이미 실행 중이면 새 인스턴스를 시작하지 않고 기존 창을 앞으로 가져옵니다 (재시작 후 적용)',
     autoStart: '시작 시 자동 실행',
     autoStartHint: '시스템 부팅 시 이 애플리케이션을 자동으로 시작합니다',
     autoStartInstance: '시작 후 자동 실행',

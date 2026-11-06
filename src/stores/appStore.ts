@@ -1586,6 +1586,7 @@ export const useAppStore = create<AppState>()(
         autoRunOnLaunch: config.settings.autoRunOnLaunch ?? false,
         autoStartRemovedInstanceName: config.settings.autoStartRemovedInstanceName,
         minimizeToTray: config.settings.minimizeToTray ?? false,
+        singleInstance: config.settings.singleInstance ?? true,
         onboardingCompleted: config.settings.onboardingCompleted ?? false,
         preActionConnectDelaySec: config.settings.preActionConnectDelaySec ?? 5,
         hotkeys: config.settings.hotkeys ?? {
@@ -2144,6 +2145,10 @@ export const useAppStore = create<AppState>()(
       }
     },
 
+    // 多开检测
+    singleInstance: true,
+    setSingleInstance: (enabled) => set({ singleInstance: enabled }),
+
     // 新用户引导
     onboardingCompleted: false,
     setOnboardingCompleted: (completed) => set({ onboardingCompleted: completed }),
@@ -2579,6 +2584,7 @@ function generateConfig(): MxuConfig {
           autoRunOnLaunch: state.autoRunOnLaunch,
           autoStartRemovedInstanceName: state.autoStartRemovedInstanceName,
           minimizeToTray: state.minimizeToTray,
+          singleInstance: state.singleInstance,
           onboardingCompleted: state.onboardingCompleted,
           preActionConnectDelaySec: state.preActionConnectDelaySec,
           hotkeys: state.hotkeys,
@@ -2660,6 +2666,7 @@ useAppStore.subscribe(
     autoRunOnLaunch: state.autoRunOnLaunch,
     autoStartRemovedInstanceName: state.autoStartRemovedInstanceName,
     minimizeToTray: state.minimizeToTray,
+    singleInstance: state.singleInstance,
     onboardingCompleted: state.onboardingCompleted,
     hotkeys: state.hotkeys,
     recentlyClosed: state.recentlyClosed,

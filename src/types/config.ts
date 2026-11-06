@@ -167,6 +167,7 @@ export interface AppSettings {
   allowLanAccess?: boolean; // Web UI 允许局域网访问（绑定 0.0.0.0，重启生效）
   webServerPort?: number; // Web 服务器监听端口（默认 12701，重启生效）
   minimizeToTray?: boolean; // 关闭时最小化到托盘（默认 false）
+  singleInstance?: boolean; // 多开检测：同一目录已运行时唤起已有窗口（仅 Windows，默认 true，重启生效）
   autoStartInstanceId?: string; // 启动后自动执行的实例 ID（为空或 undefined 表示不自动执行）
   autoRunOnLaunch?: boolean; // 非开机自启动的手动启动场景下，是否也自动执行选定的实例（默认 false）
   autoStartRemovedInstanceName?: string; // 被删除的自动执行配置名称（用于提示用户）

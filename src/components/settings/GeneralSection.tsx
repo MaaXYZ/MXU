@@ -6,6 +6,7 @@ import {
   BrushCleaning,
   Check,
   ChevronDown,
+  CopyX,
   HeartHandshake,
   ListChecks,
   Maximize2,
@@ -32,6 +33,9 @@ export function GeneralSection() {
     setConfirmBeforeDelete,
     minimizeToTray,
     setMinimizeToTray,
+    singleInstance,
+    setSingleInstance,
+    backendOS,
     setRightPanelWidth,
     setRightPanelCollapsed,
     setAddTaskPanelHeight,
@@ -293,6 +297,24 @@ export function GeneralSection() {
           </div>
         </div>
       </DesktopOnlyWrapper>
+
+      {/* ⑤ 多开检测（仅 Windows，重启生效） */}
+      {isTauri() && backendOS === 'windows' && (
+        <div className="bg-bg-secondary rounded-xl p-4 border border-border">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <CopyX className="w-5 h-5 text-accent" />
+              <div>
+                <span className="font-medium text-text-primary">
+                  {t('settings.singleInstance')}
+                </span>
+                <p className="text-xs text-text-muted mt-0.5">{t('settings.singleInstanceHint')}</p>
+              </div>
+            </div>
+            <SwitchButton value={singleInstance} onChange={(v) => setSingleInstance(v)} />
+          </div>
+        </div>
+      )}
 
       {/* ⑥ 显示选项预览 */}
       <div className="bg-bg-secondary rounded-xl p-4 border border-border">

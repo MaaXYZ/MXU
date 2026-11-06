@@ -649,7 +649,7 @@ fn prune_backups(data_path: &Path, config_filename: &str) {
     }
 }
 
-fn make_config_filename(project_name: Option<&str>) -> String {
+pub(crate) fn make_config_filename(project_name: Option<&str>) -> String {
     match project_name {
         Some(name) => {
             let sanitized: String = name

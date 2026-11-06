@@ -1,6 +1,8 @@
 pub mod commands;
 mod mxu_actions;
 pub mod screenshot_service;
+#[cfg(windows)]
+pub mod single_instance;
 mod tray;
 mod web_server;
 pub mod ws_broadcast;
@@ -71,6 +73,10 @@ pub fn run() {
                 app.handle().exit(1);
                 return Ok(());
             }
+
+            // 创建接收重复启动唤起消息的窗口
+            #[cfg(windows)]
+            single_instance::create_message_window(app.handle());
 
             // 创建 MaaState 并注册为 Tauri 管理状态
             let maa_state = Arc::new(MaaState::default());
@@ -388,6 +394,9 @@ pub fn run() {
         if matches!(event, tauri::RunEvent::Exit) {
             commands::focus::cancel_all();
             commands::telemetry::on_app_exit();
+            // 更新后重启会在 Exit 回调之后拉起新进程，须先释放单实例锁
+            #[cfg(windows)]
+            single_instance::release();
         }
     };
 
