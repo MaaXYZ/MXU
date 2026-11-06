@@ -54,13 +54,6 @@ export interface MacOSControllerConfig extends ControllerDisplayOptions {
   input_method: number;
 }
 
-/** WlRoots 控制器配置 (Linux) */
-export interface WlRootsControllerConfig extends ControllerDisplayOptions {
-  type: 'WlRoots';
-  wlr_socket_path: string;
-  use_win32_vk_code?: boolean;
-}
-
 /** Linux 原生控制器配置（截图：Wlr/PipeWire，输入：Wlr/UInput/Libei） */
 export interface LinuxControllerConfig extends ControllerDisplayOptions {
   type: 'Linux';
@@ -97,7 +90,6 @@ export type ControllerConfig =
   | AdbControllerConfig
   | Win32ControllerConfig
   | MacOSControllerConfig
-  | WlRootsControllerConfig
   | LinuxControllerConfig
   | PlayCoverControllerConfig
   | GamepadControllerConfig;
@@ -285,13 +277,7 @@ export function parseLinuxInputMethod(name: string | undefined): number {
 }
 
 /** Agent 配置（用于启动子进程） */
-export interface AgentConfig {
-  child_exec: string;
-  child_args?: string[];
-  identifier?: string;
-  /** 连接超时时间（毫秒），-1 表示无限等待 */
-  timeout?: number;
-}
+export type { AgentConfig } from './interface';
 
 /** 任务配置 */
 export interface TaskConfig {

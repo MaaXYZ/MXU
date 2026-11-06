@@ -40,12 +40,10 @@ const MAX_OPTION_VALUE_LENGTH = 512;
 const summarizeInputValue = (
   value: string,
   pipelineType?: InputItem['pipeline_type'],
-  inputType?: InputItem['input_type'],
   password?: boolean,
 ): string => {
   if (password) return value ? 'filled' : 'empty';
-  const isSafeToReport =
-    pipelineType === 'int' || pipelineType === 'bool' || (inputType === 'time' && !!value);
+  const isSafeToReport = pipelineType === 'int' || pipelineType === 'bool';
   if (isSafeToReport) return value;
   return value ? 'filled' : 'empty';
 };
@@ -104,12 +102,7 @@ const collectOptionSummary = (
           const raw = optionValue.values[inputDef.name] ?? inputDef.default ?? '';
           put(
             `${optionKey}.${inputDef.name}`,
-            summarizeInputValue(
-              raw,
-              inputDef.pipeline_type,
-              inputDef.input_type,
-              isPasswordInput(inputDef),
-            ),
+            summarizeInputValue(raw, inputDef.pipeline_type, isPasswordInput(inputDef)),
           );
         }
       }

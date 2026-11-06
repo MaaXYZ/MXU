@@ -28,10 +28,8 @@ export function useDeviceConnection({
   const {
     cachedAdbDevices,
     cachedWin32Windows,
-    cachedWlrootsSockets,
     setCachedAdbDevices,
     setCachedWin32Windows,
-    setCachedWlrootsSockets,
     setInstanceConnectionStatus,
     setInstanceResourceLoaded,
     setInstanceSavedDevice,
@@ -47,7 +45,6 @@ export function useDeviceConnection({
   const [deviceError, setDeviceError] = useState<string | null>(null);
   const [selectedAdbDevice, setSelectedAdbDevice] = useState<AdbDevice | null>(null);
   const [selectedWindow, setSelectedWindow] = useState<Win32Window | null>(null);
-  const [selectedWlrootsSocket, setSelectedWlrootsSocket] = useState<string | null>(null);
   const [showDeviceDropdown, setShowDeviceDropdown] = useState(false);
   const [playcoverAddress, setPlaycoverAddress] = useState(
     activeInstance?.savedDevice?.playcoverAddress || '127.0.0.1:1717',
@@ -152,25 +149,6 @@ export function useDeviceConnection({
         } else if (windows.length > 0) {
           setShowDeviceDropdown(true);
         }
-      } else if (controllerType === 'WlRoots') {
-        const sockets = await maaService.findWlrootsSockets();
-        setCachedWlrootsSockets(sockets);
-
-        let autoSelected: string | null = null;
-        if (savedDevice?.wlrSocketPath) {
-          const matched = sockets.filter((s) => s === savedDevice.wlrSocketPath);
-          if (matched.length === 1) {
-            autoSelected = matched[0];
-          }
-        } else if (sockets.length > 0) {
-          autoSelected = sockets[0];
-        }
-
-        if (autoSelected) {
-          handleSelectWlrootsSocket(autoSelected);
-        } else if (sockets.length > 0) {
-          setShowDeviceDropdown(true);
-        }
       }
     } catch (err) {
       setDeviceError(controllerErrorMessage(err));
@@ -186,7 +164,6 @@ export function useDeviceConnection({
     desktopWindowTitleRegex,
     setCachedAdbDevices,
     setCachedWin32Windows,
-    setCachedWlrootsSockets,
     t,
   ]);
 
@@ -295,57 +272,6 @@ export function useDeviceConnection({
     ],
   );
 
-  // 选择 WlRoots socket 并自动连接
-  const handleSelectWlrootsSocket = useCallback(
-    async (socketPath: string) => {
-      setSelectedWlrootsSocket(socketPath);
-      setShowDeviceDropdown(false);
-
-      setInstanceSavedDevice(instanceId, { wlrSocketPath: socketPath });
-
-      setIsConnecting(true);
-      setDeviceError(null);
-
-      try {
-        if (isConnected) {
-          await maaService.destroyInstance(instanceId).catch(() => {});
-          setIsConnected(false);
-          setInstanceResourceLoaded(instanceId, false);
-        }
-
-        const initialized = await ensureMaaInitialized();
-        if (!initialized) {
-          throw new Error(t('maa.initFailed'));
-        }
-
-        await maaService.createInstance(instanceId).catch(() => {});
-
-        const config: ControllerConfig = {
-          type: 'WlRoots',
-          ...getControllerDisplayOptions(currentController),
-          wlr_socket_path: socketPath,
-          use_win32_vk_code: currentController?.wlroots?.use_win32_vk_code ?? false,
-        };
-
-        await connectControllerInternal(config, socketPath, 'device');
-      } catch (err) {
-        setDeviceError(controllerErrorMessage(err));
-        setIsConnected(false);
-        setInstanceConnectionStatus(instanceId, 'Disconnected');
-        setIsConnecting(false);
-      }
-    },
-    [
-      instanceId,
-      isConnected,
-      setInstanceSavedDevice,
-      setInstanceConnectionStatus,
-      setInstanceResourceLoaded,
-      connectControllerInternal,
-      t,
-    ],
-  );
-
   // PlayCover 连接
   const handleConnectPlayCover = useCallback(async () => {
     setIsConnecting(true);
@@ -406,22 +332,13 @@ export function useDeviceConnection({
       }
       return t('controller.selectWindow');
     }
-    if (controllerType === 'WlRoots') {
-      if (selectedWlrootsSocket) {
-        return selectedWlrootsSocket;
-      }
-      if (savedDevice?.wlrSocketPath) {
-        return savedDevice.wlrSocketPath;
-      }
-      return t('controller.selectDevice');
-    }
+
     return t('controller.selectDevice');
   }, [
     controllerType,
     isDesktopWindowController,
     selectedAdbDevice,
     selectedWindow,
-    selectedWlrootsSocket,
     activeInstance?.savedDevice,
     t,
   ]);
@@ -430,7 +347,7 @@ export function useDeviceConnection({
   const canConnect = useCallback(() => {
     if (controllerType === 'Adb') return !!selectedAdbDevice;
     if (isDesktopWindowController) return !!selectedWindow;
-    if (controllerType === 'WlRoots') return !!selectedWlrootsSocket;
+
     if (controllerType === 'PlayCover') return playcoverAddress.trim().length > 0;
     return false;
   }, [
@@ -438,7 +355,6 @@ export function useDeviceConnection({
     isDesktopWindowController,
     selectedAdbDevice,
     selectedWindow,
-    selectedWlrootsSocket,
     playcoverAddress,
   ]);
 
@@ -454,7 +370,6 @@ export function useDeviceConnection({
     playcoverAddress,
     cachedAdbDevices,
     cachedWin32Windows,
-    cachedWlrootsSockets,
     // Refs
     deviceDropdownRef,
     deviceMenuRef,

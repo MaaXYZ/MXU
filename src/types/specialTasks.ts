@@ -10,6 +10,32 @@ import type {
   OptionDefinition,
 } from './interface';
 
+/** 内置任务的界面配置，独立于 interface.json 的 PI 字段。 */
+export interface MxuInputUi {
+  timePicker?: boolean;
+  placeholderKey?: string;
+}
+
+const MXU_INPUT_UI: Record<string, Record<string, MxuInputUi>> = {
+  __MXU_WAITUNTIL_OPTION__: { target_time: { timePicker: true } },
+  __MXU_LAUNCH_OPTION__: {
+    program: { placeholderKey: 'specialTask.launch.programPlaceholder' },
+    args: { placeholderKey: 'specialTask.launch.argsPlaceholder' },
+  },
+  __MXU_WEBHOOK_OPTION__: { url: { placeholderKey: 'specialTask.webhook.urlPlaceholder' } },
+  __MXU_NOTIFY_OPTION__: {
+    title: { placeholderKey: 'specialTask.notify.titlePlaceholder' },
+    body: { placeholderKey: 'specialTask.notify.bodyPlaceholder' },
+  },
+  __MXU_KILLPROC_NAME_OPTION__: {
+    process_name: { placeholderKey: 'specialTask.killProc.namePlaceholder' },
+  },
+};
+
+export function getMxuInputUi(optionKey: string, inputName: string): MxuInputUi | undefined {
+  return MXU_INPUT_UI[optionKey]?.[inputName];
+}
+
 /**
  * MXU 特殊任务定义接口
  * 用于注册 MXU 内置的特殊任务（通过 custom_action 实现）
@@ -140,7 +166,6 @@ const MXU_WAITUNTIL_OPTION_DEF_INTERNAL: InputOption = {
       label: 'specialTask.waitUntil.inputLabel',
       default: '08:00',
       pipeline_type: 'string',
-      input_type: 'time',
     },
   ],
   pipeline_override: {
@@ -183,14 +208,12 @@ const MXU_LAUNCH_INPUT_OPTION_DEF_INTERNAL: InputOption = {
       default: '',
       pipeline_type: 'string',
       input_type: 'file',
-      placeholder: 'specialTask.launch.programPlaceholder',
     },
     {
       name: 'args',
       label: 'specialTask.launch.argsLabel',
       default: '',
       pipeline_type: 'string',
-      placeholder: 'specialTask.launch.argsPlaceholder',
     },
   ],
   pipeline_override: {
@@ -324,7 +347,6 @@ const MXU_WEBHOOK_OPTION_DEF_INTERNAL: InputOption = {
       label: 'specialTask.webhook.urlLabel',
       default: '',
       pipeline_type: 'string',
-      placeholder: 'specialTask.webhook.urlPlaceholder',
     },
   ],
   pipeline_override: {
@@ -361,14 +383,12 @@ const MXU_NOTIFY_OPTION_DEF_INTERNAL: InputOption = {
       label: 'specialTask.notify.titleLabel',
       default: 'MXU',
       pipeline_type: 'string',
-      placeholder: 'specialTask.notify.titlePlaceholder',
     },
     {
       name: 'body',
       label: 'specialTask.notify.bodyLabel',
       default: '',
       pipeline_type: 'string',
-      placeholder: 'specialTask.notify.bodyPlaceholder',
     },
   ],
   pipeline_override: {
@@ -439,7 +459,6 @@ const MXU_KILLPROC_NAME_OPTION_DEF_INTERNAL: InputOption = {
       label: 'specialTask.killProc.nameLabel',
       default: '',
       pipeline_type: 'string',
-      placeholder: 'specialTask.killProc.namePlaceholder',
     },
   ],
   pipeline_override: {

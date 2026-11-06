@@ -87,7 +87,7 @@ export function FocusDialogs() {
         const entry = focus?.[request.message];
         const content = typeof entry === 'string' ? entry : entry?.content;
         if (!content) continue;
-        const resolved = await resolveFocusContent(content, request.details, request.instance_id);
+        const resolved = await resolveFocusContent(content, request.details);
         if (!cancelled)
           useFocusStore.getState().enqueue({
             id: request.request_id,

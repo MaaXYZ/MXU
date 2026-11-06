@@ -9,12 +9,11 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { loggers } from '@/utils/logger';
-import { marked, Marked, type RendererObject } from 'marked';
+import { marked, type RendererObject } from 'marked';
 import DOMPurify from 'dompurify';
 import { cachedFetch } from './cacheService';
 import { isTauri, joinPath } from '@/utils/paths';
 import { getApiBase } from '@/utils/backendApi';
-import { hasInlineRichText } from '@/utils/richText';
 
 const log = loggers.app;
 
@@ -350,24 +349,6 @@ export function resolveIconPath(
 }
 
 /**
- * 行内 Markdown 渲染：把 label 里的 Markdown 转成 HTML，并把本地图片转成 data URL。
- *
- * 与 description 的区别：
- * 1. 使用 {@link inlineMarked}，段落不包 `<p>`，方便放进 label 的 `<span>`；
- * 2. 图片按行内小图标处理（16px、垂直居中、无上下外边距），
- *    与 option case 的 `icon` 字段（`w-4 h-4`）视觉一致；
- * 3. 相对路径图片读取失败时直接移除 `<img>`，label 空间很小，不留破图占位。
- */
-export async function inlineMarkdownToHtmlWithLocalImages(
-  markdown: string,
-  basePath: string = '',
-): Promise<string> {
-  return resolveLocalImages(markdownToHtml(markdown, inlineMarked), basePath, {
-    dropFailedImages: true,
-  });
-}
-
-/**
  * 图标 data URL 缓存（会话内）。
  *
  * 同一个图标会出现在多个 label / 任务项 / 下拉项里，缓存后同一路径只读一次文件；
@@ -481,8 +462,6 @@ function getMimeType(ext: string): string {
 
 /**
  * 全局 Markdown 渲染样式（description、focus 日志等共用），使用 Tailwind class。
- *
- * 行内 label 复用同一份样式，只覆盖 paragraph / image（见 {@link inlineMarked}）。
  */
 const tailwindRenderer: RendererObject = {
   heading({ tokens, depth }) {
@@ -590,36 +569,6 @@ const tailwindRenderer: RendererObject = {
 // 配置全局 marked 实例（description、focus 日志等）
 marked.use({ breaks: true, gfm: true, renderer: tailwindRenderer });
 
-/** 行内 label 里图片的样式：16px 行内图标，与 option case 的 `icon` 字段（`w-4 h-4`）视觉一致 */
-const INLINE_IMAGE_CLASS = 'mx-1 inline-block h-4 w-4 object-contain rounded-sm align-middle';
-
-/**
- * 行内 label 专用实例。
- *
- * 用独立实例而不是"解析后正则改写 HTML"，避免与渲染器产出的 class 字面量强耦合：
- * 1. `paragraph` 直接返回行内内容，不包 `<p>`；
- * 2. `image` 输出 16px 行内图标，而不是 description 里的大图。
- */
-const inlineMarked = new Marked({
-  breaks: true,
-  gfm: true,
-  renderer: {
-    ...tailwindRenderer,
-    paragraph({ tokens }) {
-      return this.parser.parseInline(tokens);
-    },
-    image({ href, title, text }) {
-      const titleAttr = title ? ` title="${title}"` : '';
-      return `<img src="${href}" alt="${text}"${titleAttr} class="${INLINE_IMAGE_CLASS}" />`;
-    },
-  },
-});
-
-/** markdownToHtml 需要的最小解析能力；全局 marked 与 {@link inlineMarked} 都满足 */
-interface MarkdownParser {
-  parse(src: string, options: { async: false }): string;
-}
-
 /**
  * DOMPurify 配置：集中一处，避免不同调用点的白名单漂移。
  *
@@ -633,19 +582,9 @@ const PURIFY_CONFIG = { ADD_ATTR: ['target', 'rel', 'style'] };
  * 使用 marked 解析 markdown，使用 DOMPurify 清理 HTML 防止 XSS
  *
  * @param markdown Markdown 文本
- * @param parser 使用的 marked 实例；默认全局实例，行内 label 传入 {@link inlineMarked}
  */
-export function markdownToHtml(markdown: string, parser: MarkdownParser = marked): string {
-  return DOMPurify.sanitize(parser.parse(markdown, { async: false }), PURIFY_CONFIG);
-}
-
-/** 本地图片处理选项 */
-export interface LocalImageOptions {
-  /**
-   * 相对路径图片读取失败时是否移除对应 `<img>`。
-   * 默认 false（保留原始 src，交给渲染方决定降级方式）；label 等窄空间场景传 true。
-   */
-  dropFailedImages?: boolean;
+export function markdownToHtml(markdown: string): string {
+  return DOMPurify.sanitize(marked.parse(markdown, { async: false }), PURIFY_CONFIG);
 }
 
 /**
@@ -658,11 +597,7 @@ export interface LocalImageOptions {
  *
  * 用 DOM 而不是正则改写：属性顺序、alt/title 里的特殊字符、路径里的引号都不会影响结果。
  */
-async function resolveLocalImages(
-  html: string,
-  basePath: string,
-  options: LocalImageOptions = {},
-): Promise<string> {
+async function resolveLocalImages(html: string, basePath: string): Promise<string> {
   // 解析富文本片段用 Range.createContextualFragment，而不是 `container.innerHTML = ...`。
   // 值本身已经是 DOMPurify 的产物，但静态扫描（opengrep 的 insecure-innerhtml /
   // insecure-document-method）对 innerHTML 写入没有 sanitizer 例外，会一直把它报成 XSS 风险；
@@ -681,8 +616,6 @@ async function resolveLocalImages(
       const dataUrl = await loadIconAsDataUrl(src, basePath);
       if (dataUrl) {
         img.setAttribute('src', dataUrl);
-      } else if (options.dropFailedImages) {
-        img.remove();
       }
     }),
   );
@@ -694,15 +627,13 @@ async function resolveLocalImages(
  * 将 Markdown 转换为 HTML，并将相对路径图片转换为 data URL
  * @param markdown Markdown 文本
  * @param basePath 资源基础路径（用于解析相对路径图片）
- * @param options 本地图片处理选项
  * @returns 处理后的 HTML
  */
 export async function markdownToHtmlWithLocalImages(
   markdown: string,
   basePath: string = '',
-  options: LocalImageOptions = {},
 ): Promise<string> {
-  return resolveLocalImages(markdownToHtml(markdown), basePath, options);
+  return resolveLocalImages(markdownToHtml(markdown), basePath);
 }
 
 /**
@@ -715,46 +646,6 @@ export const simpleMarkdownToHtml = markdownToHtml;
 // ============================================================================
 
 import { useState, useEffect } from 'react';
-
-/** {@link useInlineLabelHtml} 的返回值 */
-export interface InlineLabelHtmlResult {
-  /** 解析完成的 HTML；不含富文本标记、或尚未解析完成时为空串 */
-  html: string;
-  /** 是否正在解析。为 true 时调用方应先用纯文本占位，避免闪出 Markdown 源码 */
-  pending: boolean;
-}
-
-/**
- * React Hook：把 label 文本渲染成行内 HTML。
- *
- * 结果按 `basePath|text` 记账：只有解析结果与当前文本匹配时才返回 HTML，
- * 因此文本变化时不会短暂返回上一条 label 的 HTML（图标串台）。
- */
-export function useInlineLabelHtml(
-  text: string | undefined,
-  basePath: string = '',
-): InlineLabelHtmlResult {
-  // 纯文本 label 不解析：绝大多数 label 走这条快路径，不付 marked / 读图开销
-  const key = text && hasInlineRichText(text) ? `${basePath}|${text}` : '';
-  const [resolved, setResolved] = useState<{ key: string; html: string }>({ key: '', html: '' });
-
-  useEffect(() => {
-    if (!text || !hasInlineRichText(text)) {
-      setResolved({ key: '', html: '' });
-      return;
-    }
-    let cancelled = false;
-    inlineMarkdownToHtmlWithLocalImages(text, basePath).then((html) => {
-      if (!cancelled) setResolved({ key: `${basePath}|${text}`, html });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [text, basePath]);
-
-  if (!key || resolved.key !== key) return { html: '', pending: !!key };
-  return { html: resolved.html, pending: false };
-}
 
 /** useResolvedContent Hook 的返回值 */
 export interface UseResolvedContentResult {

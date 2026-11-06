@@ -419,7 +419,6 @@ export default {
     selectController: 'コントローラーを選択',
     adb: 'Android デバイス',
     win32: 'Windows ウィンドウ',
-    wlroots: 'WlRoots (Linux)',
     linux: 'Linux',
     portal: 'Portal',
     uinputWidth: '幅 (px)',

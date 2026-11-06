@@ -397,6 +397,7 @@ interface FileInputProps {
   filters?: { name: string; extensions: string[] }[];
   browseTitle?: string;
   className?: string;
+  password?: boolean;
 }
 
 const defaultFileFilters = [
@@ -414,6 +415,7 @@ export function FileInput({
   filters = defaultFileFilters,
   browseTitle,
   className,
+  password = false,
 }: FileInputProps) {
   const { t } = useTranslation();
 
@@ -440,6 +442,7 @@ export function FileInput({
       <TextInput
         value={value}
         onChange={onChange}
+        type={password ? 'password' : 'text'}
         placeholder={placeholder}
         disabled={disabled}
         hasError={hasError}
