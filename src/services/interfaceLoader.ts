@@ -362,7 +362,8 @@ function getPlatformFlags(os: string) {
  */
 function getUnsupportedControllerTypes(os: string): Set<ControllerType> {
   const { isWindows, isMacOS, isLinux } = getPlatformFlags(os);
-  const unsupported = new Set<ControllerType>();
+  // 当前 Rust 绑定尚未提供 IOS 控制器，所有平台均暂不支持。
+  const unsupported = new Set<ControllerType>(['IOS']);
   // 非 Windows 系统不支持 Win32 和 Gamepad
   if (!isWindows) {
     unsupported.add('Win32');
@@ -389,12 +390,17 @@ function filterControllersByPlatform(pi: ProjectInterface, os: string): void {
   const unsupported = getUnsupportedControllerTypes(os);
 
   const originalCount = pi.controller.length;
-  pi.controller = pi.controller.filter((c) => isControllerType(c.type) && !unsupported.has(c.type));
+  const filteredTypes = new Set<string>();
+  pi.controller = pi.controller.filter((c) => {
+    if (isControllerType(c.type) && !unsupported.has(c.type)) return true;
+    filteredTypes.add(String(c.type));
+    return false;
+  });
   const filteredCount = originalCount - pi.controller.length;
 
   if (filteredCount > 0) {
     log.info(
-      `平台过滤: 移除了 ${filteredCount} 个不支持的控制器 (不支持的类型: ${[...unsupported].join(', ')})`,
+      `平台过滤: 移除了 ${filteredCount} 个不支持的控制器 (不支持的类型: ${[...filteredTypes].join(', ')})`,
     );
   }
 }
@@ -500,7 +506,8 @@ export async function autoLoadInterface(): Promise<LoadResult> {
       }
     };
 
-    // 1. 先通过 Vite proxy（相对路径）尝试（短超时，proxy 正常时应很快）
+    // 1. 优先页面同源（反向代理 / Vite proxy），加载成功后继续使用该地址。
+    setBackendPort(0);
     let apiResult = await tryFetchInterface('/api/interface', 2000);
 
     // 2. proxy 失败时，并行探测后端端口范围（使用页面 hostname 而非 localhost，以支持局域网访问）

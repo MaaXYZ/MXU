@@ -374,6 +374,12 @@ export interface AppState {
   setMirrorChyanCdk: (cdk: string) => void;
   setMirrorChyanChannel: (channel: UpdateChannel) => void;
 
+  // 定时检查更新
+  scheduledUpdateCheckEnabled: boolean;
+  scheduledUpdateCheckTime: string;
+  setScheduledUpdateCheckEnabled: (enabled: boolean) => void;
+  setScheduledUpdateCheckTime: (time: string) => void;
+
   // 代理设置
   proxySettings: ProxySettings | undefined;
   setProxySettings: (settings: ProxySettings | undefined) => void;
@@ -426,6 +432,10 @@ export interface AppState {
   // 托盘设置
   minimizeToTray: boolean;
   setMinimizeToTray: (enabled: boolean) => void;
+
+  // 多开检测（仅 Windows，重启生效）
+  singleInstance: boolean;
+  setSingleInstance: (enabled: boolean) => void;
 
   // 是否为开机自启动模式（无人值守，跳过阻塞式弹窗）
   isAutoStartMode: boolean;

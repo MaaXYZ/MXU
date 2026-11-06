@@ -1,3 +1,4 @@
+import { PiIcon, PiDescription } from './PiContent';
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -135,7 +136,14 @@ function TaskButton({
             new
           </span>
         )}
-        <Plus className={clsx('w-4 h-4 shrink-0', disabled ? 'text-text-muted' : 'text-accent')} />
+        <PiIcon
+          icon={task.icon}
+          fallback={
+            <Plus
+              className={clsx('w-4 h-4 shrink-0', disabled ? 'text-text-muted' : 'text-accent')}
+            />
+          }
+        />
         <span className="min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere]">{label}</span>
         {count > 0 && (
           <span
@@ -593,13 +601,17 @@ export function AddTaskPanel() {
 
     return (
       <div key={group.name}>
-        {renderSectionHeader(
-          groupLabel,
-          expanded,
-          () => toggleGroup(group.name),
-          tasks.length,
-          contentId,
-        )}
+        <div className="flex items-center gap-2">
+          <PiIcon icon={group.icon} />
+          {renderSectionHeader(
+            groupLabel,
+            expanded,
+            () => toggleGroup(group.name),
+            tasks.length,
+            contentId,
+          )}
+        </div>
+        {expanded && <PiDescription source={group.description} />}
         {expanded && (
           <div id={contentId} className="mt-1">
             {renderTaskGrid(tasks)}

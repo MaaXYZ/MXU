@@ -8,7 +8,7 @@
 
 > [!TIP]
 >
-> MXU 已支持最新最潮的 PI v2.5.0 协议！
+> MXU 已适配 PI v2.11.0 协议，包括多条公告、预设控制器过滤、文件 / 文件夹输入和 Agent 用户数据目录环境变量，并补全多选子选项、截图缩放、前置任务和 focus 展示渠道。
 
 - 📋 **任务管理** - 可视化配置任务列表，支持拖拽排序
 - 🔧 **多实例支持** - 同时管理多个独立运行的实例（标签页多开）
@@ -25,7 +25,7 @@
 
 ### 依赖文件
 
-[MXU Releases](https://github.com/MistEO/MXU/releases) 中提供了单可执行文件（Windows 为 `mxu.exe`，Linux/macOS 为 `mxu`），您需要配置以下依赖：
+[MXU Releases](https://github.com/MistEO/MXU/releases) 中提供了 Windows/Linux 单可执行文件和 macOS 应用包（`mxu.app`），您需要配置以下依赖：
 
 - [MaaFramework](https://github.com/MaaXYZ/MaaFramework/releases) 运行库 ( >= `v5.12.1` ) ，将压缩包中的 `bin` 文件夹内容解压到 `maafw` 文件夹中
 - [interface.json](https://github.com/MaaXYZ/MaaFramework/blob/main/sample/interface.json) 及相关资源文件，请参考 [PI 协议文档](https://github.com/MaaXYZ/MaaFramework/blob/main/docs/zh_cn/3.3-ProjectInterfaceV2%E5%8D%8F%E8%AE%AE.md) 编写
@@ -34,7 +34,8 @@
 
 ```text
 your-project/
-├── mxu.exe (或 mxu)
+├── mxu.exe (Windows) / mxu (Linux)
+├── mxu.app (macOS)
 ├── maafw/
 │   ├── MaaFramework.dll (Windows)
 │   ├── MaaToolkit.dll
@@ -43,7 +44,10 @@ your-project/
 └── resource/
 ```
 
-随后运行 `mxu.exe`（Windows）或 `./mxu`（Linux/macOS）即可！~
+随后运行 `mxu.exe`（Windows）、`./mxu`（Linux）或双击 `mxu.app`（macOS）即可！~
+
+> [!IMPORTANT]
+> macOS 请将 `mxu.app` 放在项目目录中，与 `interface.json`、`maafw` 和 `resource` 并列，而不要单独移动到“应用程序”目录。`mxu.app` 需要保持这个目录结构才能找到项目资源并发送系统通知；如果使用多个项目，请为每个项目目录各放一份。
 
 ### 命令行参数
 
@@ -61,6 +65,9 @@ MXU 支持以下启动参数：
 ```bash
 # 查看命令行帮助
 mxu.exe --help
+
+# macOS 命令行启动时直接调用应用包内的可执行文件
+./mxu.app/Contents/MacOS/mxu --help
 
 # 使用系统自启动模式，并指定自动执行的实例名
 mxu.exe --autostart --instance "日常任务"
@@ -139,7 +146,7 @@ pnpm tauri dev
 pnpm tauri build
 ```
 
-构建产物位于 `src-tauri/target/release/` 目录。
+构建产物位于 `src-tauri/target/release/` 目录；macOS 应用包位于 `src-tauri/target/release/bundle/macos/mxu.app`。
 
 ## 🤝 相关项目
 

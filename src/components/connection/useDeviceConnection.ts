@@ -1,6 +1,7 @@
+import { getControllerDisplayOptions } from '@/utils/controllerDisplay';
 import { useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { maaService } from '@/services/maaService';
+import { maaService, controllerErrorMessage } from '@/services/maaService';
 import { useAppStore } from '@/stores/appStore';
 import type { AdbDevice, Win32Window, ControllerConfig } from '@/types/maa';
 import type { ControllerItem } from '@/types/interface';
@@ -150,7 +151,7 @@ export function useDeviceConnection({
         }
       }
     } catch (err) {
-      setDeviceError(err instanceof Error ? err.message : t('controller.connectionFailed'));
+      setDeviceError(controllerErrorMessage(err));
     } finally {
       setIsSearching(false);
     }
@@ -198,12 +199,12 @@ export function useDeviceConnection({
           screencap_methods: device.screencap_methods,
           input_methods: device.input_methods,
           config: device.config,
-          display_short_side: currentController?.display_short_side,
+          ...getControllerDisplayOptions(currentController),
         };
 
         await connectControllerInternal(config, device.name || device.address, 'device');
       } catch (err) {
-        setDeviceError(err instanceof Error ? err.message : t('controller.connectionFailed'));
+        setDeviceError(controllerErrorMessage(err));
         setIsConnected(false);
         setInstanceConnectionStatus(instanceId, 'Disconnected');
         setIsConnecting(false);
@@ -252,7 +253,7 @@ export function useDeviceConnection({
 
         await connectControllerInternal(config, win.window_name || win.class_name, 'window');
       } catch (err) {
-        setDeviceError(err instanceof Error ? err.message : t('controller.connectionFailed'));
+        setDeviceError(controllerErrorMessage(err));
         setIsConnected(false);
         setInstanceConnectionStatus(instanceId, 'Disconnected');
         setIsConnecting(false);
@@ -289,12 +290,12 @@ export function useDeviceConnection({
       const config: ControllerConfig = buildPlayCoverControllerConfig(
         playcoverAddress,
         currentController?.playcover?.uuid,
-        currentController?.display_short_side,
+        currentController,
       );
 
       await connectControllerInternal(config, playcoverAddress, 'device');
     } catch (err) {
-      setDeviceError(err instanceof Error ? err.message : t('controller.connectionFailed'));
+      setDeviceError(controllerErrorMessage(err));
       setIsConnected(false);
       setInstanceConnectionStatus(instanceId, 'Disconnected');
       setIsConnecting(false);

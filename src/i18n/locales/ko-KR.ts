@@ -1,4 +1,11 @@
 export default {
+  pi: {
+    PI_DISPLAY_OPTIONS_INVALID: '크기 조정 방식을 하나만 지정하고 양의 정수 크기를 사용하세요.',
+    PI_DISPLAY_OPTIONS_UNSUPPORTED:
+      '현재 MaaFramework가 선택한 캡처 방식을 지원하지 않습니다. 리소스 패키지를 업데이트하세요.',
+  },
+  focus: { title: '프로젝트 알림', confirmFailed: '확인하지 못했습니다. 다시 시도하세요.' },
+
   // 공통
   common: {
     confirm: '확인',
@@ -49,6 +56,8 @@ export default {
     appearance: '외관',
     hotkeys: '단축키',
     general: '일반',
+    scheduledUpdateCheck: '예약 업데이트 확인',
+    scheduledUpdateCheckTime: '매일 확인 시간 (현지 시간)',
     taskSettings: '작업 설정',
     taskSettingsEmpty: '표시할 수 있는 설정 항목이 없습니다',
     language: '언어',
@@ -103,6 +112,9 @@ export default {
     hotkeysGlobalRegisterFailed: '전역 단축키 {{combo}} 등록 실패: {{error}}',
     minimizeToTray: '닫을 때 트레이로 최소화',
     minimizeToTrayHint: '닫기 버튼을 클릭하면 종료하지 않고 시스템 트레이에 숨깁니다',
+    singleInstance: '중복 실행 감지',
+    singleInstanceHint:
+      '같은 폴더에서 이미 실행 중이면 새 인스턴스를 시작하지 않고 기존 창을 앞으로 가져옵니다 (재시작 후 적용)',
     autoStart: '시작 시 자동 실행',
     autoStartHint: '시스템 부팅 시 이 애플리케이션을 자동으로 시작합니다',
     autoStartInstance: '시작 후 자동 실행',
@@ -245,6 +257,9 @@ export default {
       resourceFailed: '리소스 로딩에 실패했습니다',
       startFailed: '작업 시작에 실패했습니다',
       alreadyRunning: '작업이 이미 실행 중이거나 사전 작업을 실행하고 있습니다',
+      taskerStopping: '작업을 중지하고 있습니다. 정리가 끝난 후 다시 시작하세요.',
+      queueAlreadyRunning: '작업이 이미 실행 중입니다. 현재 대기열을 중지한 후 새로 시작하세요.',
+      instanceReplaced: '요청 처리 중 인스턴스가 교체되었습니다. 다시 선택한 후 재시도하세요.',
       taskNotFound: '지정한 작업이 없거나 삭제되었습니다',
       noRunnableTasks: '실행 가능한 작업이 없습니다. 작업 정의와 진입점 설정을 확인하세요',
       workstationLocked: '컴퓨터가 잠금 화면 상태입니다. 잠금을 해제한 후 작업을 실행하세요',
@@ -401,6 +416,7 @@ export default {
     portal: 'Portal',
     uinputWidth: '너비 (px)',
     uinputHeight: '높이 (px)',
+    uinputDimensionsRequired: 'UInput 화면 너비와 높이를 양의 정수로 먼저 입력하세요.',
     playcover: 'PlayCover (macOS)',
     macos: 'macOS 창',
     macosPermissionsRequired:
@@ -417,6 +433,8 @@ export default {
     connected: '연결됨',
     disconnected: '연결 안 됨',
     connectionFailed: '연결에 실패했습니다',
+    connectionSuperseded:
+      '인스턴스가 삭제되었거나 새 연결이 요청되어 이전 연결 요청이 취소되었습니다.',
     refreshDevices: '기기 새로고침',
     refreshWindows: '윈도우 새로고침',
     refresh: '기기 새로고침',
@@ -612,6 +630,20 @@ export default {
 
   // 설정 자동 복구 알림
   config: {
+    syncSaveFailed:
+      '호스트에 설정을 저장하지 못해 자동 저장을 중지했습니다. 초안을 내보내거나 문제를 해결한 후 동기화를 다시 시도하세요.',
+    draftStorageFailed:
+      '로컬 초안 저장소를 사용할 수 없습니다. 이 페이지를 닫으면 편집 내용이 사라집니다. 먼저 미동기화 설정을 내보내세요.',
+    draftExportFailed:
+      '미동기화 설정을 내보내지 못했습니다. 초안은 보관되어 있습니다. 다시 시도해 주세요。',
+    syncReloadFailed:
+      '호스트 설정을 불러올 수 없습니다. 로컬 편집은 보관되어 있습니다. 저장하려면 동기화를 다시 시도하세요.',
+    retrySync: '동기화 다시 시도',
+    unsavedDraft:
+      '동기화하지 못한 설정 변경을 로컬 초안으로 보관했습니다. 내보낸 후 변경 내용을 확인하고 복원할 수 있습니다.',
+    exportUnsavedDraft: '미동기화 설정 내보내기',
+    syncConflict:
+      '다른 클라이언트에서 설정이 변경되었거나 저장하지 못했습니다. 호스트 설정을 다시 불러옵니다. 확인한 후 다시 편집해 주세요.',
     recoveredFromBackup: '설정 파일이 손상되어 {{time}} 백업에서 자동으로 복원했습니다',
     recoveryFailed:
       '설정 파일이 손상되었고 사용할 수 있는 백업이 없어 기본 설정으로 초기화했습니다',
@@ -726,6 +758,17 @@ export default {
     installing: '업데이트 설치 중...',
     installComplete: '설치 완료',
     installFailed: '설치 실패',
+    installErrors: {
+      packageMissing: '업데이트 패키지를 찾을 수 없습니다. 다시 다운로드해 주세요',
+      packageCorrupt: '업데이트 패키지가 손상되었습니다. 다시 다운로드해 주세요 ({{detail}})',
+      extractFailed:
+        '업데이트 패키지 압축 해제에 실패했습니다. 보안 프로그램에 의해 차단되었을 수 있습니다 ({{detail}})',
+      rolledBack: '업데이트에 실패하여 이전 버전으로 복원했습니다 ({{detail}})',
+      exeMissing:
+        '프로그램 파일이 없습니다. 보안 프로그램에 의해 삭제되거나 격리되었을 수 있습니다. 설치 폴더를 보안 프로그램의 예외 목록에 추가한 후 업데이트를 다시 다운로드해 주세요',
+    },
+    signedAppUpdateUnsupported:
+      'macOS 앱 번들 내부를 덮어쓰는 업데이트는 지원하지 않습니다. 앱을 종료하고 새 버전 전체를 설치하세요. 파일을 수동으로 교체한 경우 다시 서명해야 합니다. 다운로드한 업데이트 파일은 유지됩니다.',
     installNow: '지금 설치',
     installUpdate: '업데이트 설치',
     installStages: {

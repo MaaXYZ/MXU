@@ -3,7 +3,10 @@
  * 监听 maa-callback 事件并将相关信息添加到日志面板
  */
 
-import { useEffect, useRef } from 'react';
+import { createElement, useEffect, useRef } from 'react';
+import { toast } from 'sonner';
+import { useFocusStore } from '@/stores/focusStore';
+import { redactLogText } from '@/utils/logSecrets';
 import { useTranslation } from 'react-i18next';
 import { maaService, type MaaCallbackDetails } from '@/services/maaService';
 import { useAppStore, type LogType } from '@/stores/appStore';
@@ -15,11 +18,11 @@ import { isDesktopWindowControllerType, getLinuxDeviceName } from '@/utils/contr
 import * as wsService from '@/services/wsService';
 import {
   resolveI18nText,
-  detectContentType,
   resolveContent,
   markdownToHtmlWithLocalImages,
 } from '@/services/contentResolver';
 import { hasRichTextFeatures } from '@/utils/richText';
+import { getCallbackInstanceId } from '@/utils/maaCallbackRouting';
 import type { FocusTemplate, FocusDisplayChannel } from '@/types/interface';
 
 const log = loggers.app;
@@ -48,9 +51,8 @@ function htmlToPlainText(html: string): string {
 }
 
 /**
- * v2.3.0: toast/notification 渠道 - 使用系统通知。
- * Tauri 桌面端经 Rust 侧 notify-rust 发送（WebView2 的 Web Notification API
- * 权限恒为 denied 且无权限弹窗，直接调用会静默失效）；
+ * v2.3.0: notification 渠道使用系统通知，toast 使用应用内轻提示。
+ * Tauri 桌面端通过统一的 Rust 通知入口发送，并将富文本转换为纯文本；
  * Web 端保留浏览器 Notification API。
  */
 async function dispatchFocusNotification(message: string) {
@@ -60,14 +62,15 @@ async function dispatchFocusNotification(message: string) {
       await invoke('send_system_notification', { title: 'MXU', body: htmlToPlainText(message) });
       return;
     }
+
     if (!('Notification' in window)) return;
     if (Notification.permission === 'granted') {
-      new Notification('MXU', { body: message });
+      new Notification('MXU', { body: htmlToPlainText(message) });
     } else if (Notification.permission !== 'denied' && !focusNotificationPermissionRequested) {
       focusNotificationPermissionRequested = true;
       const perm = await Notification.requestPermission();
       if (perm === 'granted') {
-        new Notification('MXU', { body: message });
+        new Notification('MXU', { body: htmlToPlainText(message) });
       }
     }
   } catch (error) {
@@ -113,45 +116,20 @@ function replaceFocusPlaceholders(
  * @param template 模板字符串
  * @param details 回调详情（用于占位符替换）
  */
-async function resolveFocusContent(
+export async function resolveFocusContent(
   template: string,
   details: MaaCallbackDetails & Record<string, unknown>,
 ): Promise<{ message: string; html?: string }> {
   const state = useAppStore.getState();
-  const langKey = getInterfaceLangKey(state.language);
-  const translations = state.interfaceTranslations[langKey];
+  const translations = state.interfaceTranslations[getInterfaceLangKey(state.language)];
   const basePath = state.basePath;
-
-  // 1. 使用回调详情替换占位符
-  const withPlaceholders = replaceFocusPlaceholders(template, details);
-
-  // 2. 处理国际化
-  const resolved = resolveI18nText(withPlaceholders, translations);
-
-  // 3. 检测内容类型
-  const contentType = detectContentType(resolved);
-
-  // 4. 如果是直接文本，检查是否包含富文本特征
-  if (contentType === 'text') {
-    // 判定规则集中在 utils/richText，避免各处各写一套正则
-    if (hasRichTextFeatures(resolved)) {
-      const html = await markdownToHtmlWithLocalImages(resolved, basePath);
-      return { message: resolved, html };
-    }
-    return { message: resolved };
-  }
-
-  // 5. 加载外部内容（URL 或文件）
-  try {
-    const loadedContent = await resolveContent(resolved, { translations, basePath });
-    // 将加载的内容转换为 HTML（支持 Markdown）
-    const html = await markdownToHtmlWithLocalImages(loadedContent, basePath);
-    return { message: loadedContent, html };
-  } catch (err) {
-    log.warn(`加载 focus 内容失败 [${resolved}]:`, err);
-    // 加载失败时返回原始文本
-    return { message: resolved };
-  }
+  const source = replaceFocusPlaceholders(resolveI18nText(template, translations), details);
+  const message = redactLogText(
+    replaceFocusPlaceholders(await resolveContent(source, { basePath }), details),
+  );
+  return hasRichTextFeatures(message)
+    ? { message, html: await markdownToHtmlWithLocalImages(message, basePath) }
+    : { message };
 }
 
 // 检查是否是连接动作
@@ -228,17 +206,28 @@ export function useMaaCallbackLogger() {
     // 设置回调监听
     const setupListener = async () => {
       try {
-        const unlisten = await maaService.onCallback((message, details) => {
+        const unlisten = await maaService.onCallback((message, details, sourceInstanceId) => {
           // 组件已卸载则忽略
           if (cancelled) return;
 
-          // 获取当前活动实例 ID
-          const currentActiveId = useAppStore.getState().activeInstanceId;
-          if (!currentActiveId) return;
+          // 事件属于产生它的实例，与用户当前查看哪个标签页无关。
+          const instanceId = getCallbackInstanceId(
+            sourceInstanceId,
+            useAppStore.getState().instances,
+          );
+          if (!instanceId) {
+            // 无来源的全局/旧版事件以及已销毁实例的迟到回调仅用于诊断。
+            log.debug(
+              'Ignoring callback without a live source instance:',
+              message,
+              sourceInstanceId,
+            );
+            return;
+          }
 
-          // 根据消息类型处理
+          // 根据消息类型处理（focus 的异步内容与截图也使用同一来源）
           handleCallback(
-            currentActiveId,
+            instanceId,
             message,
             details as MaaCallbackDetails & Record<string, unknown>,
             t,
@@ -338,9 +327,9 @@ function handleCallback(
 
     resolveFocusContent(focusTemplate, details)
       .then((resolved) => {
-        // 根据 display 渠道分发消息；toast 与 notification 同为系统通知，去重避免双发
-        let notificationDispatched = false;
-        for (const channel of displayChannels) {
+        // 同一消息只展示一个对话框，modal 由后端确认门控制流水线。
+        let dialogDispatched = false;
+        for (const channel of new Set(displayChannels)) {
           switch (channel) {
             case 'log':
               addLog(instanceId, {
@@ -350,16 +339,32 @@ function handleCallback(
               });
               break;
             case 'toast':
+              toast(
+                resolved.html
+                  ? createElement('div', {
+                      className: 'prose prose-sm',
+                      dangerouslySetInnerHTML: { __html: resolved.html },
+                    })
+                  : resolved.message,
+              );
+              break;
             case 'notification':
-              if (!notificationDispatched) {
-                notificationDispatched = true;
-                dispatchFocusNotification(resolved.message);
-              }
+              void dispatchFocusNotification(resolved.html ?? resolved.message);
               break;
             case 'dialog':
             case 'modal':
-              // dialog 和 modal 当前都作为 log 处理，将来可扩展为弹窗
-              addLog(instanceId, { type: 'focus', message: resolved.message, html: resolved.html });
+              if (dialogDispatched) break;
+              dialogDispatched = true;
+              useFocusStore.getState().enqueue({
+                id:
+                  typeof details.__mxu_focus_id === 'string'
+                    ? details.__mxu_focus_id
+                    : `dialog-${crypto.randomUUID()}`,
+                instanceId,
+                message: resolved.message,
+                html: resolved.html,
+                blocking: typeof details.__mxu_focus_id === 'string',
+              });
               break;
           }
         }

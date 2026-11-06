@@ -17,15 +17,34 @@ import type {
 } from '@/types/maa';
 import { loggers } from '@/utils/logger';
 import { redactSecretsInText } from '@/utils/passwordOptionValues';
+import { localizeTaskError } from '@/utils/taskErrors';
 import { isTauri } from '@/utils/paths';
 import i18n from '@/i18n';
 import { apiDelete, apiGet, apiPost, apiPut, getApiBase } from '@/utils/backendApi';
 import * as wsService from '@/services/wsService';
+import { dispatchMaaCallback, type MaaCallbackHandler } from '@/utils/maaCallbackRouting';
+import { ControllerConnectionSupersededError } from '@/utils/controllerErrors';
+import { getLogSecrets } from '@/utils/logSecrets';
 
 const log = loggers.maa;
 
-function localizeControllerError(error: unknown): unknown {
+async function taskOperation<T>(call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (error) {
+    throw localizeTaskError(error, (key) => i18n.t(key));
+  }
+}
+
+export function localizeControllerError(error: unknown): unknown {
   const message = error instanceof Error ? error.message : String(error);
+  if (message.includes('CONTROLLER_CONNECTION_SUPERSEDED')) {
+    return new ControllerConnectionSupersededError(i18n.t('controller.connectionSuperseded'));
+  }
+  for (const code of ['PI_DISPLAY_OPTIONS_INVALID', 'PI_DISPLAY_OPTIONS_UNSUPPORTED']) {
+    if (message.includes(code)) return new Error(i18n.t(`pi.${code}`));
+  }
+
   if (message.includes('MACOS_PERMISSIONS_REQUIRED')) {
     return new Error(i18n.t('controller.macosPermissionsRequired'));
   }
@@ -45,6 +64,11 @@ function localizeControllerError(error: unknown): unknown {
     return new Error(i18n.t('controller.linuxVersionRequired'));
   }
   return error;
+}
+
+export function controllerErrorMessage(error: unknown): string {
+  const localized = localizeControllerError(error);
+  return localized instanceof Error ? localized.message : String(localized);
 }
 
 /**
@@ -81,6 +105,8 @@ async function syncMaaVersionToStore(version: string): Promise<void> {
 
 /** MaaFramework 回调事件载荷 */
 export interface MaaCallbackEvent {
+  /** 来源实例；旧服务端或全局事件可能没有来源，调用方不得回退到活动标签页 */
+  instance_id?: string | null;
   /** 消息类型，如 "Resource.Loading.Succeeded", "Controller.Action.Succeeded", "Tasker.Task.Succeeded" */
   message: string;
   /** 详细数据 JSON 字符串 */
@@ -108,6 +134,36 @@ export interface SelfStopRequestedEvent {
 
 /** MaaFramework 服务 */
 export const maaService = {
+  async pendingFocus(): Promise<
+    {
+      request_id: string;
+      instance_id: string;
+      message: string;
+      details: MaaCallbackDetails & Record<string, unknown>;
+    }[]
+  > {
+    return isTauri() ? invoke('pending_focus') : apiGet('/focus/pending');
+  },
+  async acknowledgeFocus(requestId: string): Promise<void> {
+    if (isTauri()) await invoke('acknowledge_focus', { requestId });
+    else await apiPost(`/focus/${encodeURIComponent(requestId)}/ack`, {});
+  },
+  async onFocusClosed(callback: (id: string) => void): Promise<UnlistenFn> {
+    const handle = (_instanceId: string, kind: string) => {
+      if (kind.startsWith('focus-closed:')) callback(kind.slice('focus-closed:'.length));
+    };
+    return isTauri()
+      ? listen<{ instance_id: string; kind: string }>('state-changed', (event) =>
+          handle(event.payload.instance_id, event.payload.kind),
+        )
+      : wsService.onStateChanged(handle);
+  },
+  async registerLogSecrets(extra: string[] = []): Promise<void> {
+    const secrets = getLogSecrets(extra);
+    if (!secrets.length) return;
+    if (isTauri()) await invoke('register_log_secrets', { secrets });
+    else await apiPost('/log-secrets', { secrets });
+  },
   /**
    * 初始化 MaaFramework
    * @param libDir MaaFramework 库目录（可选，默认从 exe 目录/maafw 加载）
@@ -433,6 +489,7 @@ export const maaService = {
     pipelineOverride: string = '{}',
     selectedTaskId?: string,
   ): Promise<number> {
+    await this.registerLogSecrets();
     log.info(
       '运行任务, 实例:',
       instanceId,
@@ -442,20 +499,23 @@ export const maaService = {
       pipelineOverride,
     );
     if (!isTauri()) {
-      const result = await apiPost<{ taskIds: number[] }>(
-        `/maa/instances/${instanceId}/tasks/run`,
-        [{ entry, pipeline_override: pipelineOverride, selected_task_id: selectedTaskId }],
+      const result = await taskOperation(() =>
+        apiPost<{ taskIds: number[] }>(`/maa/instances/${instanceId}/tasks/run`, [
+          { entry, pipeline_override: pipelineOverride, selected_task_id: selectedTaskId },
+        ]),
       );
       const taskId = result.taskIds[0] ?? 0;
       log.info('任务已提交 (HTTP), taskId:', taskId);
       return taskId;
     }
-    const taskId = await invoke<number>('maa_run_task', {
-      instanceId,
-      entry,
-      pipelineOverride,
-      selectedTaskId: selectedTaskId ?? null,
-    });
+    const taskId = await taskOperation(() =>
+      invoke<number>('maa_run_task', {
+        instanceId,
+        entry,
+        pipelineOverride,
+        selectedTaskId: selectedTaskId ?? null,
+      }),
+    );
     log.info('任务已提交, taskId:', taskId);
     return taskId;
   },
@@ -646,6 +706,7 @@ export const maaService = {
     controllerInfo?: ControllerTelemetryInfo,
     logRedactSecrets?: string[],
   ): Promise<number[]> {
+    await this.registerLogSecrets(logRedactSecrets);
     log.info('启动任务, 实例:', instanceId, ', 任务数:', tasks.length, ', cwd:', cwd || '.');
     tasks.forEach((task, i) => {
       const override =
@@ -665,30 +726,31 @@ export const maaService = {
       );
     }
     if (!isTauri()) {
-      const result = await apiPost<{ taskIds: number[] }>(
-        `/maa/instances/${instanceId}/tasks/start`,
-        {
+      const result = await taskOperation(() =>
+        apiPost<{ taskIds: number[] }>(`/maa/instances/${instanceId}/tasks/start`, {
           tasks,
           agent_configs: agentConfigs && agentConfigs.length > 0 ? agentConfigs : null,
           cwd: cwd || null,
           tcp_compat_mode: tcpCompatMode || false,
           pi_envs: agentConfigs && agentConfigs.length > 0 && piEnvs ? piEnvs : null,
           controller_info: controllerInfo ?? null,
-        },
+        }),
       );
       log.info('任务已提交 (HTTP), taskIds:', result.taskIds);
       return result.taskIds;
     }
     const hasAgent = (agentConfigs?.length ?? 0) > 0;
-    const taskIds = await invoke<number[]>('maa_start_tasks', {
-      instanceId,
-      tasks,
-      agentConfigs: hasAgent ? agentConfigs : null,
-      cwd: cwd || '.',
-      tcpCompatMode: tcpCompatMode || false,
-      piEnvs: hasAgent && piEnvs ? piEnvs : null,
-      controllerInfo: controllerInfo ?? null,
-    });
+    const taskIds = await taskOperation(() =>
+      invoke<number[]>('maa_start_tasks', {
+        instanceId,
+        tasks,
+        agentConfigs: hasAgent ? agentConfigs : null,
+        cwd: cwd || '.',
+        tcpCompatMode: tcpCompatMode || false,
+        piEnvs: hasAgent && piEnvs ? piEnvs : null,
+        controllerInfo: controllerInfo ?? null,
+      }),
+    );
     log.info('任务已提交, taskIds:', taskIds);
     return taskIds;
   },
@@ -700,17 +762,17 @@ export const maaService = {
   async stopAgent(instanceId: string): Promise<void> {
     log.info('停止 Agent, 实例:', instanceId);
     if (!isTauri()) {
-      await apiPost(`/maa/instances/${instanceId}/agent/stop`, {});
+      await taskOperation(() => apiPost(`/maa/instances/${instanceId}/agent/stop`, {}));
       log.info('停止 Agent 成功 (HTTP)');
       return;
     }
-    await invoke('maa_stop_agent', { instanceId });
+    await taskOperation(() => invoke('maa_stop_agent', { instanceId }));
     log.info('停止 Agent 成功');
   },
 
   /**
    * 监听 MaaFramework 回调事件
-   * @param callback 回调函数，接收消息类型和详情
+   * @param callback 回调函数，接收消息类型、详情和来源实例 ID
    * @returns 取消监听的函数
    *
    * 常见消息类型：
@@ -720,32 +782,20 @@ export const maaService = {
    * - Node.Recognition.Starting/Succeeded/Failed - 节点识别状态
    * - Node.Action.Starting/Succeeded/Failed - 节点动作状态
    */
-  async onCallback(
-    callback: (message: string, details: MaaCallbackDetails) => void,
-  ): Promise<UnlistenFn> {
+  async onCallback(callback: MaaCallbackHandler): Promise<UnlistenFn> {
     if (!isTauri()) {
       // 浏览器环境：通过 WebSocket 接收 maa-callback 事件
-      return wsService.onMaaCallback((message, details) => {
-        try {
-          const parsedDetails = JSON.parse(details) as MaaCallbackDetails;
-          callback(message, parsedDetails);
-        } catch {
-          log.warn('Failed to parse WS callback details:', details);
-          callback(message, {});
-        }
+      return wsService.onMaaCallback((message, details, instanceId) => {
+        dispatchMaaCallback({ message, details, instance_id: instanceId }, callback, (invalid) => {
+          log.warn('Failed to parse WS callback details:', invalid);
+        });
       });
     }
 
     return await listen<MaaCallbackEvent>('maa-callback', (event) => {
-      const { message, details } = event.payload;
-
-      try {
-        const parsedDetails = JSON.parse(details) as MaaCallbackDetails;
-        callback(message, parsedDetails);
-      } catch {
-        log.warn('Failed to parse callback details:', details);
-        callback(message, {});
-      }
+      dispatchMaaCallback(event.payload, callback, (invalid) => {
+        log.warn('Failed to parse callback details:', invalid);
+      });
     });
   },
 
@@ -1086,7 +1136,10 @@ export const maaService = {
   },
 
   async setPreActionStop(instanceId: string, stop: boolean): Promise<void> {
-    if (!isTauri()) return;
+    if (!isTauri()) {
+      await apiPost(`/maa/instances/${instanceId}/pretask/stop`, { stop });
+      return;
+    }
     await invoke('set_pre_action_stop', { instanceId, stop });
   },
 
@@ -1100,10 +1153,16 @@ export const maaService = {
     args: string[],
     cwd?: string,
   ): Promise<number> {
+    await this.registerLogSecrets();
+    log.info('执行预任务:', program);
     if (!isTauri()) {
-      throw new Error('此功能仅在 Tauri 环境中可用');
+      const result = await apiPost<{ exitCode: number }>(`/maa/instances/${instanceId}/pretask`, {
+        program,
+        args,
+        cwd,
+      });
+      return result.exitCode;
     }
-    log.info('执行预任务:', program, args);
     const exitCode = await invoke<number>('run_pretask', {
       instanceId,
       program,

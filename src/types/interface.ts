@@ -13,7 +13,8 @@ export interface ProjectInterface {
   version?: string;
   contact?: string;
   license?: string;
-  welcome?: string;
+  /** v2.10.2: 可按顺序展示多条公告 */
+  welcome?: string | string[];
   description?: string;
   agent?: AgentConfig | AgentConfig[];
   controller: ControllerItem[];
@@ -134,7 +135,15 @@ export function normalizeAgentConfigs(
   return Array.isArray(agent) ? agent : [agent];
 }
 
-export const CONTROLLER_TYPES = ['Adb', 'Win32', 'MacOS', 'Linux', 'PlayCover', 'Gamepad'] as const;
+export const CONTROLLER_TYPES = [
+  'Adb',
+  'IOS',
+  'Win32',
+  'MacOS',
+  'Linux',
+  'PlayCover',
+  'Gamepad',
+] as const;
 
 export type ControllerType = (typeof CONTROLLER_TYPES)[number];
 
@@ -142,26 +151,46 @@ export function isControllerType(value: unknown): value is ControllerType {
   return CONTROLLER_TYPES.some((type) => type === value);
 }
 
-export interface ControllerItem {
+export interface ControllerDisplayOptions {
+  display_short_side?: number;
+  display_long_side?: number;
+  display_expand?: [number, number];
+  display_raw?: boolean;
+}
+
+export interface ControllerItem extends ControllerDisplayOptions {
   name: string;
   label?: string;
   description?: string;
   icon?: string;
   type: ControllerType;
-  display_short_side?: number;
-  display_long_side?: number;
-  display_raw?: boolean;
   permission_required?: boolean;
   /** v2.2.0: 额外的资源路径数组，在 resource.path 加载完成后加载 */
   attach_resource_path?: string[];
   /** v2.3.0: 控制器级的选项配置 */
   option?: string[];
   adb?: Record<string, unknown>;
+  ios?: IOSConfig;
   win32?: Win32Config;
   macos?: MacOSConfig;
   linux?: LinuxConfig;
   playcover?: PlayCoverConfig;
   gamepad?: GamepadConfig;
+}
+
+export interface IOSConfig {
+  udid?: string;
+  connection?: 'Auto' | 'USB' | 'WiFi';
+  screencap?: string;
+  config?: {
+    server_port?: number;
+    wifi_address?: string;
+    wifi_port?: number;
+    shared_control?: boolean;
+    max_bitrate?: number;
+    max_fps?: number;
+    hardware_decode?: boolean;
+  };
 }
 
 export interface Win32Config {
@@ -439,6 +468,8 @@ export interface PresetItem {
   label?: string;
   description?: string;
   icon?: string;
+  /** v2.10.4: 指定适用的控制器名称，与 task.controller 语义一致 */
+  controller?: string[];
   task?: PresetTaskItem[];
   /** v2.10.3: 预设中的预任务配置，name 对应顶层 pretask[].name */
   pretask?: PresetTaskItem[];

@@ -144,6 +144,8 @@ export interface AppSettings {
   /** 每个实例最多保留的日志条数（超出自动丢弃最旧的） */
   maxLogsPerInstance?: number;
   autoClearLogsOnLaunch?: boolean;
+  scheduledUpdateCheckEnabled?: boolean; // 是否每天定时检查更新，默认关闭
+  scheduledUpdateCheckTime?: string; // 每天检查更新的本地时间（HH:mm），默认 08:00
   windowSize?: WindowSize;
   windowPosition?: WindowPosition; // 窗口位置
   mirrorChyan?: MirrorChyanSettings;
@@ -165,6 +167,7 @@ export interface AppSettings {
   allowLanAccess?: boolean; // Web UI 允许局域网访问（绑定 0.0.0.0，重启生效）
   webServerPort?: number; // Web 服务器监听端口（默认 12701，重启生效）
   minimizeToTray?: boolean; // 关闭时最小化到托盘（默认 false）
+  singleInstance?: boolean; // 多开检测：同一目录已运行时唤起已有窗口（仅 Windows，默认 true，重启生效）
   autoStartInstanceId?: string; // 启动后自动执行的实例 ID（为空或 undefined 表示不自动执行）
   autoRunOnLaunch?: boolean; // 非开机自启动的手动启动场景下，是否也自动执行选定的实例（默认 false）
   autoStartRemovedInstanceName?: string; // 被删除的自动执行配置名称（用于提示用户）
@@ -197,6 +200,14 @@ export const defaultWindowSize: WindowSize = {
   width: 1000,
   height: 618,
 };
+
+export const defaultScheduledUpdateCheckTime = '08:00';
+
+export function normalizeScheduledUpdateCheckTime(value: unknown): string {
+  return typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value)
+    ? value
+    : defaultScheduledUpdateCheckTime;
+}
 
 // 默认 MirrorChyan 设置
 export const defaultMirrorChyanSettings: MirrorChyanSettings = {
@@ -244,6 +255,8 @@ export const defaultConfig: MxuConfig = {
     confirmBeforeDelete: false,
     maxLogsPerInstance: DEFAULT_MAX_LOGS_PER_INSTANCE,
     autoClearLogsOnLaunch: false,
+    scheduledUpdateCheckEnabled: false,
+    scheduledUpdateCheckTime: defaultScheduledUpdateCheckTime,
     windowSize: defaultWindowSize,
     mirrorChyan: defaultMirrorChyanSettings,
     helpImproveSoftware: true,

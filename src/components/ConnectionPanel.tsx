@@ -1,3 +1,5 @@
+import { PiIcon, PiDescription } from './PiContent';
+import { getControllerDisplayOptions } from '@/utils/controllerDisplay';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -17,7 +19,7 @@ import {
   History,
 } from 'lucide-react';
 import clsx from 'clsx';
-import { maaService } from '@/services/maaService';
+import { maaService, controllerErrorMessage } from '@/services/maaService';
 import { useAppStore } from '@/stores/appStore';
 import { resolveI18nText } from '@/services/contentResolver';
 import { LinuxInputMethod, parseLinuxInputMethod } from '@/types/maa';
@@ -25,6 +27,7 @@ import type { AdbDevice, Win32Window, GamescopeInstance, ControllerConfig } from
 import type { ControllerItem, ResourceItem } from '@/types/interface';
 import { computeResourcePaths } from '@/utils/resourcePath';
 import { buildPlayCoverControllerConfig } from '@/utils/playCoverController';
+import { hasValidUinputDimensions, parseUinputDimension } from '@/utils/linuxUinput';
 import {
   buildDesktopWindowControllerConfig,
   buildLinuxControllerConfig,
@@ -41,14 +44,6 @@ import {
   waitForResResult,
   autoReconnectAttempted,
 } from './connection';
-
-/** 将 uinput 尺寸输入字符串解析为正整数；空串或非法输入返回 undefined */
-function parseUinputDimension(value: string): number | undefined {
-  const trimmed = value.trim();
-  if (!trimmed) return undefined;
-  const n = Number.parseInt(trimmed, 10);
-  return Number.isFinite(n) && n > 0 ? n : undefined;
-}
 
 export function ConnectionPanel() {
   const { t } = useTranslation();
@@ -553,7 +548,7 @@ export function ConnectionPanel() {
         }
       }
     } catch (err) {
-      setDeviceError(err instanceof Error ? err.message : t('controller.connectionFailed'));
+      setDeviceError(controllerErrorMessage(err));
     } finally {
       setIsSearching(false);
     }
@@ -623,7 +618,7 @@ export function ConnectionPanel() {
           screencap_methods: selectedAdbDevice.screencap_methods,
           input_methods: selectedAdbDevice.input_methods,
           config: selectedAdbDevice.config,
-          display_short_side: currentController?.display_short_side,
+          ...getControllerDisplayOptions(currentController),
         };
         deviceName = selectedAdbDevice.name || selectedAdbDevice.address;
         targetType = 'device';
@@ -644,7 +639,7 @@ export function ConnectionPanel() {
         config = buildPlayCoverControllerConfig(
           playcoverAddress,
           currentController?.playcover?.uuid,
-          currentController?.display_short_side,
+          currentController,
         );
         deviceName = playcoverAddress;
         targetType = 'device';
@@ -656,7 +651,7 @@ export function ConnectionPanel() {
 
       await connectControllerInternal(config, deviceName, targetType);
     } catch (err) {
-      setDeviceError(err instanceof Error ? err.message : t('controller.connectionFailed'));
+      setDeviceError(controllerErrorMessage(err));
       setIsConnected(false);
       setInstanceConnectionStatus(instanceId, 'Disconnected');
       setIsConnecting(false);
@@ -867,12 +862,12 @@ export function ConnectionPanel() {
         screencap_methods: device.screencap_methods,
         input_methods: device.input_methods,
         config: device.config,
-        display_short_side: currentController?.display_short_side,
+        ...getControllerDisplayOptions(currentController),
       };
 
       await connectControllerInternal(config, device.name || device.address, 'device');
     } catch (err) {
-      setDeviceError(err instanceof Error ? err.message : t('controller.connectionFailed'));
+      setDeviceError(controllerErrorMessage(err));
       setIsConnected(false);
       setInstanceConnectionStatus(instanceId, 'Disconnected');
       setIsConnecting(false);
@@ -934,7 +929,7 @@ export function ConnectionPanel() {
         void fetchAndStoreProcessPath(win.handle);
       }
     } catch (err) {
-      setDeviceError(err instanceof Error ? err.message : t('controller.connectionFailed'));
+      setDeviceError(controllerErrorMessage(err));
       setIsConnected(false);
       setInstanceConnectionStatus(instanceId, 'Disconnected');
       setIsConnecting(false);
@@ -946,6 +941,14 @@ export function ConnectionPanel() {
   // Linux：判断给定选择是否满足当前配置所需的全部设备
   const isLinuxReadyWith = (instance: GamescopeInstance | null, wlr: string | null) => {
     if (!linuxNeeds) return false;
+    if (
+      isUinputInput &&
+      !hasValidUinputDimensions(
+        parseUinputDimension(uinputScreenWidth),
+        parseUinputDimension(uinputScreenHeight),
+      )
+    )
+      return false;
     if (linuxNeeds.needGamescopeNode || linuxNeeds.needEisSocket) {
       if (!instance) return false;
       if (linuxNeeds.needGamescopeNode && instance.pipewire_node_id === 0) return false;
@@ -961,6 +964,21 @@ export function ConnectionPanel() {
     setDeviceError(null);
 
     try {
+      const parsedWidth = parseUinputDimension(uinputScreenWidth);
+      const parsedHeight = parseUinputDimension(uinputScreenHeight);
+
+      const config = buildLinuxControllerConfig(
+        currentController,
+        {
+          wlrSocketPath: wlr ?? undefined,
+          pwNodeId: instance?.pipewire_node_id,
+          eisSocketPath: instance?.eis_socket_path || undefined,
+          uinputScreenWidth: parsedWidth,
+          uinputScreenHeight: parsedHeight,
+        },
+        t('controller.uinputDimensionsRequired'),
+      );
+
       if (isConnected) {
         await maaService.destroyInstance(instanceId).catch(() => {});
         setIsConnected(false);
@@ -973,17 +991,6 @@ export function ConnectionPanel() {
       }
 
       await maaService.createInstance(instanceId).catch(() => {});
-
-      const parsedWidth = parseUinputDimension(uinputScreenWidth);
-      const parsedHeight = parseUinputDimension(uinputScreenHeight);
-
-      const config = buildLinuxControllerConfig(currentController, {
-        wlrSocketPath: wlr ?? undefined,
-        pwNodeId: instance?.pipewire_node_id,
-        eisSocketPath: instance?.eis_socket_path || undefined,
-        uinputScreenWidth: parsedWidth,
-        uinputScreenHeight: parsedHeight,
-      });
 
       saveLinuxDeviceInfo({
         uinputScreenWidth: parsedWidth,
@@ -1000,7 +1007,7 @@ export function ConnectionPanel() {
       );
       await connectControllerInternal(config, deviceName, 'device');
     } catch (err) {
-      setDeviceError(err instanceof Error ? err.message : t('controller.connectionFailed'));
+      setDeviceError(controllerErrorMessage(err));
       setIsConnected(false);
       setInstanceConnectionStatus(instanceId, 'Disconnected');
       setIsConnecting(false);
@@ -1108,7 +1115,7 @@ export function ConnectionPanel() {
         return;
       }
     } catch (err) {
-      setDeviceError(err instanceof Error ? err.message : t('controller.connectionFailed'));
+      setDeviceError(controllerErrorMessage(err));
     } finally {
       setIsSearching(false);
     }
@@ -1447,7 +1454,7 @@ export function ConnectionPanel() {
                         }}
                         disabled={isConnecting || isSearching || isRunning}
                         className={clsx(
-                          'px-2 py-0.5 text-xs rounded-md transition-colors',
+                          'inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded-md transition-colors',
                           currentControllerName === controller.name
                             ? 'bg-accent text-white'
                             : 'bg-bg-tertiary text-text-secondary hover:bg-bg-hover',
@@ -1455,6 +1462,7 @@ export function ConnectionPanel() {
                             'opacity-50 cursor-not-allowed',
                         )}
                       >
+                        <PiIcon icon={controller.icon} />
                         {getControllerDisplayName(controller)}
                       </button>
                     );
@@ -1463,6 +1471,7 @@ export function ConnectionPanel() {
               </div>
             )}
 
+            <PiDescription source={currentController?.description} />
             {/* uinput 输入的屏幕分辨率 */}
             {isUinputInput && (
               <div className="flex gap-2">
@@ -1470,7 +1479,12 @@ export function ConnectionPanel() {
                   type="number"
                   min={1}
                   value={uinputScreenWidth}
-                  onChange={(e) => setUinputScreenWidth(e.target.value)}
+                  onChange={(e) => {
+                    setUinputScreenWidth(e.target.value);
+                    saveLinuxDeviceInfo({
+                      uinputScreenWidth: parseUinputDimension(e.target.value),
+                    });
+                  }}
                   placeholder={t('controller.uinputWidth')}
                   disabled={isConnected || isConnecting || isRunning}
                   className={clsx(
@@ -1484,7 +1498,12 @@ export function ConnectionPanel() {
                   type="number"
                   min={1}
                   value={uinputScreenHeight}
-                  onChange={(e) => setUinputScreenHeight(e.target.value)}
+                  onChange={(e) => {
+                    setUinputScreenHeight(e.target.value);
+                    saveLinuxDeviceInfo({
+                      uinputScreenHeight: parseUinputDimension(e.target.value),
+                    });
+                  }}
                   placeholder={t('controller.uinputHeight')}
                   disabled={isConnected || isConnecting || isRunning}
                   className={clsx(
@@ -1778,6 +1797,7 @@ export function ConnectionPanel() {
                             {isIncompatible && (
                               <AlertCircle className="w-3.5 h-3.5 text-warning flex-shrink-0" />
                             )}
+                            <PiIcon icon={resource.icon} />
                             <span className="truncate">{getResourceDisplayName(resource)}</span>
                           </div>
                           {/* 描述或不兼容提示 */}
@@ -1786,7 +1806,7 @@ export function ConnectionPanel() {
                           ) : (
                             resource.description && (
                               <div className="text-xs text-text-muted truncate">
-                                {resolveI18nText(resource.description, translations)}
+                                <PiDescription source={resource.description} />
                               </div>
                             )
                           )}

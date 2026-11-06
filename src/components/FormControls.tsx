@@ -392,10 +392,11 @@ interface FileInputProps {
   onChange: (value: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  directory?: boolean;
+  hasError?: boolean;
   filters?: { name: string; extensions: string[] }[];
   browseTitle?: string;
   className?: string;
-  directory?: boolean;
   password?: boolean;
 }
 
@@ -409,10 +410,11 @@ export function FileInput({
   onChange,
   placeholder,
   disabled,
+  directory = false,
+  hasError,
   filters = defaultFileFilters,
   browseTitle,
   className,
-  directory = false,
   password = false,
 }: FileInputProps) {
   const { t } = useTranslation();
@@ -424,7 +426,7 @@ export function FileInput({
       const selected = await open({
         multiple: false,
         directory,
-        filters: directory ? undefined : filters,
+        ...(directory ? {} : { filters }),
       });
 
       if (selected && typeof selected === 'string') {
@@ -443,6 +445,7 @@ export function FileInput({
         type={password ? 'password' : 'text'}
         placeholder={placeholder}
         disabled={disabled}
+        hasError={hasError}
         className="min-w-0 flex-1"
       />
       {isTauri() && (
@@ -456,6 +459,7 @@ export function FileInput({
             disabled && 'opacity-60 cursor-not-allowed',
           )}
           title={browseTitle || t('action.browse')}
+          aria-label={browseTitle || t('action.browse')}
         >
           <FolderOpen className="w-4 h-4" />
         </button>

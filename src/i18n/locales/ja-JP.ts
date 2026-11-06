@@ -1,4 +1,11 @@
 export default {
+  pi: {
+    PI_DISPLAY_OPTIONS_INVALID: '拡大縮小方式は一つだけ指定し、サイズは正の整数にしてください。',
+    PI_DISPLAY_OPTIONS_UNSUPPORTED:
+      'この MaaFramework は選択したキャプチャ方式に対応していません。リソースパッケージを更新してください。',
+  },
+  focus: { title: 'プロジェクト通知', confirmFailed: '確認できませんでした。再試行してください。' },
+
   // 共通
   common: {
     confirm: '確定',
@@ -49,6 +56,8 @@ export default {
     appearance: '外観',
     hotkeys: 'ショートカットキー',
     general: '一般',
+    scheduledUpdateCheck: '更新の定時確認',
+    scheduledUpdateCheckTime: '毎日の確認時刻（現地時間）',
     taskSettings: 'タスク設定',
     taskSettingsEmpty: '表示できる設定項目がありません',
     language: '言語',
@@ -105,6 +114,9 @@ export default {
       'グローバルショートカット {{combo}} の登録に失敗しました：{{error}}',
     minimizeToTray: '閉じる時にトレイに最小化',
     minimizeToTrayHint: '閉じるボタンをクリックすると、終了せずにシステムトレイに隠れます',
+    singleInstance: '多重起動の検出',
+    singleInstanceHint:
+      '同じフォルダで既に実行中の場合、新しいインスタンスを起動せずに既存のウィンドウを前面に表示します（再起動後に有効）',
     autoStart: 'スタートアップ時に起動',
     autoStartHint: 'システム起動時にこのアプリケーションを自動的に起動します',
     autoStartInstance: '起動後に自動実行',
@@ -248,6 +260,11 @@ export default {
       resourceFailed: 'リソースの読み込みに失敗しました',
       startFailed: 'タスクの開始に失敗しました',
       alreadyRunning: 'タスクは既に実行中か、前処理を実行しています',
+      taskerStopping: 'タスクを停止しています。後処理が完了してから再開してください。',
+      queueAlreadyRunning:
+        'タスクは実行中です。現在のキューを停止してから新しい実行を開始してください。',
+      instanceReplaced:
+        'リクエストの処理中にインスタンスが置き換えられました。選び直して再試行してください。',
       taskNotFound: '指定されたタスクが存在しないか、削除されています',
       noRunnableTasks: '実行可能なタスクがありません。タスク定義とエントリ設定を確認してください',
       workstationLocked:
@@ -406,6 +423,7 @@ export default {
     portal: 'Portal',
     uinputWidth: '幅 (px)',
     uinputHeight: '高さ (px)',
+    uinputDimensionsRequired: 'UInput の画面の幅と高さを正の整数で入力してください。',
     playcover: 'PlayCover (macOS)',
     macos: 'macOS ウィンドウ',
     macosPermissionsRequired:
@@ -424,6 +442,8 @@ export default {
     connected: '接続済み',
     disconnected: '未接続',
     connectionFailed: '接続に失敗しました',
+    connectionSuperseded:
+      'インスタンスが削除されたか、新しい接続が要求されたため、元の接続要求はキャンセルされました。',
     refreshDevices: 'デバイスを更新',
     refreshWindows: 'ウィンドウを更新',
     refresh: 'デバイスを更新',
@@ -621,6 +641,20 @@ export default {
 
   // 設定の自動修復通知
   config: {
+    syncSaveFailed:
+      'ホストに設定を保存できず、自動保存を停止しました。下書きをエクスポートするか、問題を解決して同期を再試行してください。',
+    draftStorageFailed:
+      'ローカルの下書き保存先を利用できません。このページを閉じると変更が失われます。先に未同期の設定をエクスポートしてください。',
+    draftExportFailed:
+      '未同期の設定をエクスポートできません。下書きは保持されています。再試行してください。',
+    syncReloadFailed:
+      'ホストの設定を読み込めません。ローカルの変更は保持されています。保存するには同期を再試行してください。',
+    retrySync: '同期を再試行',
+    unsavedDraft:
+      '未同期の設定変更をローカル下書きに保存しました。エクスポートして変更内容を確認・復元できます。',
+    exportUnsavedDraft: '未同期の設定をエクスポート',
+    syncConflict:
+      '別のクライアントで設定が更新されたか、保存に失敗しました。ホストの設定を再読み込みします。確認してから再度編集してください。',
     recoveredFromBackup:
       '設定ファイルが破損していたため、{{time}} のバックアップから自動的に復元しました',
     recoveryFailed:
@@ -738,6 +772,17 @@ export default {
     installing: 'アップデートをインストール中...',
     installComplete: 'インストール完了',
     installFailed: 'インストールに失敗しました',
+    installErrors: {
+      packageMissing: '更新パッケージが見つかりません。再度ダウンロードしてください',
+      packageCorrupt: '更新パッケージが破損しています。再度ダウンロードしてください（{{detail}}）',
+      extractFailed:
+        '更新パッケージの展開に失敗しました。セキュリティソフトにブロックされた可能性があります（{{detail}}）',
+      rolledBack: '更新に失敗したため、更新前のバージョンに戻しました（{{detail}}）',
+      exeMissing:
+        'プログラムファイルが見つかりません。セキュリティソフトに削除または隔離された可能性があります。インストールフォルダをセキュリティソフトの除外リストに追加してから、更新を再度ダウンロードしてください',
+    },
+    signedAppUpdateUnsupported:
+      'macOS アプリ内の上書き更新はできません。アプリを終了して新しいバージョン全体をインストールしてください。手動でファイルを置き換えた場合は再署名が必要です。ダウンロード済みの更新ファイルは保持されます。',
     installNow: '今すぐインストール',
     installUpdate: 'アップデートをインストール',
     installStages: {

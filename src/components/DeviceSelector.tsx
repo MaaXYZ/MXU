@@ -1,3 +1,4 @@
+import { getControllerDisplayOptions } from '@/utils/controllerDisplay';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -226,7 +227,7 @@ export function DeviceSelector({
           screencap_methods: selectedAdbDevice.screencap_methods,
           input_methods: selectedAdbDevice.input_methods,
           config: selectedAdbDevice.config,
-          display_short_side: controllerDef.display_short_side,
+          ...getControllerDisplayOptions(controllerDef),
         };
       } else if (isDesktopWindowController && selectedWindow) {
         const desktopConfig = buildDesktopWindowControllerConfig(
@@ -241,7 +242,7 @@ export function DeviceSelector({
         config = {
           type: 'PlayCover',
           address: playcoverAddress,
-          display_short_side: controllerDef.display_short_side,
+          ...getControllerDisplayOptions(controllerDef),
         };
       } else {
         throw new Error('请先选择设备');
@@ -324,7 +325,7 @@ export function DeviceSelector({
         screencap_methods: device.screencap_methods,
         input_methods: device.input_methods,
         config: device.config,
-        display_short_side: controllerDef.display_short_side,
+        ...getControllerDisplayOptions(controllerDef),
       };
 
       const ctrlId = await maaService.connectController(instanceId, config);

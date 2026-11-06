@@ -131,7 +131,7 @@ test('PI UI ignores private fields while retaining standard options and Linux co
       }),
     );
     assert.match(gridHtml, /\*\*Grid\*\*/);
-    for (const value of ['Adb', 'Win32', 'MacOS', 'Linux', 'PlayCover', 'Gamepad']) {
+    for (const value of ['Adb', 'IOS', 'Win32', 'MacOS', 'Linux', 'PlayCover', 'Gamepad']) {
       assert.equal(isControllerType(value), true);
     }
     for (const value of ['WlRoots', 'Custom', '', undefined])
@@ -149,6 +149,58 @@ test('PI UI ignores private fields while retaining standard options and Linux co
     assert.deepEqual(JSON.parse(generateTaskPipelineOverride(task, projectInterface, 'linux')), [
       { Entry: { key: 65 } },
     ]);
+  } finally {
+    await server.close();
+  }
+});
+
+test('PI loader filters unsupported IOS and deprecated controllers on every host platform', async (t) => {
+  const server = await createServer({
+    server: { middlewareMode: true, hmr: false },
+    optimizeDeps: { noDiscovery: true, include: [] },
+    appType: 'custom',
+  });
+  try {
+    const { autoLoadInterface } = await server.ssrLoadModule('/src/services/interfaceLoader.ts');
+    const { loggers } = await server.ssrLoadModule('/src/utils/logger.ts');
+    const info = t.mock.method(loggers.app, 'info', () => {});
+    let backendOS = 'windows';
+    const fetch = t.mock.method(globalThis, 'fetch', async (url) => {
+      assert.equal(url, '/api/interface');
+      return Response.json({
+        interface: {
+          interface_version: 2,
+          name: 'controller-filter',
+          resource: [],
+          task: [],
+          controller: [
+            { name: 'adb', type: 'Adb' },
+            { name: 'iphone', type: 'IOS', ios: { udid: 'test-udid', connection: 'USB' } },
+            { name: 'ipad', type: 'IOS' },
+            { name: 'old-wayland', type: 'WlRoots' },
+            { name: 'linux', type: 'Linux' },
+          ],
+        },
+        backendOS,
+      });
+    });
+    for (backendOS of ['windows', 'macos', 'linux']) {
+      info.mock.resetCalls();
+      const result = await autoLoadInterface();
+      assert.deepEqual(
+        result.interface.controller.map((controller: { name: string }) => controller.name),
+        backendOS === 'linux' ? ['adb', 'linux'] : ['adb'],
+      );
+      const filterLogs = info.mock.calls
+        .map((call) => String(call.arguments[0]))
+        .filter((message) => message.startsWith('平台过滤:'));
+      assert.deepEqual(filterLogs, [
+        backendOS === 'linux'
+          ? '平台过滤: 移除了 3 个不支持的控制器 (不支持的类型: IOS, WlRoots)'
+          : '平台过滤: 移除了 4 个不支持的控制器 (不支持的类型: IOS, WlRoots, Linux)',
+      ]);
+    }
+    assert.equal(fetch.mock.callCount(), 3);
   } finally {
     await server.close();
   }

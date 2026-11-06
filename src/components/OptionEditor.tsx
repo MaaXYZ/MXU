@@ -1,3 +1,4 @@
+import { PiDescription, PiIcon as AsyncIcon } from './PiContent';
 import {
   useState,
   useMemo,
@@ -11,7 +12,7 @@ import {
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '@/stores/appStore';
-import { loadIconAsDataUrl, useResolvedContent } from '@/services/contentResolver';
+import { useResolvedContent } from '@/services/contentResolver';
 import type { OptionValue, CaseItem, InputItem, OptionDefinition } from '@/types/interface';
 import { findMxuOptionByKey, getMxuInputUi, type MxuInputUi } from '@/types/specialTasks';
 import clsx from 'clsx';
@@ -26,7 +27,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { getInterfaceLangKey } from '@/i18n';
-import { findSwitchCase } from '@/utils/optionHelpers';
+import { getSelectedCasesWithOptions, findSwitchCase } from '@/utils/optionHelpers';
 import { getCheckboxMaxCount, getCheckboxMinCount } from '@/utils/checkboxOptionValidation';
 import { SwitchButton, TextInput, FileInput, TimeInput, HotkeyInput } from './FormControls';
 import { Tooltip } from './ui/Tooltip';
@@ -36,6 +37,13 @@ export function switchHasNestedOptions(optionDef: OptionDefinition): boolean {
   if (optionDef.type !== 'switch') return false;
   // SwitchOption 的 cases 是 [CaseItem, CaseItem]，始终有两个元素
   return optionDef.cases.some((c: CaseItem) => c.option && c.option.length > 0);
+}
+
+/** 嵌套子选项分组：checkbox 多选时，不同 case 的子项需要分开渲染才能区分归属 */
+interface NestedOptionGroup {
+  caseName: string;
+  label: string;
+  optionKeys: string[];
 }
 
 /** 子选项折叠箭头：复用任务标题的 ChevronRight 样式，位于开关/下拉框左侧 */
@@ -73,30 +81,6 @@ function OptionCollapseArrow({
       />
     </button>
   );
-}
-
-/** 异步加载图标组件 */
-function AsyncIcon({
-  icon,
-  basePath,
-  className,
-}: {
-  icon?: string;
-  basePath: string;
-  className?: string;
-}) {
-  const [iconUrl, setIconUrl] = useState<string | undefined>(undefined);
-
-  useEffect(() => {
-    if (!icon) {
-      setIconUrl(undefined);
-      return;
-    }
-    loadIconAsDataUrl(icon, basePath).then(setIconUrl);
-  }, [icon, basePath]);
-
-  if (!iconUrl) return null;
-  return <img src={iconUrl} alt="" className={className} />;
 }
 
 interface OptionEditorProps {
@@ -314,7 +298,12 @@ function InputField({
         <div className="flex items-center gap-1.5 min-w-0 flex-1 basis-[14rem]">
           <span className="text-sm text-text-tertiary truncate">{inputLabel}</span>
           {inputDescription && (
-            <Tooltip content={inputDescription} side="top" align="start" maxWidth="max-w-[200px]">
+            <Tooltip
+              content={<PiDescription source={inputDescription} />}
+              side="top"
+              align="start"
+              maxWidth="max-w-[200px]"
+            >
               <Info className="w-3.5 h-3.5 text-text-muted cursor-help flex-shrink-0" />
             </Tooltip>
           )}
@@ -335,6 +324,8 @@ function InputField({
             directory={input.input_type === 'directory'}
             password={input.password === true}
             disabled={disabled}
+            filters={[]}
+            hasError={!!validationError}
             className="min-w-[min(12rem,100%)] flex-1 basis-[30%]"
           />
         ) : isMxuOption && mxuUi?.timePicker ? (
@@ -467,24 +458,37 @@ export function OptionEditor({
         : undefined;
   const effectiveDisabled = disabled || isOptionIncompatible;
 
-  // 获取当前选中的 case（用于渲染嵌套选项）
-  const getSelectedCase = (): CaseItem | undefined => {
-    if (optionDef.type === 'switch') {
-      const isChecked = effectiveValue?.type === 'switch' ? effectiveValue.value : false;
-      return findSwitchCase(optionDef.cases, isChecked);
-    }
-    if (optionDef.type === 'select' || !optionDef.type) {
-      const caseName =
-        effectiveValue?.type === 'select'
-          ? effectiveValue.caseName
-          : optionDef.default_case || optionDef.cases?.[0]?.name;
-      return optionDef.cases?.find((c) => c.name === caseName);
-    }
-    return undefined;
-  };
+  // 嵌套子选项分组：switch/select 单选取当前 case；checkbox 为多选，
+  // 协议允许任意 case 挂 option，故按被选中的 case 逐组汇总（每组保留标签用于区分来源）
+  const toNestedGroup = (caseItem: CaseItem): NestedOptionGroup => ({
+    caseName: caseItem.name,
+    label: isMxuOption
+      ? t(caseItem.label || caseItem.name)
+      : resolveI18nText(caseItem.label, langKey) || caseItem.name,
+    optionKeys: caseItem.option ?? [],
+  });
 
-  const selectedCase = getSelectedCase();
-  const nestedOptionKeys = selectedCase?.option || [];
+  const selectedCaseDescriptions =
+    'cases' in optionDef
+      ? optionDef.cases.filter((item) => {
+          if (effectiveValue?.type === 'checkbox')
+            return effectiveValue.caseNames.includes(item.name);
+          if (effectiveValue?.type === 'switch')
+            return findSwitchCase(optionDef.cases, effectiveValue.value)?.name === item.name;
+          const name =
+            effectiveValue?.type === 'select'
+              ? effectiveValue.caseName
+              : typeof optionDef.default_case === 'string'
+                ? optionDef.default_case
+                : optionDef.cases[0]?.name;
+          return item.name === name;
+        })
+      : [];
+  const caseDescriptions = selectedCaseDescriptions.map((item) => (
+    <PiDescription key={item.name} source={item.description} />
+  ));
+  const nestedGroups = getSelectedCasesWithOptions(optionDef, effectiveValue).map(toNestedGroup);
+  const nestedOptionKeys = nestedGroups.flatMap((g) => g.optionKeys);
 
   // 当前选项的子选项是否处于折叠状态（缺省展开）
   const isCollapsed = globalScope ? localCollapsed : !!collapsedOptions?.[optionKey];
@@ -563,6 +567,7 @@ export function OptionEditor({
             />
           </div>
         </div>
+        {caseDescriptions}
         {/* 渲染嵌套选项（可折叠，复用任务标题的 grid 展开动画） */}
         {nestedOptionKeys.length > 0 && (
           <div
@@ -619,17 +624,28 @@ export function OptionEditor({
           isOptionIncompatible && 'opacity-60',
         )}
       >
-        <OptionLabelWithIncompatible
-          label={optionLabel}
-          icon={optionDef.icon}
-          basePath={basePath}
-          incompatibleReason={incompatibleReason}
-        />
-        <OptionDescription
-          description={optionDescription}
-          basePath={basePath}
-          translations={translations}
-        />
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1 max-w-[60%]">
+            <OptionLabelWithIncompatible
+              label={optionLabel}
+              icon={optionDef.icon}
+              basePath={basePath}
+              incompatibleReason={incompatibleReason}
+            />
+            <OptionDescription
+              description={optionDescription}
+              basePath={basePath}
+              translations={translations}
+            />
+          </div>
+          {nestedOptionKeys.length > 0 && (
+            <OptionCollapseArrow
+              collapsed={isCollapsed}
+              onToggle={handleToggleCollapsed}
+              disabled={effectiveDisabled}
+            />
+          )}
+        </div>
         <div className="grid grid-cols-4 gap-1">
           {optionDef.cases.map((caseItem) => {
             const caseLabel = isMxuOption
@@ -680,6 +696,7 @@ export function OptionEditor({
             );
           })}
         </div>
+        {caseDescriptions}
         {countConstraint && (
           <div
             className={clsx(
@@ -699,6 +716,44 @@ export function OptionEditor({
                     constraint: countConstraint,
                   })}
             </span>
+          </div>
+        )}
+        {/* 渲染嵌套选项（可折叠，复用任务标题的 grid 展开动画）。
+            checkbox 多选时同一层可能挂多组子项，按 case 分组并标注归属，避免来源混淆 */}
+        {nestedOptionKeys.length > 0 && (
+          <div
+            className="grid transition-[grid-template-rows] duration-150 ease-out"
+            style={{ gridTemplateRows: isCollapsed ? '0fr' : '1fr' }}
+          >
+            <div className={clsx('min-h-0', isCollapsed ? 'overflow-hidden' : 'overflow-visible')}>
+              <div className="space-y-3">
+                {nestedGroups.map((group) => (
+                  <div key={group.caseName} className="space-y-3">
+                    {nestedGroups.length > 1 && (
+                      <div className="text-xs text-text-muted">
+                        <span className="inline-block max-w-full truncate rounded bg-bg-hover px-1.5 py-0.5">
+                          {group.label}
+                        </span>
+                      </div>
+                    )}
+                    {group.optionKeys.map((nestedKey) => (
+                      <OptionEditor
+                        key={`${group.caseName}:${nestedKey}`}
+                        instanceId={instanceId}
+                        taskId={taskId}
+                        optionKey={nestedKey}
+                        value={allOptionValues[nestedKey]}
+                        depth={depth + 1}
+                        disabled={effectiveDisabled}
+                        globalScope={globalScope}
+                        controllerIncompatible={isOptionIncompatible}
+                        parentIncompatibilityReason={incompatibleReasonType}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -729,7 +784,10 @@ export function OptionEditor({
           isOptionIncompatible && 'opacity-60',
         )}
       >
-        <div className="max-w-[60%]">
+        {/* 标题与描述原先被限制在 60% 宽，右侧留空；60% 本是给 switch/select
+            行右侧控件让位，而 input/hotkey 的标题区右侧没有控件（输入字段各自
+            成行排布），因此这里放开整行，让描述与内联图片按可用宽度显示。 */}
+        <div className="max-w-full">
           <OptionLabelWithIncompatible
             label={optionLabel}
             icon={optionDef.icon}
@@ -836,6 +894,7 @@ export function OptionEditor({
           }}
         />
       </div>
+      {caseDescriptions}
       {/* 渲染嵌套选项（可折叠，复用任务标题的 grid 展开动画） */}
       {nestedOptionKeys.length > 0 && (
         <div

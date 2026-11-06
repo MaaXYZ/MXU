@@ -22,9 +22,11 @@ import {
   DEFAULT_MAX_LOGS_PER_INSTANCE,
   defaultAddTaskPanelHeight,
   defaultMirrorChyanSettings,
+  defaultScheduledUpdateCheckTime,
   defaultScreenshotFrameRate,
   defaultWindowSize,
   normalizeAddTaskPanelHeight,
+  normalizeScheduledUpdateCheckTime,
 } from '@/types/config';
 import type {
   ActionConfig,
@@ -43,12 +45,14 @@ import {
   pretaskName,
   isPretaskName,
   getPretaskItem,
+  buildPretaskDef,
   resolveCompatTaskDef,
 } from '@/types/pretasks';
 import { decryptCdk, encryptCdk } from '@/utils/cdkCrypto';
 import {
   decryptPasswordOptionValues,
   encryptPasswordOptionValues,
+  collectPasswordPlaintexts,
 } from '@/utils/passwordOptionValues';
 import { loggers } from '@/utils/logger';
 import { findSwitchCase } from '@/utils/optionHelpers';
@@ -77,6 +81,8 @@ import {
 } from './helpers';
 import { persistRuntimeLogs } from '@/utils/runtimeLogPersistence';
 import { cacheTaskEnabledForController } from '@/utils/taskControllerCache';
+import { isPresetCompatible } from '@/utils/presetCompatibility';
+import { setLogSecretProvider, redactLogText } from '@/utils/logSecrets';
 // 从独立模块导入类型和辅助函数
 import type { AppState, LogEntry, TaskRunStatus } from './types';
 
@@ -402,6 +408,20 @@ export const useAppStore = create<AppState>()(
       // 只添加 default_check 为 true 的任务
       const defaultTasks: SelectedTask[] = [];
       if (pi) {
+        for (const item of getPretaskItems(pi)) {
+          defaultTasks.push({
+            id: generateId(),
+            taskName: pretaskName(item),
+            expanded: false, // pretask 选项通常一次性配置，新建配置时默认收起
+            enabled: isTaskCompatible(
+              buildPretaskDef(item),
+              pi.controller[0]?.name,
+              pi.resource[0]?.name,
+            ),
+            optionValues:
+              item.option && pi.option ? initializeAllOptionValues(item.option, pi.option) : {},
+          });
+        }
         // 获取默认控制器名称，用于检查任务兼容性
         const defaultControllerName = pi.controller[0]?.name;
 
@@ -458,7 +478,9 @@ export const useAppStore = create<AppState>()(
           newSelectedResource[id] = defaultResourceNameValue;
         }
 
-        const hasPresets = (get().projectInterface?.preset?.length ?? 0) > 0;
+        const hasPresets = pi?.preset?.some((preset) =>
+          isPresetCompatible(preset, defaultControllerNameValue),
+        );
         return {
           instances: [...state.instances, newInstance],
           activeInstanceId: id,
@@ -618,6 +640,8 @@ export const useAppStore = create<AppState>()(
 
       const preset = pi.preset.find((p) => p.name === presetName);
       if (!preset) return;
+      const { controllerName } = getCurrentControllerAndResource(get(), instanceId);
+      if (!isPresetCompatible(preset, controllerName)) return;
 
       const newTasks: SelectedTask[] = [];
 
@@ -642,13 +666,18 @@ export const useAppStore = create<AppState>()(
           taskName,
           enabled: presetTask.enabled !== false,
           optionValues,
-          expanded: true,
+          expanded: !isPretaskName(taskName), // pretask 默认收起
         };
       };
 
-      // v2.10.3: 按 preset.pretask 设置预任务（按顶层 pretask 顺序排列，未列出的不添加）。
-      // 预设只能应用于空任务列表，未声明 pretask 时无需保留已有预任务
-      if (preset.pretask) {
+      // v2.10.3: 未声明 pretask 时保留当前状态；显式列表按顶层顺序设置，未列出项禁用。
+      const existingPretasks =
+        get()
+          .instances.find((instance) => instance.id === instanceId)
+          ?.selectedTasks.filter((task) => isPretaskName(task.taskName)) ?? [];
+      if (preset.pretask === undefined) {
+        newTasks.push(...existingPretasks);
+      } else {
         const pretaskItems = getPretaskItems(pi);
         for (const presetPretask of preset.pretask) {
           if (!pretaskItems.some((item) => item.name === presetPretask.name)) {
@@ -659,8 +688,18 @@ export const useAppStore = create<AppState>()(
         }
         for (const item of pretaskItems) {
           const presetPretask = preset.pretask.find((p) => p.name === item.name);
-          if (!presetPretask) continue;
-          newTasks.push(buildSelectedTask(pretaskName(item), item.option, presetPretask));
+          const existing = existingPretasks.find((task) => task.taskName === pretaskName(item));
+          if (!presetPretask && existing) {
+            newTasks.push({ ...existing, enabled: false });
+          } else {
+            newTasks.push(
+              buildSelectedTask(
+                pretaskName(item),
+                item.option,
+                presetPretask ?? { name: item.name ?? item.exec, enabled: false },
+              ),
+            );
+          }
         }
       }
 
@@ -1493,6 +1532,10 @@ export const useAppStore = create<AppState>()(
         confirmBeforeDelete: config.settings.confirmBeforeDelete ?? false,
         maxLogsPerInstance: config.settings.maxLogsPerInstance ?? DEFAULT_MAX_LOGS_PER_INSTANCE,
         autoClearLogsOnLaunch: config.settings.autoClearLogsOnLaunch ?? false,
+        scheduledUpdateCheckEnabled: config.settings.scheduledUpdateCheckEnabled === true,
+        scheduledUpdateCheckTime: normalizeScheduledUpdateCheckTime(
+          config.settings.scheduledUpdateCheckTime,
+        ),
         // 默认开启；调试 / 开发版本强制关闭
         helpImproveSoftware: isTelemetryBlockedByBuild(get().projectInterface)
           ? false
@@ -1543,6 +1586,7 @@ export const useAppStore = create<AppState>()(
         autoRunOnLaunch: config.settings.autoRunOnLaunch ?? false,
         autoStartRemovedInstanceName: config.settings.autoStartRemovedInstanceName,
         minimizeToTray: config.settings.minimizeToTray ?? false,
+        singleInstance: config.settings.singleInstance ?? true,
         onboardingCompleted: config.settings.onboardingCompleted ?? false,
         preActionConnectDelaySec: config.settings.preActionConnectDelaySec ?? 5,
         hotkeys: config.settings.hotkeys ?? {
@@ -2013,6 +2057,13 @@ export const useAppStore = create<AppState>()(
         mirrorChyanSettings: { ...state.mirrorChyanSettings, channel },
       })),
 
+    // 定时检查更新
+    scheduledUpdateCheckEnabled: false,
+    scheduledUpdateCheckTime: defaultScheduledUpdateCheckTime,
+    setScheduledUpdateCheckEnabled: (enabled) => set({ scheduledUpdateCheckEnabled: enabled }),
+    setScheduledUpdateCheckTime: (time) =>
+      set({ scheduledUpdateCheckTime: normalizeScheduledUpdateCheckTime(time) }),
+
     // 代理设置
     proxySettings: undefined,
     setProxySettings: (settings) => set({ proxySettings: settings }),
@@ -2093,6 +2144,10 @@ export const useAppStore = create<AppState>()(
         loggers.app.error('设置托盘选项失败:', err);
       }
     },
+
+    // 多开检测
+    singleInstance: true,
+    setSingleInstance: (enabled) => set({ singleInstance: enabled }),
 
     // 新用户引导
     onboardingCompleted: false,
@@ -2325,6 +2380,11 @@ export const useAppStore = create<AppState>()(
 
     addLog: (instanceId, log) =>
       set((state) => {
+        log = {
+          ...log,
+          message: redactLogText(log.message),
+          ...(log.html && { html: redactLogText(log.html) }),
+        };
         const logs = state.instanceLogs[instanceId] || [];
         const now = new Date();
         const newLog: LogEntry = {
@@ -2427,6 +2487,19 @@ export const useAppStore = create<AppState>()(
   })),
 );
 
+setLogSecretProvider(() => {
+  const state = useAppStore.getState();
+  const options = state.projectInterface?.option ?? {};
+  return [
+    ...collectPasswordPlaintexts(state.globalOptionValues, options),
+    ...state.instances.flatMap((instance) =>
+      instance.selectedTasks.flatMap((task) =>
+        collectPasswordPlaintexts(task.optionValues, options),
+      ),
+    ),
+  ];
+});
+
 const _isWebUI = !isTauri();
 
 // 生成配置用于保存
@@ -2482,6 +2555,8 @@ function generateConfig(): MxuConfig {
           confirmBeforeDelete: state.confirmBeforeDelete,
           maxLogsPerInstance: state.maxLogsPerInstance,
           autoClearLogsOnLaunch: state.autoClearLogsOnLaunch,
+          scheduledUpdateCheckEnabled: state.scheduledUpdateCheckEnabled,
+          scheduledUpdateCheckTime: state.scheduledUpdateCheckTime,
           helpImproveSoftware: state.helpImproveSoftware,
           windowSize: bl?.windowSize ?? state.windowSize,
           windowPosition: bl?.windowPosition ?? state.windowPosition,
@@ -2509,6 +2584,7 @@ function generateConfig(): MxuConfig {
           autoRunOnLaunch: state.autoRunOnLaunch,
           autoStartRemovedInstanceName: state.autoStartRemovedInstanceName,
           minimizeToTray: state.minimizeToTray,
+          singleInstance: state.singleInstance,
           onboardingCompleted: state.onboardingCompleted,
           preActionConnectDelaySec: state.preActionConnectDelaySec,
           hotkeys: state.hotkeys,
@@ -2577,6 +2653,8 @@ useAppStore.subscribe(
     autoClearLogsOnLaunch: state.autoClearLogsOnLaunch,
     helpImproveSoftware: state.helpImproveSoftware,
     mirrorChyanSettings: state.mirrorChyanSettings,
+    scheduledUpdateCheckEnabled: state.scheduledUpdateCheckEnabled,
+    scheduledUpdateCheckTime: state.scheduledUpdateCheckTime,
     proxySettings: state.proxySettings,
     welcomeShownHash: state.welcomeShownHash,
     devMode: state.devMode,
@@ -2588,6 +2666,7 @@ useAppStore.subscribe(
     autoRunOnLaunch: state.autoRunOnLaunch,
     autoStartRemovedInstanceName: state.autoStartRemovedInstanceName,
     minimizeToTray: state.minimizeToTray,
+    singleInstance: state.singleInstance,
     onboardingCompleted: state.onboardingCompleted,
     hotkeys: state.hotkeys,
     recentlyClosed: state.recentlyClosed,
@@ -2610,6 +2689,11 @@ export function flushConfig(): MxuConfig | null {
   if (!state.configPersistenceReady) return null;
   if (!state.projectInterface?.name) return null;
   return generateConfig();
+}
+
+/** 同步暂停期间仅用于保留可恢复草稿，不能据此直接写回后端。 */
+export function captureConfigForDraft(): MxuConfig | null {
+  return useAppStore.getState().projectInterface?.name ? generateConfig() : null;
 }
 
 /**

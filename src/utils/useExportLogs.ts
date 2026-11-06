@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { isTauri } from '@/utils/paths';
 import { loggers } from '@/utils/logger';
 import { useAppStore } from '@/stores/appStore';
+import { maaService } from '@/services/maaService';
 
 export type ExportStatus = 'idle' | 'exporting' | 'success' | 'error';
 
@@ -27,6 +28,7 @@ export function useExportLogs() {
 
     setExportModal({ show: true, status: 'exporting' });
     try {
+      await maaService.registerLogSecrets();
       const { invoke } = await import('@tauri-apps/api/core');
       const zipPath = await invoke<string>('export_logs', {
         projectName: projectInterface?.name,

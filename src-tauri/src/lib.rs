@@ -1,6 +1,8 @@
 pub mod commands;
 mod mxu_actions;
 pub mod screenshot_service;
+#[cfg(windows)]
+pub mod single_instance;
 mod tray;
 mod web_server;
 pub mod ws_broadcast;
@@ -19,17 +21,13 @@ pub fn run() {
     // 确保日志目录存在
     let _ = std::fs::create_dir_all(&logs_dir);
 
-    // 自动迁移旧版注册表自启动到任务计划程序
-    //TODO：26年2月写的，应该过几个月这自动迁移就能去除了，等旧版的都更上来
-    #[cfg(windows)]
-    commands::system::migrate_legacy_autostart();
-
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -53,6 +51,11 @@ pub fn run() {
                 })
                 .timezone_strategy(TimezoneStrategy::UseLocal)
                 .level(log::LevelFilter::Debug)
+                .format(|out, message, record| {
+                    out.finish(format_args!("[{}][{}][{}] {}",
+                        chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                        record.level(), record.target(), commands::log_secrets::redact(&message.to_string())));
+                })
                 .build(),
         )
         .setup(|app| {
@@ -72,6 +75,10 @@ pub fn run() {
                 return Ok(());
             }
 
+            // 创建接收重复启动唤起消息的窗口
+            #[cfg(windows)]
+            single_instance::create_message_window(app.handle());
+
             // 创建 MaaState 并注册为 Tauri 管理状态
             let maa_state = Arc::new(MaaState::default());
 
@@ -85,6 +92,13 @@ pub fn run() {
             match commands::utils::get_exe_directory() {
                 Ok(exe_dir) => {
                     app_config.load_interface(&exe_dir);
+
+                    // 确定自启动计划任务名并迁移旧版自启动配置（依赖 interface 中的项目名）
+                    #[cfg(windows)]
+                    {
+                        let project_name = app_config.project_name.lock().unwrap().clone();
+                        commands::system::migrate_legacy_autostart(project_name.as_deref());
+                    }
                 }
                 Err(e) => {
                     log::warn!("AppConfigState: could not get exe dir: {}", e);
@@ -167,10 +181,14 @@ pub fn run() {
             }
 
             // 启动时异步清理 cache/old 目录（更新残留的旧文件），不阻塞应用启动
-            if let Ok(data_dir) = commands::get_data_dir() {
-                let old_dir = std::path::Path::new(&data_dir).join("cache").join("old");
+            // 路径与更新时移入旧文件的位置一致（macOS 上数据目录与程序目录不同）
+            if let Ok(old_dir) = commands::update::get_old_dir() {
                 if old_dir.exists() {
                     std::thread::spawn(move || {
+                        // 与全量更新互斥：更新期间 cache/old 中是回滚备份
+                        let _guard = commands::update::OLD_DIR_LOCK
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
                         let (deleted, failed) = commands::cleanup_dir_contents(&old_dir);
                         if deleted > 0 || failed > 0 {
                             if failed == 0 {
@@ -229,9 +247,17 @@ pub fn run() {
                 log::error!("Failed to initialize system tray: {}", e);
             }
 
+            #[cfg(target_os = "macos")]
+            if let Err(e) = commands::notification::initialize_macos_notifications(app.handle()) {
+                log::warn!("[MXU_NOTIFY] Failed to initialize badge synchronization: {}", e);
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::log_secrets::register_log_secrets,
+            commands::focus::pending_focus,
+            commands::focus::acknowledge_focus,
             // Maa 核心命令
             commands::maa_core::maa_init,
             commands::maa_core::maa_set_resource_dir,
@@ -286,6 +312,7 @@ pub fn run() {
             commands::state::clear_instance_logs,
             // 更新安装命令
             commands::update::extract_zip,
+            commands::update::validate_update_target,
             commands::update::check_changes_json,
             commands::update::apply_incremental_update,
             commands::update::apply_full_update,
@@ -293,6 +320,7 @@ pub fn run() {
             commands::update::fallback_update,
             commands::update::move_file_to_old,
             commands::update::cleanup_update_artifacts,
+            commands::update::current_exe_exists,
             // 下载命令
             commands::download::get_github_release_by_version,
             commands::download::download_file,
@@ -329,7 +357,8 @@ pub fn run() {
             commands::tray::update_tray_icon,
             commands::tray::update_tray_tooltip,
             // 配置同步命令（WebUI 实时同步）
-            commands::app_config::notify_config_changed,
+            commands::app_config::get_config_snapshot,
+            commands::app_config::save_config_snapshot,
             commands::app_config::take_config_recovery_notice,
             // 系统通知命令
             commands::notification::send_system_notification,
@@ -339,6 +368,10 @@ pub fn run() {
         ])
         .on_window_event(|window, event| {
             match event {
+                #[cfg(target_os = "macos")]
+                tauri::WindowEvent::Focused(true) => {
+                    commands::notification::mark_macos_notifications_read();
+                }
                 // 窗口关闭请求：检查是否最小化到托盘
                 tauri::WindowEvent::CloseRequested { api, .. } => {
                     if tray::handle_close_requested(window.app_handle()) {
@@ -370,7 +403,13 @@ pub fn run() {
 
         // 退出前收尾遥测（结束 Session 与悬挂 Transaction 并 flush）
         if matches!(event, tauri::RunEvent::Exit) {
+            commands::focus::cancel_all();
+            #[cfg(target_os = "macos")]
+            commands::notification::shutdown_macos_notifications();
             commands::telemetry::on_app_exit();
+            // 更新后重启会在 Exit 回调之后拉起新进程，须先释放单实例锁
+            #[cfg(windows)]
+            single_instance::release();
         }
     };
 
