@@ -141,7 +141,18 @@
                       <span id="task-caption">准备就绪，随时出发</span
                       ><span id="progress-value">0%</span>
                     </div>
-                    <div class="progress-track"><div id="progress-fill"></div></div>
+                    <div
+                      id="task-progress"
+                      class="progress-track"
+                      role="progressbar"
+                      aria-label="模拟任务进度"
+                      aria-valuemin="0"
+                      aria-valuemax="100"
+                      aria-valuenow="0"
+                      aria-valuetext="待机中，进度 0%，已完成 0 项，共 3 项"
+                    >
+                      <div id="progress-fill"></div>
+                    </div>
                     <div class="action-area" id="action-area">
                       <div class="reservation" id="reservation" aria-hidden="true">
                         <span>角色占位</span>
@@ -149,7 +160,7 @@
                       <div class="action-buttons">
                         <button id="run-button" class="run-button">
                           <span id="run-icon">▶</span><span id="run-label">开始任务</span></button
-                        ><button id="stop-button" class="stop-button" disabled>停止</button>
+                        ><button id="stop-button" class="stop-button" disabled>停止任务</button>
                       </div>
                     </div>
                   </div>
@@ -181,21 +192,32 @@
                         ><i class="sonar-dot d3"></i>
                       </div>
                     </div>
-                    <div class="device-metrics">
-                      <div><small>执行状态</small><b id="status-label">待机中</b></div>
-                      <div>
-                        <small>已完成</small
-                        ><b
-                          ><span id="completed-count">0</span
-                          ><em> / <span id="selected-count">3</span></em></b
-                        >
-                      </div>
-                    </div>
                     <div class="device-footer">
                       <span class="tiny-dot"></span> LOCAL DEMO · OFFLINE
                     </div>
                   </aside>
                 </div>
+                <div id="host-status" class="host-status" role="group" aria-label="宿主任务状态">
+                  <div class="device-metrics">
+                    <div><small>执行状态</small><b id="status-label">待机中</b></div>
+                    <div>
+                      <small>已完成</small
+                      ><b
+                        ><span id="completed-count">0</span
+                        ><em> / <span id="selected-count">3</span></em></b
+                      >
+                    </div>
+                  </div>
+                  <button id="fail-button" class="failure-button" disabled>模拟失败</button>
+                  <p class="host-status-note">运行或暂停后可模拟失败；停止将记为取消。</p>
+                </div>
+                <p
+                  id="task-announcement"
+                  class="sr-only"
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
+                ></p>
               </section>
               <div class="actor mascot-actor" aria-hidden="true">
                 <div class="speech-bubble" id="speech-bubble">给我腾个位置嘛！</div>
@@ -227,7 +249,20 @@
             <div id="capability-tags" class="capability-tags"></div>
             <div class="control-block">
               <span class="control-label">试试这个</span
-              ><button id="scene-trigger" class="scene-trigger">让团子挤进来 <span>→</span></button>
+              ><button
+                id="scene-trigger"
+                class="scene-trigger"
+                type="button"
+                aria-describedby="hotspot-note"
+                aria-controls="reservation"
+                data-host-hotspot="mascot"
+              >
+                角色互动：让团子挤进来 <span aria-hidden="true">→</span>
+              </button>
+              <p id="hotspot-note" class="hotspot-note">
+                宿主拥有的角色热点：Tab 聚焦，Enter / 空格激活。只改变场景，不启动任务；此 demo
+                未验证隔离渲染器的命中保护。
+              </p>
               <div class="range-control">
                 <label for="intensity" id="intensity-label">占位宽度</label
                 ><output for="intensity" id="intensity-value">132 px</output
@@ -252,7 +287,8 @@
         </div>
         <div class="event-console">
           <span><i></i> HOST EVENTS</span
-          ><output id="event-log" aria-live="polite">skin.mounted → 捣蛋团子 · 等待交互</output
+          ><output id="event-log" role="log" aria-live="off"
+            >skin.mounted → 捣蛋团子 · 等待交互</output
           ><span id="motion-state">MOTION ON</span>
         </div>
         <div class="preset-bar">

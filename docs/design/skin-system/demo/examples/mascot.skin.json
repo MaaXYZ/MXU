@@ -17,22 +17,36 @@
     "mode": "tokens-only"
   },
   "tokens": {
-    "light": { "--color-accent": "#7357d8" },
-    "dark": { "--color-accent": "#b6a4ff" }
+    "light": {
+      "--color-accent": "#7357d8"
+    },
+    "dark": {
+      "--color-accent": "#b6a4ff"
+    }
   },
   "scene": {
     "entry": "scene.html",
-    "initialState": "idle"
+    "initialInteractionState": "rest",
+    "interactionStates": ["rest", "mischief"]
   },
   "placements": [
     {
+      "id": "mascot",
       "element": "mascot",
       "anchor": "toolbar.primary",
-      "align": "outside-start-center",
-      "offset": { "x": -12, "y": 0 },
+      "box": "inline-start",
+      "nudge": {
+        "inline": -8,
+        "block": 0
+      },
       "layer": "ornament-front",
-      "bleed": { "top": 48, "right": 16, "bottom": 12, "left": 24 },
-      "hitTest": "host-hotspot"
+      "bleed": {
+        "blockStart": 48,
+        "inlineEnd": 16,
+        "blockEnd": 12,
+        "inlineStart": 24
+      },
+      "hitTest": "none"
     }
   ],
   "reservations": [
@@ -42,25 +56,33 @@
       "edge": "inline-start",
       "size": 112,
       "maxFraction": 0.28,
-      "when": { "scene.state": "mischief" }
+      "when": {
+        "interaction.state": "mischief"
+      }
     }
   ],
   "bindings": [
     {
-      "event": "scene.hotspot.activate",
-      "target": "mascot",
-      "setSceneState": "mischief"
+      "event": "host.hotspot.activate",
+      "target": "mascot-poke",
+      "setInteractionState": "mischief"
     },
     {
-      "event": "scene.state.timeout",
+      "event": "interaction.timeout",
       "state": "mischief",
       "afterMs": 2400,
-      "setSceneState": "idle"
-    },
+      "setInteractionState": "rest"
+    }
+  ],
+  "hotspots": [
     {
-      "event": "task.runState.changed",
-      "equals": "running",
-      "setSceneState": "cheer"
+      "id": "mascot-poke",
+      "placement": "mascot",
+      "label": {
+        "zh-CN": "让团子挤一下",
+        "en-US": "Make room for the mascot"
+      },
+      "minTargetSize": 44
     }
   ]
 }

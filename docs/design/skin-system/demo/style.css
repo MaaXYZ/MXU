@@ -573,18 +573,18 @@ main {
   min-width: 0;
 }
 .task-copy b {
-  font-size: 10px;
+  font-size: 14px;
   font-weight: 550;
 }
 .task-copy small {
-  font-size: 7px;
+  font-size: 12px;
   color: var(--app-sub);
   white-space: nowrap;
 }
 .task-state {
   margin-left: auto;
   color: var(--app-sub);
-  font-size: 7px;
+  font-size: 12px;
   white-space: nowrap;
 }
 .task-row.current {
@@ -597,7 +597,7 @@ main {
 .progress-line {
   display: flex;
   justify-content: space-between;
-  font-size: 8px;
+  font-size: 12px;
   color: var(--app-sub);
   margin: 15px 0 6px;
 }
@@ -640,7 +640,7 @@ main {
   color: #2e7454;
 }
 .theme-mascot.mischief .reservation {
-  flex-basis: min(var(--reserve), 40%);
+  flex-basis: max(0px, min(var(--reserve), 40%, calc(100% - 180px)));
 }
 .action-buttons {
   display: flex;
@@ -743,15 +743,15 @@ main {
   justify-content: space-between;
 }
 .device-metrics small {
-  font-size: 8px;
+  font-size: 13px;
   color: var(--app-sub);
 }
 .device-metrics b {
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 550;
 }
 .device-metrics em {
-  font-size: 8px;
+  font-size: 13px;
   font-style: normal;
   color: var(--app-sub);
 }
@@ -1426,9 +1426,6 @@ footer > span:last-child {
 .theme-mecha .app-wrap {
   margin-right: 65px;
 }
-.theme-mecha .device-panel {
-  visibility: hidden;
-}
 .theme-mecha .app-shell {
   border-radius: 5px;
   border-color: #555b58;
@@ -1466,9 +1463,6 @@ footer > span:last-child {
 }
 .theme-mecha .task-pane {
   padding-right: 10px;
-}
-.theme-mecha .device-metrics {
-  visibility: hidden;
 }
 .theme-garden {
   --scene-bg: #c6d4de;
@@ -1980,7 +1974,7 @@ footer > span:last-child {
     display: none;
   }
   .task-copy small {
-    font-size: 6px;
+    font-size: 12px;
   }
   .task-glyph {
     display: none;
@@ -2033,7 +2027,7 @@ footer > span:last-child {
     font-size: 5px;
   }
   .task-copy b {
-    font-size: 9px;
+    font-size: 14px;
   }
   .action-buttons {
     gap: 4px;
@@ -2062,10 +2056,10 @@ footer > span:last-child {
     padding: 20px;
   }
   .task-copy b {
-    font-size: 11px;
+    font-size: 14px;
   }
   .task-copy small {
-    font-size: 8px;
+    font-size: 12px;
   }
   .task-glyph {
     display: block;
@@ -2364,13 +2358,13 @@ footer > span:last-child {
     gap: 9px;
   }
   .task-copy b {
-    font-size: 10px;
+    font-size: 14px;
   }
   .task-copy small {
-    font-size: 7px;
+    font-size: 12px;
   }
   .task-state {
-    font-size: 7px;
+    font-size: 12px;
   }
   .task-glyph {
     display: block;
@@ -2714,6 +2708,169 @@ footer > span:last-child {
   top: -18px;
   font-size: 8px;
 }
+/* Host information keeps its readable size in every skin and viewport. */
+.app-shell .task-row {
+  min-height: 66px;
+  gap: 8px;
+}
+.app-shell .task-row input {
+  width: 16px;
+  height: 16px;
+}
+.app-shell .task-row input:checked:after {
+  font-size: 12px;
+}
+.app-shell .task-copy b {
+  font-size: 14px;
+  line-height: 1.45;
+}
+.app-shell .task-copy small {
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+  color: var(--app-text);
+}
+.app-shell .task-row .task-state {
+  color: var(--app-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.app-shell .task-row.failed {
+  border-style: dashed;
+  border-width: 2px;
+}
+.app-shell .progress-line {
+  font-size: 12px;
+  line-height: 1.6;
+  gap: 12px;
+  color: var(--app-text);
+}
+.app-shell .progress-track {
+  height: 6px;
+}
+.app-shell .run-button,
+.app-shell .stop-button {
+  min-height: 44px;
+  height: auto;
+  font-size: 13px;
+  padding: 8px 12px;
+}
+.app-shell .run-button {
+  min-width: 102px;
+}
+.app-shell .stop-button {
+  white-space: nowrap;
+}
+.app-shell .connection {
+  font-size: 11px;
+  color: var(--app-text);
+}
+.app-shell .device-top {
+  font-size: 12px;
+  color: var(--app-text);
+}
+.app-shell .device-footer {
+  margin-top: auto;
+  font-size: 9px;
+  line-height: 1.5;
+  flex-wrap: wrap;
+  color: var(--app-text);
+}
+.host-status {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+  padding: 16px 18px;
+  border-top: 1px solid var(--app-line);
+  border-radius: 0 0 11px 11px;
+  background: var(--app-bg);
+  color: var(--app-text);
+}
+.host-status .device-metrics {
+  flex: 1;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin: 0;
+}
+.host-status .device-metrics > div {
+  justify-content: flex-start;
+  gap: 8px;
+}
+.host-status .device-metrics small,
+.host-status .device-metrics b,
+.host-status .device-metrics em {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--app-text);
+  white-space: nowrap;
+}
+.host-status .device-metrics b {
+  font-weight: 700;
+}
+.failure-button {
+  min-height: 40px;
+  border: 1px solid var(--app-text);
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: transparent;
+  color: var(--app-text);
+  font-size: 12px;
+}
+.host-status-note {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.hotspot-note {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #515a47;
+  margin: 12px 0 0;
+}
+.scene-trigger {
+  min-height: 44px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.scene-trigger[data-host-hotspot='mascot']:focus-visible {
+  outline: 3px solid #b85629;
+  outline-offset: 4px;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+/* The robot occupies decorative space; host metrics live in the stable footer below it. */
+.stage.theme-mecha .app-wrap {
+  margin-top: 155px;
+}
+.stage.theme-mecha .mecha-actor {
+  right: -48px;
+  top: -200px;
+  width: 280px;
+  height: 280px;
+}
+.theme-mecha .plain-device {
+  visibility: hidden;
+}
+.stage.theme-mascot:not(.mischief) .mascot-actor {
+  top: 80px;
+  bottom: auto;
+}
+.stage .device-panel {
+  padding-bottom: 18px;
+}
 @media (max-width: 600px) {
   .theme-mascot:not(.mischief) .mascot-actor {
     right: -2px;
@@ -2735,5 +2892,41 @@ footer > span:last-child {
     font-size: 7px;
     top: -15px;
     left: -8px;
+  }
+  .stage.theme-mascot:not(.mischief) .mascot-actor {
+    top: -72px;
+  }
+  .stage.theme-mecha .mecha-actor {
+    width: 180px;
+    height: 180px;
+    top: -105px;
+    right: -25px;
+  }
+  .stage.theme-mecha .app-wrap {
+    margin-top: 95px;
+  }
+  .host-status {
+    padding: 14px;
+    gap: 12px;
+  }
+  .host-status .device-metrics {
+    flex-basis: 100%;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .app-shell .task-glyph {
+    display: none;
+  }
+  .app-shell .connection {
+    display: none;
+  }
+  .app-shell .run-button,
+  .app-shell .stop-button {
+    padding: 8px;
+    font-size: 12px;
+  }
+  .scene-trigger {
+    font-size: 12px;
+    padding: 10px;
   }
 }

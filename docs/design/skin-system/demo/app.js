@@ -12,10 +12,10 @@
       title: '借过，我也要上班。',
       heading: '它不只是贴纸。',
       description:
-        '团子进入操作栏时，宿主给它分配真实空间。按钮跟着布局移动，点击范围也一起移动。空间不足时优先保留操作。',
-      tags: ['anchor', 'reservation', 'state'],
+        '右侧宿主按钮可用 Tab 聚焦、Enter 或空格激活，让团子进入操作栏。按钮与点击范围跟随真实布局移动；角色图片本身不接收输入。',
+      tags: ['host hotspot', 'reservation', 'state'],
       caption: '↳ 小家伙走进来，按钮真的为它让出位置。',
-      trigger: ['让团子挤进来', '请团子让一让'],
+      trigger: ['角色互动：让团子挤进来', '角色互动：请团子让一让'],
       effect: 'mischief',
       range: [80, 164, 132],
       rangeLabel: '请求占位宽度',
@@ -81,7 +81,7 @@
       heading: '反馈也能有触感。',
       description:
         '任务变成纸上的清单，完成时盖下印章。折角、叠纸和投影赋予平面材质感；不需要替换业务逻辑，也不需要 3D 引擎。',
-      tags: ['state.completed', 'material', 'transition'],
+      tags: ['state.success', 'material', 'transition'],
       caption: '↳ 完成模拟任务会自动盖章；右侧可以单独预览效果。',
       trigger: ['预览完成印章', '收起印章'],
       effect: 'stamped',
@@ -117,6 +117,7 @@
     timer: null,
     accent: null,
     presetName: null,
+    announcementKey: '',
   };
   const taskInputs = [...document.querySelectorAll('[data-task]')];
   const taskRows = [...document.querySelectorAll('.task-row')];
@@ -179,41 +180,57 @@
     $('completed-count').textContent = String(completed);
     $('progress-value').textContent = `${state.progress}%`;
     $('progress-fill').style.width = `${state.progress}%`;
+    $('task-progress').setAttribute('aria-valuenow', String(state.progress));
+    stage.dataset.runState = state.phase;
     const active = state.phase === 'running',
       paused = state.phase === 'paused';
     const def = sceneDefs[state.skin];
-    $('scene-trigger').disabled =
-      (['vinyl', 'sonar', 'paper'].includes(state.skin) && (active || paused)) ||
-      (state.skin === 'paper' && state.phase === 'complete');
+    const taskOwnsPreview =
+      ['vinyl', 'sonar', 'paper'].includes(state.skin) && state.phase !== 'idle';
+    $('scene-trigger').disabled = taskOwnsPreview;
     $('scene-trigger').replaceChildren(
       document.createTextNode(
-        state.skin === 'paper' && state.phase === 'complete'
+        state.skin === 'paper' && state.phase === 'success'
           ? '本次完成印章已生效'
-          : def.trigger[state.effect ? 1 : 0],
+          : taskOwnsPreview
+            ? '任务反馈由当前状态控制'
+            : def.trigger[state.effect ? 1 : 0],
       ),
       Object.assign(document.createElement('span'), { textContent: state.effect ? '↶' : '→' }),
     );
     $('scene-trigger').setAttribute('aria-pressed', String(state.effect));
     stage.classList.toggle('running', active);
-    stage.classList.toggle('complete', state.phase === 'complete');
+    stage.classList.toggle('complete', state.phase === 'success');
+    stage.classList.toggle('failed', state.phase === 'error');
+    stage.classList.toggle('cancelled', state.phase === 'cancelled');
     const phaseText = {
       idle: '待机中',
       running: '执行中',
       paused: '已暂停',
-      stopped: '已停止',
-      complete: '已完成',
+      cancelled: '已取消',
+      error: '执行失败',
+      success: '已完成',
     };
     $('status-label').textContent = phaseText[state.phase];
+    $('task-progress').setAttribute(
+      'aria-valuetext',
+      `${phaseText[state.phase]}，进度 ${state.progress}%，已完成 ${completed} 项，共 ${indexes.length} 项`,
+    );
     $('run-label').textContent = active
       ? '暂停任务'
       : paused
         ? '继续任务'
-        : state.phase === 'complete'
+        : state.phase === 'success'
           ? '再运行一次'
-          : '开始任务';
+          : state.phase === 'error'
+            ? '重试任务'
+            : state.phase === 'cancelled'
+              ? '重新开始'
+              : '开始任务';
     $('run-icon').textContent = active ? 'Ⅱ' : '▶';
     $('run-button').disabled = indexes.length === 0;
     $('stop-button').disabled = !(active || paused);
+    $('fail-button').disabled = !(active || paused);
     $('task-caption').textContent =
       indexes.length === 0
         ? '请至少选择一项任务'
@@ -221,19 +238,38 @@
           ? '正在模拟执行，请稍候'
           : paused
             ? '任务已暂停，随时继续'
-            : state.phase === 'complete'
+            : state.phase === 'success'
               ? '全部完成，辛苦啦！'
-              : state.phase === 'stopped'
-                ? '本次执行已停止'
-                : '准备就绪，随时出发';
+              : state.phase === 'error'
+                ? '模拟连接失败；可重试，不计为成功'
+                : state.phase === 'cancelled'
+                  ? '本次执行已取消，不计为成功'
+                  : '准备就绪，随时出发';
     taskRows.forEach((row, index) => {
       const order = indexes.indexOf(index),
         done = order >= 0 && order < completed;
-      const current = order === completed && order >= 0 && (active || paused);
+      const firstUnfinished = order === completed && order >= 0;
+      const current = firstUnfinished && (active || paused);
+      const interrupted = state.phase === 'error' || state.phase === 'cancelled';
       row.classList.toggle('done', done);
       row.classList.toggle('current', current);
+      row.classList.toggle('failed', firstUnfinished && state.phase === 'error');
       row.querySelector('.task-state').textContent =
-        order < 0 ? '跳过' : done ? '完成' : current ? (paused ? '暂停' : '执行中') : '等待';
+        order < 0
+          ? '跳过'
+          : done
+            ? '✓ 完成'
+            : current
+              ? paused
+                ? 'Ⅱ 暂停'
+                : '执行中'
+              : firstUnfinished && interrupted
+                ? state.phase === 'error'
+                  ? '! 失败'
+                  : '已取消'
+                : interrupted
+                  ? '未执行'
+                  : '等待';
       taskInputs[index].disabled = active || paused;
     });
     if (state.skin === 'garden')
@@ -242,13 +278,34 @@
         Math.min(1.1, state.intensity / 100 + state.progress / 300),
       );
     $('speech-bubble').textContent =
-      state.phase === 'complete'
+      state.phase === 'success'
         ? '下班啦！一起摸鱼～'
-        : active
-          ? '我在认真监督！'
-          : state.effect
-            ? '嘿嘿，这里归我啦！'
-            : '给我腾个位置嘛！';
+        : state.phase === 'error'
+          ? '出点小状况，再试一次？'
+          : state.phase === 'cancelled'
+            ? '收到，今天先停在这里。'
+            : active
+              ? '我在认真监督！'
+              : state.effect
+                ? '嘿嘿，这里归我啦！'
+                : '给我腾个位置嘛！';
+    // A phase change is announced once. Progress ticks update the progressbar, not the live region.
+    const announcementKey = `${state.phase}:${indexes.length}`;
+    if (state.announcementKey !== announcementKey) {
+      state.announcementKey = announcementKey;
+      $('task-announcement').textContent =
+        indexes.length === 0
+          ? '请至少选择一项模拟任务。'
+          : `${phaseText[state.phase]}。${
+              state.phase === 'success'
+                ? `已完成 ${completed} 项任务。`
+                : state.phase === 'error'
+                  ? '模拟连接失败，可使用重试任务按钮从头重试。'
+                  : state.phase === 'cancelled'
+                    ? '用户停止了本次执行，未完成的任务不计为成功。'
+                    : `已选择 ${indexes.length} 项模拟任务。`
+            }`;
+    }
   }
   function selectSkin(key) {
     if (!sceneDefs[key]) return;
@@ -288,6 +345,17 @@
       Object.assign(document.createElement('span'), { textContent: '→' }),
     );
     $('scene-trigger').setAttribute('aria-pressed', 'false');
+    if (key === 'mascot') {
+      $('scene-trigger').dataset.hostHotspot = 'mascot';
+      $('scene-trigger').setAttribute('aria-controls', 'reservation');
+      $('hotspot-note').textContent =
+        '宿主拥有的角色热点：Tab 聚焦，Enter / 空格激活。只改变场景，不启动任务；此 demo 未验证隔离渲染器的命中保护。';
+    } else {
+      delete $('scene-trigger').dataset.hostHotspot;
+      $('scene-trigger').removeAttribute('aria-controls');
+      $('hotspot-note').textContent =
+        '此按钮由演示宿主管理。任务反馈预览仅在待机时启用；重置可返回待机。运行、失败与取消状态由任务控件决定。';
+    }
     $('capability-tags').replaceChildren(
       ...def.tags.map((tag) => Object.assign(document.createElement('span'), { textContent: tag })),
     );
@@ -327,8 +395,8 @@
       state.progress = Math.min(100, state.progress + 5);
       if (state.progress === 100) {
         stopClock();
-        state.phase = 'complete';
-        log('task.completed → 全部完成 · 皮肤接收完成状态');
+        state.phase = 'success';
+        log('task.status → success · 全部完成，皮肤接收成功状态');
       }
       renderTasks();
     }, 650);
@@ -346,10 +414,18 @@
     startClock();
   });
   $('stop-button').addEventListener('click', () => {
+    if (!['running', 'paused'].includes(state.phase)) return;
     stopClock();
-    state.phase = 'stopped';
+    state.phase = 'cancelled';
     renderTasks();
-    log('task.status → stopped · 宿主停止模拟任务');
+    log('task.status → cancelled · 用户停止，不触发成功反馈');
+  });
+  $('fail-button').addEventListener('click', () => {
+    if (!['running', 'paused'].includes(state.phase)) return;
+    stopClock();
+    state.phase = 'error';
+    renderTasks();
+    log('task.status → error · 模拟连接失败，可从头重试');
   });
   taskInputs.forEach((input) =>
     input.addEventListener('change', () => {
