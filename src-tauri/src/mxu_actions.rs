@@ -2,6 +2,7 @@
 //!
 //! 提供 MXU 特有的自定义动作实现，如 MXU_SLEEP 等
 
+use base64::{engine::general_purpose, Engine as _};
 use chrono::TimeZone;
 use log::{info, warn};
 use maa_framework::custom::FnAction;
@@ -200,7 +201,62 @@ const MXU_LAUNCH_ACTION: &str = "MXU_LAUNCH_ACTION";
 fn mxu_launch_action_fn(
     _ctx: &maa_framework::context::Context,
     args: &maa_framework::custom::ActionArgs,
+    app_handle: Option<&AppHandle>,
+    instance_id: Option<&str>,
 ) -> bool {
+    //
+    // {{STATUS}}
+    //
+    // success - 任务1
+    // failed - 任务2
+    // pending - 任务3
+    //
+    let task_status =
+        crate::commands::utils::get_checked_task_status_of_instance(app_handle, instance_id);
+    let status = task_status
+        .iter()
+        .map(|row| format!("{} - {}", row[1], row[0]))
+        .collect::<Vec<String>>()
+        .join("\n");
+    //
+    // {{S_BASE64}}
+    //
+    // c3VjY2VzcyAtIOS7u+WKoTEKZmFpbGVkIC0g5Lu75YqhMgpwZW5kaW5nIC0g5Lu75YqhMw==
+    //
+    let s_base64 = general_purpose::STANDARD.encode(&status);
+    //
+    // {{S_CSV}}
+    //
+    // NAME,STATUS
+    // 任务1,success
+    // 任务2,failed
+    // 任务3,pending
+    //
+    let s_csv = format!(
+        "NAME,STATUS\n{}",
+        task_status
+            .iter()
+            .map(|row| format!("{},{}", row[0], row[1]))
+            .collect::<Vec<String>>()
+            .join("\n")
+    );
+    //
+    // {{S_JSON}}
+    //
+    // [["任务1","success"],["任务2","failed"],["任务3","pending"]]
+    //
+    let s_json = match serde_json::to_string(&task_status) {
+        Ok(v) => v,
+        Err(_) => String::from("[]"),
+    };
+    //
+    // {{S_JSON_BASE64}}
+    //
+    // W1si5Lu75YqhMSIsInN1Y2Nlc3MiXSxbIuS7u+WKoTIiLCJmYWlsZWQiXSxbIuS7u+WKoTMiLCJwZW5kaW5nIl1d
+    //
+    let s_json_base64 = general_purpose::STANDARD.encode(&s_json);
+    info!("[MXU_LAUNCH] Generated task(s) status: {}", &s_json);
+
     let param_str = args.param;
     info!("[MXU_LAUNCH] Received param: {}", param_str);
 
@@ -224,7 +280,12 @@ fn mxu_launch_action_fn(
         .get("args")
         .and_then(|v| v.as_str())
         .unwrap_or("")
-        .to_string();
+        .to_string()
+        .replace("{{STATUS}}", &status)
+        .replace("{{S_BASE64}}", &s_base64)
+        .replace("{{S_CSV}}", &s_csv)
+        .replace("{{S_JSON}}", &s_json)
+        .replace("{{S_JSON_BASE64}}", &s_json_base64);
 
     let wait_for_exit = json
         .get("wait_for_exit")
@@ -1082,10 +1143,55 @@ pub fn register_all_mxu_actions(
 
     reg_action!(MXU_SLEEP_ACTION, mxu_sleep_action_fn);
     reg_action!(MXU_WAITUNTIL_ACTION, mxu_waituntil_action_fn);
-    reg_action!(MXU_LAUNCH_ACTION, mxu_launch_action_fn);
     reg_action!(MXU_WEBHOOK_ACTION, mxu_webhook_action_fn);
     reg_action!(MXU_NOTIFY_ACTION, mxu_notify_action_fn);
     reg_action!(MXU_POWER_ACTION, mxu_power_action_fn);
+
+    // launch
+
+    let launch_app_handle = app_handle.clone();
+    let launch_instance_id = instance_id.to_string();
+    let launch_wrapper = move |ctx: &maa_framework::context::Context,
+                               args: &maa_framework::custom::ActionArgs|
+          -> bool {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            mxu_launch_action_fn(
+                ctx,
+                args,
+                Some(&launch_app_handle),
+                Some(&launch_instance_id),
+            )
+        }))
+        .unwrap_or_else(|e| {
+            let msg = if let Some(s) = e.downcast_ref::<&str>() {
+                s.to_string()
+            } else if let Some(s) = e.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                "Unknown panic payload".to_string()
+            };
+            log::error!(
+                "[MXU] Custom action {} panicked: {}",
+                MXU_LAUNCH_ACTION,
+                msg
+            );
+            false
+        })
+    };
+
+    if let Err(e) =
+        resource.register_custom_action(MXU_LAUNCH_ACTION, Box::new(FnAction::new(launch_wrapper)))
+    {
+        warn!("[MXU] Failed to register {}: {:?}", MXU_LAUNCH_ACTION, e);
+        failed_count += 1;
+    } else {
+        info!(
+            "[MXU] Custom action {} registered successfully",
+            MXU_LAUNCH_ACTION
+        );
+    }
+
+    // kill process
 
     let killproc_app_handle = app_handle.clone();
     let killproc_instance_id = instance_id.to_string();

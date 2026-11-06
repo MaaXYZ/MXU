@@ -191,6 +191,7 @@ const MXU_LAUNCH_INPUT_OPTION_DEF_INTERNAL: InputOption = {
       default: '',
       pipeline_type: 'string',
       placeholder: 'specialTask.launch.argsPlaceholder',
+      description: 'specialTask.launch.argsDescription',
     },
   ],
   pipeline_override: {
