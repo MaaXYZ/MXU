@@ -29,7 +29,7 @@ pub fn maa_get_instance_state(
         .ok_or("Instance not found")?;
 
     // 通过 Maa API 查询真实状态
-    let is_running = instance.tasker.as_ref().is_some_and(|t| t.running());
+    let is_running = instance.is_running();
 
     if !is_running && instance.stop_in_progress {
         instance.stop_in_progress = false;
@@ -69,7 +69,7 @@ pub fn maa_get_all_states(state: State<Arc<MaaState>>) -> Result<AllInstanceStat
 
     for (id, instance) in instances.iter_mut() {
         // 通过 Maa API 查询真实状态
-        let is_running = instance.tasker.as_ref().is_some_and(|t| t.running());
+        let is_running = instance.is_running();
 
         if !is_running && instance.stop_in_progress {
             instance.stop_in_progress = false;

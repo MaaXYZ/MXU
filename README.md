@@ -8,7 +8,7 @@
 
 > [!TIP]
 >
-> MXU 已支持最新最潮的 PI v2.5.0 协议！
+> MXU 已适配 PI v2.11.0 协议，包括多条公告、预设控制器过滤、文件 / 文件夹输入和 Agent 用户数据目录环境变量，并补全多选子选项、截图缩放、前置任务和 focus 展示渠道。
 
 - 📋 **任务管理** - 可视化配置任务列表，支持拖拽排序
 - 🔧 **多实例支持** - 同时管理多个独立运行的实例（标签页多开）
@@ -25,7 +25,7 @@
 
 ### 依赖文件
 
-[MXU Releases](https://github.com/MistEO/MXU/releases) 中提供了单可执行文件（Windows 为 `mxu.exe`，Linux/macOS 为 `mxu`），您需要配置以下依赖：
+[MXU Releases](https://github.com/MistEO/MXU/releases) 中提供了 Windows/Linux 单可执行文件和 macOS 应用包（`mxu.app`），您需要配置以下依赖：
 
 - [MaaFramework](https://github.com/MaaXYZ/MaaFramework/releases) 运行库 ( >= `v5.12.1` ) ，将压缩包中的 `bin` 文件夹内容解压到 `maafw` 文件夹中
 - [interface.json](https://github.com/MaaXYZ/MaaFramework/blob/main/sample/interface.json) 及相关资源文件，请参考 [PI 协议文档](https://github.com/MaaXYZ/MaaFramework/blob/main/docs/zh_cn/3.3-ProjectInterfaceV2%E5%8D%8F%E8%AE%AE.md) 编写
@@ -34,7 +34,8 @@
 
 ```text
 your-project/
-├── mxu.exe (或 mxu)
+├── mxu.exe (Windows) / mxu (Linux)
+├── mxu.app (macOS)
 ├── maafw/
 │   ├── MaaFramework.dll (Windows)
 │   ├── MaaToolkit.dll
@@ -43,7 +44,10 @@ your-project/
 └── resource/
 ```
 
-随后运行 `mxu.exe`（Windows）或 `./mxu`（Linux/macOS）即可！~
+随后运行 `mxu.exe`（Windows）、`./mxu`（Linux）或双击 `mxu.app`（macOS）即可！~
+
+> [!IMPORTANT]
+> macOS 请将 `mxu.app` 放在项目目录中，与 `interface.json`、`maafw` 和 `resource` 并列，而不要单独移动到“应用程序”目录。`mxu.app` 需要保持这个目录结构才能找到项目资源并发送系统通知；如果使用多个项目，请为每个项目目录各放一份。
 
 ### 命令行参数
 
@@ -62,6 +66,9 @@ MXU 支持以下启动参数：
 # 查看命令行帮助
 mxu.exe --help
 
+# macOS 命令行启动时直接调用应用包内的可执行文件
+./mxu.app/Contents/MacOS/mxu --help
+
 # 使用系统自启动模式，并指定自动执行的实例名
 mxu.exe --autostart --instance "日常任务"
 
@@ -72,112 +79,6 @@ mxu.exe --autostart -i "日常任务" --quit-after-run
 ### 用户文件
 
 用户配置保存在 `config` 文件夹中，调试日志保存在 `debug` 文件夹中。亦可在 设置 - 调试 中直接打开文件夹。
-
-## 🧩 MXU 扩展
-
-MXU 在 [PI V2 协议](https://github.com/MaaXYZ/MaaFramework/blob/main/docs/zh_cn/3.3-ProjectInterfaceV2%E5%8D%8F%E8%AE%AE.md) 之外提供了一组**可选扩展字段**，用于补齐协议未覆盖的界面细节。
-
-它们都不是协议的组成部分，**不写也能正常工作**；写了之后其它客户端未必识别，具体行为以本仓库实现为准（代码里的 `MXU 扩展` 注释即这些字段的登记处）。
-
-### 行内 Markdown label
-
-`option` / `case` / `input` 的 `label` 支持行内 Markdown，最常见的用法是给选项名称配一个小图标：
-
-```json
-{
-  "option": {
-    "Stage": {
-      "type": "select",
-      "label": "关卡选择",
-      "cases": [
-        { "name": "Stage1", "label": "![](resource/image/icon/stage1.png) 第一关 ★1" },
-        { "name": "Stage2", "label": "![](resource/image/icon/stage2.png) 第二关 ★2" }
-      ]
-    }
-  }
-}
-```
-
-支持的行内语法（判定规则见 `src/utils/richText.ts`）：
-
-| 语法                          | 效果                                                   |
-| ----------------------------- | ------------------------------------------------------ |
-| `![](路径)` / `![说明](路径)` | 行内 16px 图标，相对路径基于 `interface.json` 所在目录 |
-| `[文字](https://…)`           | 链接                                                   |
-| `` `代码` ``                  | 行内代码样式                                           |
-| `**加粗**`                    | 加粗                                                   |
-| `<b>` `<br>` `<img>` 等       | 常见的行内 HTML 标签（渲染前经 DOMPurify 清理）        |
-
-注意事项：
-
-- label 默认按纯文本渲染，只有出现上表中的标记时才走 Markdown 解析，因此**纯文本 label 没有任何额外开销**。
-- 只支持**行内**语法。多行段落、列表、标题、表格等块级内容请写在 `description` 里（`description` 支持 Markdown、文件路径与 URL）。
-- 悬停提示（tooltip）始终显示去掉标记的纯文本，不会出现 `![](...)` 这类源码。
-- 图标读取失败时会被忽略，不会显示破图；建议控制在 16px 左右，与 `option` / `case` 的 `icon` 字段视觉一致。
-- 该能力只作用于 `option`、`case`、`input` 的 `label`；`task`、`resource`、`controller`、任务分组的 `label` 仍为纯文本。
-
-### 输入项扩展字段
-
-`input` 类型的 `inputs[]` 在协议字段之外支持以下扩展：
-
-| 字段          | 类型                             | 说明                                                                 |
-| ------------- | -------------------------------- | -------------------------------------------------------------------- |
-| `input_type`  | `"text"` \| `"file"` \| `"time"` | 渲染对应控件：`file` 文件选择器、`time` 时间选择器，缺省为普通文本框 |
-| `placeholder` | `string`                         | 输入框占位提示，支持 `$` 国际化                                      |
-| `password`    | `boolean`                        | 密码字段：界面掩码显示、配置加密存储，日志与遥测中同样脱敏           |
-
-```json
-{
-  "input": {
-    "type": "input",
-    "label": "启动参数",
-    "inputs": [
-      { "name": "ConfigPath", "label": "配置文件", "input_type": "file" },
-      { "name": "Token", "label": "访问令牌", "password": true },
-      {
-        "name": "StartAt",
-        "label": "启动时间",
-        "input_type": "time",
-        "placeholder": "$task.startAtHint"
-      }
-    ]
-  }
-}
-```
-
-### 任务设置页（setting）
-
-`interface.json` 顶层可声明 `setting`，把这些 option 收纳到「设置 - 任务设置」中，并自定义分组外观：
-
-```json
-{
-  "setting": [
-    {
-      "name": "advanced",
-      "label": "$settings.advanced",
-      "description": "日常任务用到的高级参数",
-      "icon": "resource/image/icon/advanced.png",
-      "default_expand": false,
-      "option": ["MaxRetry", "Timeout"]
-    }
-  ]
-}
-```
-
-| 字段             | 类型       | 说明                                             |
-| ---------------- | ---------- | ------------------------------------------------ |
-| `name`           | `string`   | 分组唯一标识，同时作为设置页锚点 ID              |
-| `label`          | `string`   | 分组显示名称，支持 `$` 国际化；缺省回退到 `name` |
-| `description`    | `string`   | 分组说明，支持 `$` 国际化                        |
-| `icon`           | `string`   | 分组图标，相对路径基于 `interface.json` 所在目录 |
-| `default_expand` | `boolean`  | 默认是否展开，缺省展开                           |
-| `option`         | `string[]` | 该分组包含的顶层 option 键名；不存在的键会被忽略 |
-
-`setting` 只描述“怎么展示”，option 本身仍定义在顶层 `option` 里。使用 `import` 导入其它 PI 文件时，导入文件的 `setting` 会按导入顺序追加合并。
-
-> [!TIP]
->
-> MXU 还内置了若干与 pipeline 无关的「特殊任务」（延迟、等待到指定时间点、启动外部程序），它们由 MXU 自身实现，无需资源提供 pipeline；新增方式见 [docs/add-special-task.md](docs/add-special-task.md)。
 
 ## 📖 开发调试
 
@@ -245,7 +146,7 @@ pnpm tauri dev
 pnpm tauri build
 ```
 
-构建产物位于 `src-tauri/target/release/` 目录。
+构建产物位于 `src-tauri/target/release/` 目录；macOS 应用包位于 `src-tauri/target/release/bundle/macos/mxu.app`。
 
 ## 🤝 相关项目
 

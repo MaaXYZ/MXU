@@ -1,4 +1,10 @@
 export default {
+  pi: {
+    PI_DISPLAY_OPTIONS_INVALID: '請只設定一種截圖縮放模式，並使用正整數尺寸。',
+    PI_DISPLAY_OPTIONS_UNSUPPORTED: '目前的 MaaFramework 不支援此截圖模式，請更新資源包。',
+  },
+  focus: { title: '專案資訊', confirmFailed: '確認失敗，請重試。' },
+
   // 通用
   common: {
     confirm: '確定',
@@ -49,6 +55,8 @@ export default {
     appearance: '外觀',
     hotkeys: '快捷鍵',
     general: '一般',
+    scheduledUpdateCheck: '定時檢查更新',
+    scheduledUpdateCheckTime: '每日檢查時間（本地時間）',
     taskSettings: '任務設定',
     taskSettingsEmpty: '目前沒有可顯示的設定項',
     language: '語言',
@@ -102,6 +110,8 @@ export default {
     hotkeysGlobalRegisterFailed: '全域快捷鍵 {{combo}} 註冊失敗：{{error}}',
     minimizeToTray: '關閉時最小化到托盤',
     minimizeToTrayHint: '點選關閉按鈕時隱藏到系統托盤而非退出程式',
+    singleInstance: '多開偵測',
+    singleInstanceHint: '同一目錄已在執行時不再啟動新實例，改為喚起現有視窗（重新啟動後生效）',
     autoStart: '開機自啟動',
     autoStartHint: '系統啟動時自動執行本程式',
     autoStartInstance: '啟動後自動執行',
@@ -241,6 +251,9 @@ export default {
       resourceFailed: '資源載入失敗',
       startFailed: '任務啟動失敗',
       alreadyRunning: '任務已在執行或正在執行前置動作',
+      taskerStopping: '任務正在停止，請等待收尾完成後再啟動。',
+      queueAlreadyRunning: '任務已在執行，請先停止目前佇列再開始新一輪。',
+      instanceReplaced: '處理請求時實例已被替換，請重新選擇實例後重試。',
       taskNotFound: '指定的任務不存在或已被刪除',
       noRunnableTasks: '沒有可執行的任務，請檢查任務定義與入口設定',
       workstationLocked: '偵測到電腦處於鎖定畫面狀態，請先解鎖後再執行任務',
@@ -390,7 +403,6 @@ export default {
     selectController: '選擇控制器',
     adb: 'Android 裝置',
     win32: 'Windows 視窗',
-    wlroots: 'WlRoots (Linux)',
     linux: 'Linux',
     portal: 'Portal',
     uinputWidth: '寬 (px)',
@@ -410,6 +422,7 @@ export default {
     connected: '已連接',
     disconnected: '未連接',
     connectionFailed: '連接失敗',
+    connectionSuperseded: '實例已移除或已發起新的連線，原連線請求已取消。',
     refreshDevices: '重新整理裝置',
     refreshWindows: '重新整理視窗',
     refresh: '重新整理裝置',
@@ -599,6 +612,14 @@ export default {
 
   // 設定自我修復提示
   config: {
+    syncSaveFailed: '主機無法儲存設定，已暫停自動儲存。請匯出草稿，或修復問題後重新同步。',
+    draftStorageFailed: '本機草稿儲存空間無法使用，關閉頁面會遺失這些變更。請先匯出未同步設定。',
+    draftExportFailed: '匯出未同步設定失敗，草稿已保留，請重試。',
+    syncReloadFailed: '無法讀取主機設定，變更已保留在本機，重新同步後才能儲存。',
+    retrySync: '重新同步',
+    unsavedDraft: '有未同步的設定變更，已保留為本機草稿。可匯出後對照還原。',
+    exportUnsavedDraft: '匯出未同步設定',
+    syncConflict: '設定已在其他用戶端更新或同步失敗，正在重新載入主機設定。請確認後重新編輯。',
     recoveredFromBackup: '設定檔已損壞，已自動還原到 {{time}} 的備份',
     recoveryFailed: '設定檔已損壞且沒有可用的備份，已重設為預設設定',
   },
@@ -719,6 +740,8 @@ export default {
       exeMissing:
         '程式檔案已遺失，可能遭安全軟體刪除或隔離。請將安裝目錄加入安全軟體白名單後重新下載更新',
     },
+    signedAppUpdateUnsupported:
+      '無法在應用程式內覆寫更新 macOS 應用程式套件。請結束應用程式並安裝完整的新版本；手動替換檔案後需重新簽署。已下載的更新套件會保留。',
     installNow: '立即安裝',
     installUpdate: '安裝更新',
     installStages: {

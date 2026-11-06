@@ -1,3 +1,4 @@
+import { PiIcon } from './PiContent';
 import { useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -34,7 +35,7 @@ import { TaskItem } from './TaskItem';
 import { ActionItem } from './ActionItem';
 import { ContextMenu, useContextMenu, type MenuItem } from './ContextMenu';
 import type { SavedTask } from '@/types/config';
-import type { PresetItem } from '@/types/interface';
+import type { PresetItem, SelectedTask } from '@/types/interface';
 import { getInterfaceLangKey } from '@/i18n';
 import { useResolvedContent } from '@/services/contentResolver';
 import {
@@ -44,9 +45,15 @@ import {
   importTabConfigFromFile,
   getImportErrorType,
 } from '@/utils/tabExportImport';
-import { generateId, initializeAllOptionValues, sanitizeOptionValues } from '@/stores/helpers';
+import {
+  generateId,
+  initializeAllOptionValues,
+  isTaskCompatible,
+  sanitizeOptionValues,
+} from '@/stores/helpers';
 import { decryptPasswordOptionValues } from '@/utils/passwordOptionValues';
-import { isPretaskName } from '@/types/pretasks';
+import { buildPretaskDef, getPretaskItem, isPretaskName } from '@/types/pretasks';
+import { isPresetCompatible } from '@/utils/presetCompatibility';
 import { loggers } from '@/utils/logger';
 import { toast } from 'sonner';
 import clsx from 'clsx';
@@ -80,7 +87,10 @@ function PresetCard({ preset, onApply }: { preset: PresetItem; onApply: () => vo
       )}
     >
       <div className="flex items-center gap-2 mb-1.5">
-        <Sparkles className="w-4 h-4 text-accent flex-shrink-0" />
+        <PiIcon
+          icon={preset.icon}
+          fallback={<Sparkles className="w-4 h-4 text-accent flex-shrink-0" />}
+        />
         <span className="text-sm font-medium text-text-primary truncate">{label}</span>
         <span className="text-xs text-text-muted ml-auto flex-shrink-0">
           {enabledCount}/{totalCount} {t('preset.taskCount')}
@@ -228,14 +238,10 @@ function ImportConfigButton({ instanceId }: { instanceId: string }) {
 }
 
 /** 预设选择器 - 任务列表为空时显示 */
-function PresetSelector({ instanceId }: { instanceId: string }) {
-  const { projectInterface, applyPreset, skipPreset, renameInstance, resolveI18nText, language } =
-    useAppStore();
+function PresetSelector({ instanceId, presets }: { instanceId: string; presets: PresetItem[] }) {
+  const { applyPreset, skipPreset, renameInstance, resolveI18nText, language } = useAppStore();
   const { t } = useTranslation();
   const langKey = getInterfaceLangKey(language);
-
-  const presets = projectInterface?.preset;
-  if (!presets || presets.length === 0) return null;
 
   return (
     <div className="flex flex-col items-center gap-4 p-6">
@@ -284,11 +290,31 @@ export function TaskList() {
     lastAddedTaskId,
     clearLastAddedTaskId,
     projectInterface,
+    selectedController,
+    selectedResource,
     skippedPresetInstanceIds,
   } = useAppStore();
 
   const instance = getActiveInstance();
   const isInstanceRunning = instance?.isRunning || false;
+  // 当前控制器/资源，未选择时回退到第一个
+  const controllerName = instance
+    ? selectedController[instance.id] ||
+      instance.controllerName ||
+      projectInterface?.controller[0]?.name
+    : undefined;
+  const resourceName = instance
+    ? selectedResource[instance.id] || instance.resourceName || projectInterface?.resource[0]?.name
+    : undefined;
+  // 与当前控制器/资源不兼容的 pretask 仍保留在配置中（切换后可恢复），但不显示
+  const isTaskVisible = useCallback(
+    (task: SelectedTask) => {
+      if (!isPretaskName(task.taskName)) return true;
+      const item = getPretaskItem(projectInterface, task.taskName);
+      return !item || isTaskCompatible(buildPretaskDef(item), controllerName, resourceName);
+    },
+    [projectInterface, controllerName, resourceName],
+  );
   const { state: menuState, showAt: showMenuAt, hide: hideMenu } = useContextMenu();
   const { importFromClipboard, importFromFile } = useImportConfigActions(instance?.id ?? '');
 
@@ -358,7 +384,7 @@ export function TaskList() {
       if (!instance) return;
       const position = { x: e.clientX, y: e.clientY };
 
-      const tasks = instance.selectedTasks;
+      const tasks = instance.selectedTasks.filter(isTaskVisible);
       const hasEnabledTasks = tasks.some((t) => t.enabled || t.runOnce);
       const hasExpandedTasks = tasks.some((t) => t.expanded);
       const hasTasks = tasks.length > 0;
@@ -479,6 +505,7 @@ export function TaskList() {
       projectInterface,
       importFromClipboard,
       importFromFile,
+      isTaskVisible,
     ],
   );
 
@@ -492,21 +519,24 @@ export function TaskList() {
 
   const tasks = instance.selectedTasks;
   // pretask 伪任务作为卡片置于前置程序之上，其余任务保持在下方
-  const pretaskTasks = tasks.filter((t) => isPretaskName(t.taskName));
+  const pretaskTasks = tasks.filter((t) => isPretaskName(t.taskName) && isTaskVisible(t));
   const normalTasks = tasks.filter((t) => !isPretaskName(t.taskName));
+  const hasVisibleTasks = pretaskTasks.length > 0 || normalTasks.length > 0;
 
   const preActions = instance.preActions ?? [];
   const showPreActions = preActions.length > 0;
   const canReorderPreActions = !isInstanceRunning && preActions.length > 1;
-  const hasPresets =
-    (projectInterface?.preset?.length ?? 0) > 0 && !skippedPresetInstanceIds.has(instance.id);
+  const presets = (projectInterface?.preset ?? []).filter((preset) =>
+    isPresetCompatible(preset, controllerName),
+  );
+  const hasPresets = presets.length > 0 && !skippedPresetInstanceIds.has(instance.id);
 
-  if (tasks.length === 0 && !showPreActions) {
+  if (!hasVisibleTasks && !showPreActions) {
     return (
       <>
         <div className="flex-1 overflow-y-auto" onContextMenu={handleListContextMenu}>
           {hasPresets ? (
-            <PresetSelector instanceId={instance.id} />
+            <PresetSelector instanceId={instance.id} presets={presets} />
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-text-muted gap-3">
               <ListTodo className="w-12 h-12 opacity-30" />
@@ -523,7 +553,7 @@ export function TaskList() {
     );
   }
 
-  if (tasks.length === 0) {
+  if (!hasVisibleTasks) {
     return (
       <>
         <div
@@ -559,7 +589,7 @@ export function TaskList() {
           )}
 
           {hasPresets ? (
-            <PresetSelector instanceId={instance.id} />
+            <PresetSelector instanceId={instance.id} presets={presets} />
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-text-muted gap-3 min-h-[120px]">
               <ListTodo className="w-12 h-12 opacity-30" />
@@ -631,6 +661,10 @@ export function TaskList() {
                 ))}
               </SortableContext>
             </DndContext>
+          )}
+
+          {normalTasks.length === 0 && hasPresets && (
+            <PresetSelector instanceId={instance.id} presets={presets} />
           )}
 
           {/* 任务列表 */}

@@ -97,7 +97,7 @@ pub fn init_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// 显示主窗口
-fn show_main_window(app: &AppHandle) {
+pub(crate) fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.unminimize();
@@ -126,12 +126,8 @@ pub fn update_tray_icon(icon_path: &str) -> Result<(), String> {
         return Err("Invalid icon path: path traversal not allowed".to_string());
     }
 
-    // 获取 exe 目录
-    let exe_dir = std::env::current_exe()
-        .map_err(|e| format!("Failed to get exe path: {}", e))?
-        .parent()
-        .ok_or("Failed to get exe directory")?
-        .to_path_buf();
+    // 获取运行时项目目录（macOS `.app` 下为应用包所在目录）
+    let exe_dir = crate::commands::utils::get_exe_directory()?;
 
     let full_path = exe_dir.join(icon_path);
 
@@ -143,7 +139,14 @@ pub fn update_tray_icon(icon_path: &str) -> Result<(), String> {
         .canonicalize()
         .map_err(|e| format!("Failed to resolve exe directory: {}", e))?;
 
-    if !canonical_path.starts_with(&canonical_exe_dir) {
+    let allowed = canonical_path.starts_with(&canonical_exe_dir);
+    #[cfg(target_os = "macos")]
+    let allowed = allowed
+        || std::env::current_exe()
+            .ok()
+            .and_then(|exe| crate::commands::utils::get_macos_bundle_resource_dir(&exe))
+            .is_some_and(|resources| canonical_path.starts_with(resources));
+    if !allowed {
         return Err("Invalid icon path: must be within application directory".to_string());
     }
 

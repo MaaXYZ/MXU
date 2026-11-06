@@ -1,3 +1,4 @@
+import { PiIcon, PiDescription } from './PiContent';
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -14,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { maaService } from '@/services/maaService';
-import { useResolvedContent } from '@/services/contentResolver';
+import { detectContentType, useResolvedContent } from '@/services/contentResolver';
 import { loggers, generateTaskPipelineOverride } from '@/utils';
 import { getInterfaceLangKey } from '@/i18n';
 import {
@@ -135,7 +136,14 @@ function TaskButton({
             new
           </span>
         )}
-        <Plus className={clsx('w-4 h-4 shrink-0', disabled ? 'text-text-muted' : 'text-accent')} />
+        <PiIcon
+          icon={task.icon}
+          fallback={
+            <Plus
+              className={clsx('w-4 h-4 shrink-0', disabled ? 'text-text-muted' : 'text-accent')}
+            />
+          }
+        />
         <span className="min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere]">{label}</span>
         {count > 0 && (
           <span
@@ -215,13 +223,24 @@ export function AddTaskPanel() {
   const filteredTasks = useMemo(() => {
     if (!projectInterface) return [];
 
+    const searchLower = searchQuery.trim().toLowerCase();
+    if (!searchLower) return projectInterface.task;
+
     return projectInterface.task.filter((task) => {
       const label = resolveI18nText(task.label, langKey) || task.name;
-      const searchLower = searchQuery.toLowerCase();
+      if (
+        task.name.toLowerCase().includes(searchLower) ||
+        label.toLowerCase().includes(searchLower)
+      ) {
+        return true;
+      }
 
-      // 只根据搜索关键词过滤
+      // 描述仅匹配直接文本；文件路径 / URL 形式的描述不参与搜索，避免误命中路径字符串
+      const description = task.description ? resolveI18nText(task.description, langKey) : '';
       return (
-        task.name.toLowerCase().includes(searchLower) || label.toLowerCase().includes(searchLower)
+        !!description &&
+        detectContentType(description) === 'text' &&
+        description.toLowerCase().includes(searchLower)
       );
     });
   }, [projectInterface, searchQuery, resolveI18nText, langKey]);
@@ -593,13 +612,17 @@ export function AddTaskPanel() {
 
     return (
       <div key={group.name}>
-        {renderSectionHeader(
-          groupLabel,
-          expanded,
-          () => toggleGroup(group.name),
-          tasks.length,
-          contentId,
-        )}
+        <div className="flex items-center gap-2">
+          <PiIcon icon={group.icon} />
+          {renderSectionHeader(
+            groupLabel,
+            expanded,
+            () => toggleGroup(group.name),
+            tasks.length,
+            contentId,
+          )}
+        </div>
+        {expanded && <PiDescription source={group.description} />}
         {expanded && (
           <div id={contentId} className="mt-1">
             {renderTaskGrid(tasks)}

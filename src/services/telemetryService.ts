@@ -9,6 +9,7 @@
 import { isDebugVersion } from '@/services/updateService';
 import { createDefaultOptionValue, sanitizeOptionValue } from '@/stores/helpers';
 import type {
+  InputItem,
   OptionDefinition,
   OptionValue,
   ProjectInterface,
@@ -38,13 +39,11 @@ const MAX_OPTION_VALUE_LENGTH = 512;
 /** 自由文本类输入只上报是否填写，避免把路径 / URL / 进程名等隐私内容带出去。 */
 const summarizeInputValue = (
   value: string,
-  pipelineType?: 'string' | 'int' | 'bool',
-  inputType?: 'text' | 'file' | 'time',
+  pipelineType?: InputItem['pipeline_type'],
   password?: boolean,
 ): string => {
   if (password) return value ? 'filled' : 'empty';
-  const isSafeToReport =
-    pipelineType === 'int' || pipelineType === 'bool' || (inputType === 'time' && !!value);
+  const isSafeToReport = pipelineType === 'int' || pipelineType === 'bool';
   if (isSafeToReport) return value;
   return value ? 'filled' : 'empty';
 };
@@ -103,12 +102,7 @@ const collectOptionSummary = (
           const raw = optionValue.values[inputDef.name] ?? inputDef.default ?? '';
           put(
             `${optionKey}.${inputDef.name}`,
-            summarizeInputValue(
-              raw,
-              inputDef.pipeline_type,
-              inputDef.input_type,
-              isPasswordInput(inputDef),
-            ),
+            summarizeInputValue(raw, inputDef.pipeline_type, isPasswordInput(inputDef)),
           );
         }
       }

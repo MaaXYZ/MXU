@@ -1,3 +1,4 @@
+import { PiDescription, PiIcon as AsyncIcon } from './PiContent';
 import {
   useState,
   useMemo,
@@ -11,9 +12,9 @@ import {
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '@/stores/appStore';
-import { loadIconAsDataUrl, useResolvedContent } from '@/services/contentResolver';
+import { useResolvedContent } from '@/services/contentResolver';
 import type { OptionValue, CaseItem, InputItem, OptionDefinition } from '@/types/interface';
-import { findMxuOptionByKey } from '@/types/specialTasks';
+import { findMxuOptionByKey, getMxuInputUi, type MxuInputUi } from '@/types/specialTasks';
 import clsx from 'clsx';
 import {
   Info,
@@ -26,11 +27,9 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { getInterfaceLangKey } from '@/i18n';
-import { findSwitchCase } from '@/utils/optionHelpers';
+import { getSelectedCasesWithOptions, findSwitchCase } from '@/utils/optionHelpers';
 import { getCheckboxMaxCount, getCheckboxMinCount } from '@/utils/checkboxOptionValidation';
-import { stripInlineRichText } from '@/utils/richText';
 import { SwitchButton, TextInput, FileInput, TimeInput, HotkeyInput } from './FormControls';
-import { RichLabel } from './RichLabel';
 import { Tooltip } from './ui/Tooltip';
 
 /** 判断 switch 类型的选项是否有子选项 */
@@ -38,6 +37,13 @@ export function switchHasNestedOptions(optionDef: OptionDefinition): boolean {
   if (optionDef.type !== 'switch') return false;
   // SwitchOption 的 cases 是 [CaseItem, CaseItem]，始终有两个元素
   return optionDef.cases.some((c: CaseItem) => c.option && c.option.length > 0);
+}
+
+/** 嵌套子选项分组：checkbox 多选时，不同 case 的子项需要分开渲染才能区分归属 */
+interface NestedOptionGroup {
+  caseName: string;
+  label: string;
+  optionKeys: string[];
 }
 
 /** 子选项折叠箭头：复用任务标题的 ChevronRight 样式，位于开关/下拉框左侧 */
@@ -75,30 +81,6 @@ function OptionCollapseArrow({
       />
     </button>
   );
-}
-
-/** 异步加载图标组件 */
-function AsyncIcon({
-  icon,
-  basePath,
-  className,
-}: {
-  icon?: string;
-  basePath: string;
-  className?: string;
-}) {
-  const [iconUrl, setIconUrl] = useState<string | undefined>(undefined);
-
-  useEffect(() => {
-    if (!icon) {
-      setIconUrl(undefined);
-      return;
-    }
-    loadIconAsDataUrl(icon, basePath).then(setIconUrl);
-  }, [icon, basePath]);
-
-  if (!iconUrl) return null;
-  return <img src={iconUrl} alt="" className={className} />;
 }
 
 interface OptionEditorProps {
@@ -140,7 +122,7 @@ function OptionLabel({
           className="w-4 h-4 object-contain flex-shrink-0"
         />
       )}
-      <RichLabel text={label} className="text-sm text-text-secondary" />
+      <span className="text-sm text-text-secondary">{label}</span>
     </div>
   );
 }
@@ -257,7 +239,7 @@ function InputField({
   onChange,
   langKey,
   resolveI18nText,
-  basePath,
+  mxuUi,
   disabled,
   isMxuOption = false,
   isHotkey = false,
@@ -268,7 +250,7 @@ function InputField({
   onChange: (val: string) => void;
   langKey: string;
   resolveI18nText: (text: string | undefined, lang: string) => string;
-  basePath: string;
+  mxuUi?: MxuInputUi;
   disabled?: boolean;
   isMxuOption?: boolean;
   isHotkey?: boolean;
@@ -292,11 +274,9 @@ function InputField({
         : undefined
       : resolveI18nText(input.pattern_msg, langKey);
   const inputPlaceholder =
-    isMxuOption && t
-      ? input.placeholder
-        ? t(input.placeholder)
-        : input.default || undefined
-      : resolveI18nText(input.placeholder, langKey) || input.default || undefined;
+    isMxuOption && t && mxuUi?.placeholderKey
+      ? t(mxuUi.placeholderKey)
+      : input.default || undefined;
 
   // 验证输入
   const validationError = useMemo(() => {
@@ -316,16 +296,14 @@ function InputField({
     <div className="space-y-1">
       <div className="flex flex-wrap items-center gap-3 min-w-0">
         <div className="flex items-center gap-1.5 min-w-0 flex-1 basis-[14rem]">
-          {input.icon && (
-            <AsyncIcon
-              icon={input.icon}
-              basePath={basePath}
-              className="w-4 h-4 object-contain flex-shrink-0"
-            />
-          )}
-          <RichLabel text={inputLabel} className="text-sm text-text-tertiary truncate" />
+          <span className="text-sm text-text-tertiary truncate">{inputLabel}</span>
           {inputDescription && (
-            <Tooltip content={inputDescription} side="top" align="start" maxWidth="max-w-[200px]">
+            <Tooltip
+              content={<PiDescription source={inputDescription} />}
+              side="top"
+              align="start"
+              maxWidth="max-w-[200px]"
+            >
               <Info className="w-3.5 h-3.5 text-text-muted cursor-help flex-shrink-0" />
             </Tooltip>
           )}
@@ -338,15 +316,19 @@ function InputField({
             disabled={disabled}
             className="min-w-[min(12rem,100%)] flex-1 basis-[30%]"
           />
-        ) : input.input_type === 'file' ? (
+        ) : input.input_type === 'file' || input.input_type === 'directory' ? (
           <FileInput
             value={value}
             onChange={onChange}
             placeholder={inputPlaceholder}
+            directory={input.input_type === 'directory'}
+            password={input.password === true}
             disabled={disabled}
+            filters={[]}
+            hasError={!!validationError}
             className="min-w-[min(12rem,100%)] flex-1 basis-[30%]"
           />
-        ) : input.input_type === 'time' ? (
+        ) : isMxuOption && mxuUi?.timePicker ? (
           <TimeInput
             value={value}
             onChange={onChange}
@@ -476,24 +458,37 @@ export function OptionEditor({
         : undefined;
   const effectiveDisabled = disabled || isOptionIncompatible;
 
-  // 获取当前选中的 case（用于渲染嵌套选项）
-  const getSelectedCase = (): CaseItem | undefined => {
-    if (optionDef.type === 'switch') {
-      const isChecked = effectiveValue?.type === 'switch' ? effectiveValue.value : false;
-      return findSwitchCase(optionDef.cases, isChecked);
-    }
-    if (optionDef.type === 'select' || !optionDef.type) {
-      const caseName =
-        effectiveValue?.type === 'select'
-          ? effectiveValue.caseName
-          : optionDef.default_case || optionDef.cases?.[0]?.name;
-      return optionDef.cases?.find((c) => c.name === caseName);
-    }
-    return undefined;
-  };
+  // 嵌套子选项分组：switch/select 单选取当前 case；checkbox 为多选，
+  // 协议允许任意 case 挂 option，故按被选中的 case 逐组汇总（每组保留标签用于区分来源）
+  const toNestedGroup = (caseItem: CaseItem): NestedOptionGroup => ({
+    caseName: caseItem.name,
+    label: isMxuOption
+      ? t(caseItem.label || caseItem.name)
+      : resolveI18nText(caseItem.label, langKey) || caseItem.name,
+    optionKeys: caseItem.option ?? [],
+  });
 
-  const selectedCase = getSelectedCase();
-  const nestedOptionKeys = selectedCase?.option || [];
+  const selectedCaseDescriptions =
+    'cases' in optionDef
+      ? optionDef.cases.filter((item) => {
+          if (effectiveValue?.type === 'checkbox')
+            return effectiveValue.caseNames.includes(item.name);
+          if (effectiveValue?.type === 'switch')
+            return findSwitchCase(optionDef.cases, effectiveValue.value)?.name === item.name;
+          const name =
+            effectiveValue?.type === 'select'
+              ? effectiveValue.caseName
+              : typeof optionDef.default_case === 'string'
+                ? optionDef.default_case
+                : optionDef.cases[0]?.name;
+          return item.name === name;
+        })
+      : [];
+  const caseDescriptions = selectedCaseDescriptions.map((item) => (
+    <PiDescription key={item.name} source={item.description} />
+  ));
+  const nestedGroups = getSelectedCasesWithOptions(optionDef, effectiveValue).map(toNestedGroup);
+  const nestedOptionKeys = nestedGroups.flatMap((g) => g.optionKeys);
 
   // 当前选项的子选项是否处于折叠状态（缺省展开）
   const isCollapsed = globalScope ? localCollapsed : !!collapsedOptions?.[optionKey];
@@ -572,6 +567,7 @@ export function OptionEditor({
             />
           </div>
         </div>
+        {caseDescriptions}
         {/* 渲染嵌套选项（可折叠，复用任务标题的 grid 展开动画） */}
         {nestedOptionKeys.length > 0 && (
           <div
@@ -628,17 +624,28 @@ export function OptionEditor({
           isOptionIncompatible && 'opacity-60',
         )}
       >
-        <OptionLabelWithIncompatible
-          label={optionLabel}
-          icon={optionDef.icon}
-          basePath={basePath}
-          incompatibleReason={incompatibleReason}
-        />
-        <OptionDescription
-          description={optionDescription}
-          basePath={basePath}
-          translations={translations}
-        />
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1 max-w-[60%]">
+            <OptionLabelWithIncompatible
+              label={optionLabel}
+              icon={optionDef.icon}
+              basePath={basePath}
+              incompatibleReason={incompatibleReason}
+            />
+            <OptionDescription
+              description={optionDescription}
+              basePath={basePath}
+              translations={translations}
+            />
+          </div>
+          {nestedOptionKeys.length > 0 && (
+            <OptionCollapseArrow
+              collapsed={isCollapsed}
+              onToggle={handleToggleCollapsed}
+              disabled={effectiveDisabled}
+            />
+          )}
+        </div>
         <div className="grid grid-cols-4 gap-1">
           {optionDef.cases.map((caseItem) => {
             const caseLabel = isMxuOption
@@ -683,12 +690,13 @@ export function OptionEditor({
                       className="w-4 h-4 object-contain flex-shrink-0"
                     />
                   )}
-                  <RichLabel text={caseLabel} className="truncate" />
+                  <span className="truncate">{caseLabel}</span>
                 </span>
               </button>
             );
           })}
         </div>
+        {caseDescriptions}
         {countConstraint && (
           <div
             className={clsx(
@@ -710,13 +718,59 @@ export function OptionEditor({
             </span>
           </div>
         )}
+        {/* 渲染嵌套选项（可折叠，复用任务标题的 grid 展开动画）。
+            checkbox 多选时同一层可能挂多组子项，按 case 分组并标注归属，避免来源混淆 */}
+        {nestedOptionKeys.length > 0 && (
+          <div
+            className="grid transition-[grid-template-rows] duration-150 ease-out"
+            style={{ gridTemplateRows: isCollapsed ? '0fr' : '1fr' }}
+          >
+            <div className={clsx('min-h-0', isCollapsed ? 'overflow-hidden' : 'overflow-visible')}>
+              <div className="space-y-3">
+                {nestedGroups.map((group) => (
+                  <div key={group.caseName} className="space-y-3">
+                    {nestedGroups.length > 1 && (
+                      <div className="text-xs text-text-muted">
+                        <span className="inline-block max-w-full truncate rounded bg-bg-hover px-1.5 py-0.5">
+                          {group.label}
+                        </span>
+                      </div>
+                    )}
+                    {group.optionKeys.map((nestedKey) => (
+                      <OptionEditor
+                        key={`${group.caseName}:${nestedKey}`}
+                        instanceId={instanceId}
+                        taskId={taskId}
+                        optionKey={nestedKey}
+                        value={allOptionValues[nestedKey]}
+                        depth={depth + 1}
+                        disabled={effectiveDisabled}
+                        globalScope={globalScope}
+                        controllerIncompatible={isOptionIncompatible}
+                        parentIncompatibilityReason={incompatibleReasonType}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
   // Input / Hotkey 类型
   if (optionDef.type === 'input' || optionDef.type === 'hotkey') {
-    const fields = optionDef.type === 'input' ? optionDef.inputs : optionDef.hotkeys;
+    const fields =
+      optionDef.type === 'input'
+        ? optionDef.inputs
+        : optionDef.hotkeys.map(({ name, label, description, default: defaultValue }) => ({
+            name,
+            label,
+            description,
+            default: defaultValue,
+          }));
     const inputValues =
       effectiveValue?.type === 'input' || effectiveValue?.type === 'hotkey'
         ? effectiveValue.values
@@ -765,7 +819,7 @@ export function OptionEditor({
               }}
               langKey={langKey}
               resolveI18nText={resolveI18nText}
-              basePath={basePath}
+              mxuUi={isMxuOption ? getMxuInputUi(optionKey, input.name) : undefined}
               disabled={effectiveDisabled}
               isMxuOption={isMxuOption}
               t={t}
@@ -840,6 +894,7 @@ export function OptionEditor({
           }}
         />
       </div>
+      {caseDescriptions}
       {/* 渲染嵌套选项（可折叠，复用任务标题的 grid 展开动画） */}
       {nestedOptionKeys.length > 0 && (
         <div
@@ -1156,7 +1211,7 @@ function OptionSelectDropdown({
               className="w-4 h-4 object-contain flex-shrink-0"
             />
           )}
-          <RichLabel text={selectedOption?.label ?? ''} />
+          {selectedOption?.label ?? ''}
         </span>
         <ChevronDown
           className={clsx('w-4 h-4 text-text-secondary transition-transform', open && 'rotate-180')}
@@ -1208,7 +1263,7 @@ function OptionSelectDropdown({
                   )}
                   role="option"
                   aria-selected={isSelected}
-                  title={stripInlineRichText(opt.label)}
+                  title={opt.label}
                 >
                   <span className="flex items-center gap-1.5 truncate">
                     {opt.icon && (
@@ -1218,7 +1273,7 @@ function OptionSelectDropdown({
                         className="w-4 h-4 object-contain flex-shrink-0"
                       />
                     )}
-                    <RichLabel text={opt.label} />
+                    {opt.label}
                   </span>
                   {isSelected && <Check className="w-4 h-4 flex-shrink-0" />}
                 </button>
@@ -1253,14 +1308,12 @@ function OptionSelectComboBox({
 
   const selectedOption = options.find((opt) => opt.value === value) ?? options[0];
 
-  // 过滤选项：label 可能含行内 Markdown（图标等），按去掉标记的纯文本匹配
+  // 按选项名称和取值过滤
   const filteredOptions = useMemo(() => {
     if (!searchQuery.trim()) return options;
     const query = searchQuery.toLowerCase();
     return options.filter(
-      (opt) =>
-        stripInlineRichText(opt.label).toLowerCase().includes(query) ||
-        opt.value.toLowerCase().includes(query),
+      (opt) => opt.label.toLowerCase().includes(query) || opt.value.toLowerCase().includes(query),
     );
   }, [options, searchQuery]);
 
@@ -1411,7 +1464,7 @@ function OptionSelectComboBox({
               className="w-4 h-4 object-contain flex-shrink-0"
             />
           )}
-          <RichLabel text={selectedOption?.label ?? ''} />
+          {selectedOption?.label ?? ''}
         </span>
         <ChevronDown
           className={clsx('w-4 h-4 text-text-secondary transition-transform', open && 'rotate-180')}
@@ -1489,7 +1542,7 @@ function OptionSelectComboBox({
                       )}
                       role="option"
                       aria-selected={isSelected}
-                      title={stripInlineRichText(opt.label)}
+                      title={opt.label}
                     >
                       <span className="flex items-center gap-1.5 truncate">
                         {opt.icon && (
@@ -1499,7 +1552,7 @@ function OptionSelectComboBox({
                             className="w-4 h-4 object-contain flex-shrink-0"
                           />
                         )}
-                        <RichLabel text={opt.label} />
+                        {opt.label}
                       </span>
                       {isSelected && <Check className="w-4 h-4 flex-shrink-0" />}
                     </button>
@@ -1517,7 +1570,6 @@ function OptionSelectComboBox({
 /** Switch 网格组件的单个项 */
 interface SwitchGridItemData {
   optionKey: string;
-  /** UI 展示名称，可能含行内 Markdown（图标等）；原生 title 等纯文本场景需先 stripInlineRichText */
   label: string;
   description?: string;
   isChecked: boolean;
@@ -1566,9 +1618,9 @@ export function SwitchGrid({ instanceId, taskId, items, disabled = false }: Swit
                   : 'bg-bg-primary text-text-secondary border-border hover:border-accent hover:text-accent',
                 itemDisabled && 'opacity-60 cursor-not-allowed',
               )}
-              title={item.description || stripInlineRichText(item.label)}
+              title={item.description || item.label}
             >
-              <RichLabel text={item.label} />
+              {item.label}
             </button>
           </Tooltip>
         );

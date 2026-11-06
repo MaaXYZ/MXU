@@ -17,6 +17,7 @@ use maa_framework::toolkit::MacOSPermission;
 use maa_framework::toolkit::Toolkit;
 use maa_framework::MaaStatus;
 
+use super::callback_lifecycle::CallbackGuard;
 use super::types::{
     AdbDevice, ConnectionStatus, ControllerConfig, GamescopeInstance, MaaState, TaskStatus,
     VersionCheckResult, Win32Window,
@@ -322,31 +323,96 @@ fn update_instance_controller(
     instance_id: &str,
     controller: maa_framework::controller::Controller,
     new_config: super::types::ControllerConfig,
+    subscribers: Arc<super::types::ControllerEventSubscribers>,
+    request: &CallbackGuard,
+    on_event: super::types::ControllerEventCallback,
 ) -> Result<(), String> {
-    let cleanup_config = {
+    let (old_controller, old_tasker) = {
         let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
-        let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;
+        let instance = instances
+            .get_mut(instance_id)
+            .ok_or("CONTROLLER_CONNECTION_SUPERSEDED")?;
+        if !instance.controller_request.is_current(request) {
+            return Err("CONTROLLER_CONNECTION_SUPERSEDED".to_string());
+        }
 
         let old_config = instance.controller_config.clone();
-        instance.controller = Some(controller);
+        let old_subscribers = instance
+            .controller_subscribers
+            .replace(Arc::clone(&subscribers));
+        let old_controller = instance.controller.replace(controller);
         instance.controller_config = Some(new_config.clone());
-        instance.tasker = None;
+        let old_tasker = instance.tasker.take();
 
-        old_config.filter(|old| {
+        // Subscription changes and instance replacement/destroy share the instances lock.
+        if let Some(old_subscribers) = old_subscribers {
+            if !Arc::ptr_eq(&old_subscribers, &subscribers) {
+                old_subscribers.unsubscribe(instance_id);
+            }
+        }
+        subscribers.subscribe(instance_id, on_event);
+
+        let cleanup_config = old_config.filter(|old| {
             *old != new_config
                 && !instances
                     .values()
                     .any(|inst| inst.controller_config.as_ref() == Some(old))
-        })
-    };
-
-    if let Some(old_cfg) = cleanup_config {
-        if let Ok(mut pool) = state.controller_pool.lock() {
+        });
+        if let Some(old_cfg) = cleanup_config {
+            let mut pool = state.controller_pool.lock().map_err(|e| e.to_string())?;
             pool.remove(&old_cfg);
             info!("ControllerPool: removed unused entry for old config");
         }
-    }
+        (old_controller, old_tasker)
+    };
+    // Native handle destruction may wait for callbacks which acquire instances.
+    drop(old_tasker);
+    drop(old_controller);
 
+    Ok(())
+}
+
+fn begin_controller_connection(
+    state: &MaaState,
+    instance_id: &str,
+) -> Result<CallbackGuard, String> {
+    let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
+    let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;
+    instance.controller_request.cancel();
+    if let Some(subscribers) = instance.controller_subscribers.take() {
+        subscribers.unsubscribe(instance_id);
+    }
+    let request = CallbackGuard::default();
+    instance.controller_request = request.clone();
+    Ok(request)
+}
+
+fn publish_controller_connection(
+    state: &MaaState,
+    instance_id: &str,
+    request: &CallbackGuard,
+    config: ControllerConfig,
+    controller: Controller,
+    subscribers: Arc<super::types::ControllerEventSubscribers>,
+    connection_id: i64,
+) -> Result<(), String> {
+    // Same lock order as replace/destroy. Never publish a removed or superseded attempt.
+    let instances = state.instances.lock().map_err(|e| e.to_string())?;
+    let instance = instances
+        .get(instance_id)
+        .ok_or("CONTROLLER_CONNECTION_SUPERSEDED")?;
+    if !instance.controller_request.is_current(request) {
+        return Err("CONTROLLER_CONNECTION_SUPERSEDED".to_string());
+    }
+    let mut pool = state.controller_pool.lock().map_err(|e| e.to_string())?;
+    pool.insert(
+        config,
+        super::types::ControllerPoolEntry {
+            controller,
+            subscribers,
+            connection_id,
+        },
+    );
     Ok(())
 }
 
@@ -741,43 +807,54 @@ pub fn maa_create_instance(state: State<Arc<MaaState>>, instance_id: String) -> 
 pub fn destroy_instance_impl(state: &Arc<MaaState>, instance_id: &str) -> Result<(), String> {
     info!("destroy_instance_impl called, instance_id: {}", instance_id);
 
-    let cleanup_config = {
+    let removed = {
         let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
-        let old_config = instances
-            .get(instance_id)
-            .and_then(|inst| inst.controller_config.clone());
-        let removed = instances.remove(instance_id).is_some();
-
-        if removed {
-            info!(
-                "destroy_instance_impl success, instance_id: {}",
-                instance_id
-            );
-            old_config.filter(|cfg| {
-                !instances
+        let removed = instances.remove(instance_id);
+        if let Some(instance) = &removed {
+            // Retire the old completion worker before this ID can be reused.
+            instance.run_completion.retire();
+            // Cancel before allowing the same ID to be created again. A callback snapshot
+            // captured before unsubscribe still checks its own cancelled lifetime.
+            instance.callback_lifetime.cancel();
+            instance.controller_request.cancel();
+            if let Some(subscribers) = &instance.controller_subscribers {
+                subscribers.unsubscribe(instance_id);
+            }
+            if let Some(config) = &instance.controller_config {
+                if !instances
                     .values()
-                    .any(|inst| inst.controller_config.as_ref() == Some(cfg))
-            })
-        } else {
-            warn!(
-                "destroy_instance_impl: instance not found, instance_id: {}",
-                instance_id
-            );
-            None
+                    .any(|inst| inst.controller_config.as_ref() == Some(config))
+                {
+                    let mut pool = state.controller_pool.lock().map_err(|e| e.to_string())?;
+                    pool.remove(config);
+                }
+            }
         }
+        // Cancel focus only after invalidating the old lifetime, before a
+        // replacement with the same instance ID can begin another run.
+        super::focus::cancel_instance(instance_id);
+        if let Some(tasker) = removed
+            .as_ref()
+            .and_then(|instance| instance.tasker.as_ref())
+        {
+            // A completion worker can retain another Tasker Arc. Dropping the
+            // runtime alone would then leave an admitted append executing.
+            if tasker.running() {
+                if let Err(error) = tasker.post_stop() {
+                    warn!(
+                        "Failed to stop destroyed instance {}: {}",
+                        instance_id, error
+                    );
+                }
+            }
+        }
+        if let Ok(mut log_buffer) = state.log_buffer.lock() {
+            log_buffer.clear_instance(instance_id);
+        }
+        removed
     };
-
-    // ControllerPool: 清理不再被任何实例使用的条目
-    if let Some(cfg) = cleanup_config {
-        if let Ok(mut pool) = state.controller_pool.lock() {
-            pool.remove(&cfg);
-            info!("ControllerPool: cleaned up entry after instance destroy");
-        }
-    }
-
-    if let Ok(mut log_buffer) = state.log_buffer.lock() {
-        log_buffer.clear_instance(instance_id);
-    }
+    // Drop Tasker/Controller outside instances: their worker callbacks also use this lock.
+    drop(removed);
 
     Ok(())
 }
@@ -805,14 +882,39 @@ pub async fn connect_controller_impl(
     config: ControllerConfig,
     on_event: Arc<dyn Fn(&str, &str) + Send + Sync + 'static>,
 ) -> Result<i64, String> {
-    tokio::task::spawn_blocking(move || {
+    // Establish identity before spawning: destroy/recreate or a later request must
+    // invalidate this attempt even if its blocking worker has not started yet.
+    let request = begin_controller_connection(&state_arc, &instance_id)?;
+    let connection_gate = state_arc.controller_connection_gates.for_config(&config)?;
+    let callback_request = request.clone();
+    let on_event: super::types::ControllerEventCallback = Arc::new(move |message, details| {
+        if callback_request.is_active() {
+            on_event(message, details);
+        }
+    });
+    let cleanup_state = state_arc.clone();
+    let cleanup_instance_id = instance_id.clone();
+    let cleanup_request = request.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let _connection = connection_gate.lock().map_err(|e| e.to_string())?;
+        if !request.is_active() {
+            return Err("CONTROLLER_CONNECTION_SUPERSEDED".to_string());
+        }
         // ControllerPool: 检查是否有可复用的已连接控制器
         let pooled = {
             let pool = state_arc
                 .controller_pool
                 .lock()
                 .map_err(|e| e.to_string())?;
-            pool.get(&config).filter(|c| c.connected()).cloned()
+            pool.get(&config)
+                .filter(|entry| {
+                    entry.controller.connected()
+                        || matches!(
+                            entry.controller.status(entry.connection_id),
+                            MaaStatus::PENDING | MaaStatus::RUNNING
+                        )
+                })
+                .cloned()
         };
 
         if let Some(pooled_ctrl) = pooled {
@@ -821,25 +923,41 @@ pub async fn connect_controller_impl(
                 config
             );
 
-            let conn_id = next_synthetic_conn_id();
+            update_instance_controller(
+                &state_arc,
+                &instance_id,
+                pooled_ctrl.controller.clone(),
+                config.clone(),
+                Arc::clone(&pooled_ctrl.subscribers),
+                &request,
+                on_event.clone(),
+            )?;
 
-            update_instance_controller(&state_arc, &instance_id, pooled_ctrl, config)?;
+            if pooled_ctrl.controller.connected() {
+                let conn_id = next_synthetic_conn_id();
+                // 发送合成回调事件，前端无感知
+                let details = format!(r#"{{"ctrl_id":{},"action":"Connect"}}"#, conn_id);
+                on_event("Controller.Action.Starting", &details);
+                on_event("Controller.Action.Succeeded", &details);
+                return Ok(conn_id);
+            }
 
-            // 发送合成回调事件，前端无感知
-            let details = format!(r#"{{"ctrl_id":{},"action":"Connect"}}"#, conn_id);
-            on_event("Controller.Action.Starting", &details);
-            on_event("Controller.Action.Succeeded", &details);
-
-            return Ok(conn_id);
-        }
-
-        // Pool 中无可用控制器（不存在或已断连），移除过期条目
-        {
-            let mut pool = state_arc
-                .controller_pool
-                .lock()
+            // A simultaneous miss may find the first controller still connecting.
+            // Reuse that handle, with a distinct native action ID for each caller.
+            let conn_id = pooled_ctrl
+                .controller
+                .post_connection()
                 .map_err(|e| e.to_string())?;
-            pool.remove(&config);
+            publish_controller_connection(
+                &state_arc,
+                &instance_id,
+                &request,
+                config,
+                pooled_ctrl.controller,
+                pooled_ctrl.subscribers,
+                conn_id,
+            )?;
+            return Ok(conn_id);
         }
 
         info!(
@@ -906,27 +1024,6 @@ pub async fn connect_controller_impl(
                 input_method,
                 ..
             } => create_macos_controller(*handle, *screencap_method, *input_method)?,
-            ControllerConfig::WlRoots {
-                wlr_socket_path,
-                use_win32_vk_code,
-                ..
-            } => {
-                // 迁移：WlRoots 已废弃，内部改用 Linux 控制器（Wlr 截图 + Wlr 输入）
-                ensure_linux_maafw_version()?;
-                let linux_config = build_linux_controller_config(
-                    maa_framework::common::LinuxScreencapMethod::WLR.bits(),
-                    maa_framework::common::LinuxInputMethod::WLR.bits(),
-                    Some(wlr_socket_path.as_str()),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    Some(*use_win32_vk_code),
-                );
-                Controller::new_linux(&linux_config).map_err(|e| e.to_string())?
-            }
             ControllerConfig::PlayCover { address, uuid, .. } => {
                 let uuid_str = uuid.as_deref().unwrap_or("");
                 Controller::new_playcover(address, uuid_str).map_err(|e| e.to_string())?
@@ -1016,70 +1113,134 @@ pub async fn connect_controller_impl(
             }
         };
 
-        // 注册回调（使用 on_event 抽象，Tauri 命令传入 emit_callback_event，HTTP 处理器传入无操作或 WebSocket 推送）
-        let on_event_clone = on_event.clone();
+        // 共享控制器的事件通知所有当前持有者；每个订阅者保留自己的实例来源。
+        let subscribers = Arc::new(super::types::ControllerEventSubscribers::default());
+        let sink_subscribers = Arc::clone(&subscribers);
         controller
             .add_sink(move |msg, detail| {
-                on_event_clone(msg, detail);
+                sink_subscribers.emit(msg, detail);
             })
             .map_err(|e| e.to_string())?;
 
-        let display_short_side = match &config {
-            ControllerConfig::Adb {
-                display_short_side, ..
-            }
-            | ControllerConfig::Win32 {
-                display_short_side, ..
-            }
-            | ControllerConfig::MacOS {
-                display_short_side, ..
-            }
-            | ControllerConfig::WlRoots {
-                display_short_side, ..
-            }
-            | ControllerConfig::Gamepad {
-                display_short_side, ..
-            }
-            | ControllerConfig::PlayCover {
-                display_short_side, ..
-            }
-            | ControllerConfig::Linux {
-                display_short_side, ..
-            } => display_short_side.unwrap_or(720),
-        };
+        config.display_options().apply(&controller)?;
 
-        if let Err(e) = controller.set_screenshot_target_short_side(display_short_side) {
-            warn!(
-                "Failed to set screenshot target short side to {}: {}",
-                display_short_side, e
-            );
-        }
-
-        // 发起连接
+        // Install the subscription before posting, so fast callbacks cannot be lost.
+        update_instance_controller(
+            &state_arc,
+            &instance_id,
+            controller.clone(),
+            config.clone(),
+            Arc::clone(&subscribers),
+            &request,
+            on_event,
+        )?;
         let conn_id = controller.post_connection().map_err(|e| e.to_string())?;
-
-        // 存入 ControllerPool
-        {
-            let mut pool = state_arc
-                .controller_pool
-                .lock()
-                .map_err(|e| e.to_string())?;
-            pool.insert(config.clone(), controller.clone());
-        }
-
-        // 更新实例状态
-        debug!("Updating instance state...");
-        update_instance_controller(&state_arc, &instance_id, controller, config)?;
+        publish_controller_connection(
+            &state_arc,
+            &instance_id,
+            &request,
+            config,
+            controller,
+            subscribers,
+            conn_id,
+        )?;
 
         Ok(conn_id)
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+    .and_then(|result| result);
+    if result.is_err() {
+        if let Ok(mut instances) = cleanup_state.instances.lock() {
+            if let Some(instance) = instances.get_mut(&cleanup_instance_id) {
+                if instance.controller_request.is_current(&cleanup_request) {
+                    cleanup_request.cancel();
+                    if let Some(subscribers) = instance.controller_subscribers.take() {
+                        subscribers.unsubscribe(&cleanup_instance_id);
+                    }
+                }
+            }
+        }
+    }
+    result
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{macos_maafw_version_supported, macos_system_version_supported, macos_window_id};
+    use super::{
+        begin_controller_connection, destroy_instance_impl, macos_maafw_version_supported,
+        macos_system_version_supported, macos_window_id,
+    };
+    use crate::commands::types::{ControllerEventSubscribers, InstanceRuntime, MaaState};
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+
+    #[test]
+    fn new_controller_request_unsubscribes_and_cancels_previous_request() {
+        let state = MaaState::default();
+        state
+            .instances
+            .lock()
+            .unwrap()
+            .insert("same-id".into(), InstanceRuntime::default());
+        let first = begin_controller_connection(&state, "same-id").unwrap();
+        let subscribers = Arc::new(ControllerEventSubscribers::default());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let callback_calls = calls.clone();
+        subscribers.subscribe(
+            "same-id",
+            Arc::new(move |_, _| {
+                callback_calls.fetch_add(1, Ordering::SeqCst);
+            }),
+        );
+        state
+            .instances
+            .lock()
+            .unwrap()
+            .get_mut("same-id")
+            .unwrap()
+            .controller_subscribers = Some(subscribers.clone());
+        let latest = begin_controller_connection(&state, "same-id").unwrap();
+        subscribers.emit("Controller.Action.Succeeded", "{}");
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert!(!first.is_active());
+        assert!(latest.is_active());
+    }
+
+    #[test]
+    fn destroyed_then_recreated_instance_rejects_old_request_and_callbacks() {
+        let state = Arc::new(MaaState::default());
+        state
+            .instances
+            .lock()
+            .unwrap()
+            .insert("same-id".into(), InstanceRuntime::default());
+        let old_lifetime = state.instances.lock().unwrap()["same-id"]
+            .callback_lifetime
+            .clone();
+        let old_completion = Arc::clone(&state.instances.lock().unwrap()["same-id"].run_completion);
+        assert!(old_completion.begin());
+        let old_request = begin_controller_connection(&state, "same-id").unwrap();
+        destroy_instance_impl(&state, "same-id").unwrap();
+        state
+            .instances
+            .lock()
+            .unwrap()
+            .insert("same-id".into(), InstanceRuntime::default());
+        let instances = state.instances.lock().unwrap();
+        let replacement = &instances["same-id"];
+        assert!(!old_request.is_active());
+        assert!(!old_lifetime.is_active());
+        assert!(!replacement.controller_request.is_current(&old_request));
+        assert!(!replacement.callback_lifetime.is_current(&old_lifetime));
+        assert!(replacement.callback_lifetime.is_active());
+        drop(instances);
+        let notified = std::sync::atomic::AtomicBool::new(false);
+        old_completion.finish_when_idle(|| false, || {}, || notified.store(true, Ordering::SeqCst));
+        assert!(!notified.load(Ordering::SeqCst));
+    }
 
     #[test]
     fn macos_system_version_requires_14() {
@@ -1132,11 +1293,12 @@ pub async fn maa_connect_controller(
     );
 
     let app_clone = app.clone();
+    let callback_instance_id = instance_id.clone();
     let result = connect_controller_impl(
         state.inner().clone(),
         instance_id.clone(),
         config,
-        Arc::new(move |msg, detail| emit_callback_event(&app, msg, detail)),
+        Arc::new(move |msg, detail| emit_callback_event(&app, &callback_instance_id, msg, detail)),
     )
     .await;
     if result.is_ok() {
@@ -1187,8 +1349,11 @@ pub fn load_resource_impl(
 
         // 注册回调
         let on_event_clone = on_event.clone();
+        let lifetime = instance.callback_lifetime.clone();
         res.add_sink(move |msg, detail| {
-            on_event_clone(msg, detail);
+            if lifetime.is_active() {
+                on_event_clone(msg, detail);
+            }
         })
         .map_err(|e| e.to_string())?;
 
@@ -1238,7 +1403,8 @@ pub fn maa_load_resource(
         &paths,
         Arc::new({
             let app = app.clone();
-            move |msg, detail| emit_callback_event(&app, msg, detail)
+            let instance_id = instance_id.clone();
+            move |msg, detail| emit_callback_event(&app, &instance_id, msg, detail)
         }),
         Some(&app),
     )?;
@@ -1313,8 +1479,25 @@ pub fn run_task_impl(
     pipeline_override: &str,
     selected_task_id: Option<&str>,
 ) -> Result<i64, String> {
+    let completion = {
+        let instances = state.instances.lock().map_err(|e| e.to_string())?;
+        Arc::clone(
+            &instances
+                .get(instance_id)
+                .ok_or("Instance not found")?
+                .run_completion,
+        )
+    };
+    let _start_permit = completion.acquire_start();
+
     let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
-    let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;
+    let instance = instances.get_mut(instance_id).ok_or("INSTANCE_REPLACED")?;
+    if !Arc::ptr_eq(&instance.run_completion, &completion) {
+        return Err("INSTANCE_REPLACED".to_string());
+    }
+    if instance.prepare_submission(false)? {
+        super::focus::begin_run(instance_id);
+    }
 
     let resource = instance.resource.as_ref().ok_or("Resource not loaded")?;
     let controller = instance
@@ -1338,26 +1521,41 @@ pub fn run_task_impl(
         let app_for_sink = app.clone();
         let maa_state_for_sink = Arc::clone(state);
         let instance_id_for_sink = instance_id.to_string();
+        let lifetime = instance.callback_lifetime.clone();
         tasker
             .add_sink(move |msg, detail| {
+                if !lifetime.is_active() {
+                    return;
+                }
                 handle_task_callback(
                     &maa_state_for_sink,
                     &app_for_sink,
                     &instance_id_for_sink,
+                    &lifetime,
                     msg,
                     detail,
                 );
-                emit_callback_event(&app_for_sink, msg, detail);
+                emit_callback_event(&app_for_sink, &instance_id_for_sink, msg, detail);
             })
             .map_err(|e| e.to_string())?;
 
         let app_for_context_sink = app.clone();
         let instance_id_for_context_sink = instance_id.to_string();
+        let lifetime = instance.callback_lifetime.clone();
         tasker
             .add_context_sink(move |msg, detail| {
+                if !lifetime.is_active() {
+                    return;
+                }
                 // 遥测：把失败节点挂到任务 Span 下，形成失败链路
                 super::telemetry::on_node_event(&instance_id_for_context_sink, msg, detail);
-                emit_callback_event(&app_for_context_sink, msg, detail);
+                super::focus::emit_context(
+                    &app_for_context_sink,
+                    &instance_id_for_context_sink,
+                    msg,
+                    detail,
+                    &lifetime,
+                );
             })
             .map_err(|e| e.to_string())?;
 
@@ -1383,18 +1581,18 @@ pub fn run_task_impl(
         instance.task_ids.push(task_id);
     }
 
+    let task_run_state = &mut instance.task_run_state;
+    if !task_run_state.pending_task_ids.contains(&task_id) {
+        task_run_state.pending_task_ids.push(task_id);
+    }
+    task_run_state.overall_status = Some("Running".to_string());
     if let Some(selected_task_id) = selected_task_id {
-        let task_run_state = &mut instance.task_run_state;
-        if !task_run_state.pending_task_ids.contains(&task_id) {
-            task_run_state.pending_task_ids.push(task_id);
-        }
         task_run_state
             .mappings
             .insert(task_id, selected_task_id.to_string());
         task_run_state
             .statuses
             .insert(selected_task_id.to_string(), "pending".to_string());
-        task_run_state.overall_status = Some("Running".to_string());
     }
 
     Ok(task_id)
@@ -1456,45 +1654,59 @@ pub fn maa_get_task_status(
 
 /// 停止任务
 /// 停止任务的内部实现（可从 Tauri 命令和 HTTP 处理器共享调用）
-pub fn stop_task_impl(state: &MaaState, instance_id: &str) -> Result<(), String> {
-    let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
-    let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;
-    let tasker = instance.tasker.as_ref().ok_or("Tasker not created")?;
+pub fn stop_task_impl(
+    app: &tauri::AppHandle,
+    state: &Arc<MaaState>,
+    instance_id: &str,
+) -> Result<(), String> {
+    let completion = {
+        let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
+        let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;
+        // Serialize focus reopening and cancellation with queue admission. Always
+        // release a modal waiter before posting the framework stop operation.
+        super::focus::cancel_instance(instance_id);
+        let submitting = instance.run_completion.cancel_submission();
+        let tasker = instance.tasker.as_ref();
+        let running = tasker.is_some_and(|tasker| tasker.running());
 
-    if instance.stop_in_progress {
-        if !tasker.running() {
-            instance.stop_in_progress = false;
-            instance.stop_started_at = None;
+        // Cleanup counts as running for UI queries, but must not post a new
+        // framework stop job once its Tasker is idle.
+        if !running && !submitting {
+            if tasker.is_none() {
+                return Err("Tasker not created".to_string());
+            }
             return Ok(());
         }
-        let elapsed = instance
-            .stop_started_at
-            .map(|t| t.elapsed())
-            .unwrap_or(Duration::from_secs(0));
-        if elapsed < Duration::from_millis(500) {
-            return Ok(());
+
+        if instance.stop_in_progress {
+            let elapsed = instance
+                .stop_started_at
+                .map(|t| t.elapsed())
+                .unwrap_or(Duration::from_secs(0));
+            if elapsed < Duration::from_millis(500) {
+                return Ok(());
+            }
         }
-    }
 
-    instance.stop_in_progress = true;
-    instance.stop_started_at = Some(Instant::now());
-    instance.task_ids.clear();
-
-    // 将剩余 pending 任务标记为 failed，更新整体状态
-    {
-        let state = &mut instance.task_run_state;
-        for status in state.statuses.values_mut() {
+        // Schedule cleanup even when all queued jobs are cancelled before they
+        // start, since that path need not emit a Tasker.Task terminal callback.
+        if running {
+            tasker.unwrap().post_stop().map_err(|e| e.to_string())?;
+        }
+        instance.stop_in_progress = true;
+        instance.stop_started_at = Some(Instant::now());
+        for status in instance.task_run_state.statuses.values_mut() {
             if status == "pending" || status == "running" {
                 *status = "failed".to_string();
             }
         }
-        state.overall_status = Some("Failed".to_string());
+        instance.begin_completion(false)
+    };
+
+    // Telemetry and Agent cleanup run after the submission permit is released.
+    if let Some((tasker, completion)) = completion {
+        super::utils::schedule_run_completion(state, app, instance_id, tasker, completion);
     }
-
-    // 遥测：用户取消，以 cancelled 结束当前运行的 Transaction（幂等，仅首次生效）
-    super::telemetry::on_run_cancelled(instance_id);
-
-    tasker.post_stop().map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -1504,7 +1716,7 @@ pub fn maa_stop_task(
     state: State<Arc<MaaState>>,
     instance_id: String,
 ) -> Result<(), String> {
-    let result = stop_task_impl(&state, &instance_id);
+    let result = stop_task_impl(&app, &state, &instance_id);
     if result.is_ok() {
         super::utils::emit_state_changed(&app, &instance_id, "task-stopped");
     }
@@ -1545,7 +1757,7 @@ pub fn maa_is_running(state: State<Arc<MaaState>>, instance_id: String) -> Resul
     let instances = state.instances.lock().map_err(|e| e.to_string())?;
     let instance = instances.get(&instance_id).ok_or("Instance not found")?;
 
-    Ok(instance.tasker.as_ref().is_some_and(|t| t.running()))
+    Ok(instance.is_running())
 }
 
 // ============================================================================

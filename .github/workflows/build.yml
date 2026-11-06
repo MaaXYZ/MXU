@@ -235,12 +235,17 @@ jobs:
           echo "Updated version to $VERSION"
 
       - name: Build Tauri app
-        run: pnpm tauri build --no-bundle --target ${{ matrix.arch == 'x86_64' && 'x86_64-apple-darwin' || 'aarch64-apple-darwin' }}
+        run: pnpm tauri build --bundles app --target ${{ matrix.arch == 'x86_64' && 'x86_64-apple-darwin' || 'aarch64-apple-darwin' }}
 
       - name: Prepare artifacts
         run: |
+          TARGET_DIR="src-tauri/target/${{ matrix.arch == 'x86_64' && 'x86_64-apple-darwin' || 'aarch64-apple-darwin' }}/release"
+          APP_PATH="$TARGET_DIR/bundle/macos/mxu.app"
+          test -x "$APP_PATH/Contents/MacOS/mxu"
+          BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw "$APP_PATH/Contents/Info.plist")
+          test "$BUNDLE_ID" = "com.misteo.mxu"
           mkdir -p install
-          cp -r src-tauri/target/${{ matrix.arch == 'x86_64' && 'x86_64-apple-darwin' || 'aarch64-apple-darwin' }}/release/mxu install/ || true
+          cp -R "$APP_PATH" install/
           cp LICENSE README.md install/ || true
           ls -la install/
           tar -czvf MXU-macos-${{ matrix.arch }}-${{ needs.meta.outputs.tag }}.tar.gz -C install .

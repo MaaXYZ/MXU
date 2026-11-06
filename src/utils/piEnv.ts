@@ -60,7 +60,7 @@ export function buildPiEnvVars(context: PiEnvContext): Record<string, string> {
 
   const envs: Record<string, string> = {};
 
-  envs.PI_INTERFACE_VERSION = 'v2.10.1';
+  envs.PI_INTERFACE_VERSION = 'v2.11.0';
   envs.PI_CLIENT_NAME = 'MXU';
   envs.PI_CLIENT_VERSION = typeof __MXU_VERSION__ !== 'undefined' ? __MXU_VERSION__ : 'unknown';
   envs.PI_CLIENT_LANGUAGE = getInterfaceLangKey(language);

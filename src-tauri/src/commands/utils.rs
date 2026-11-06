@@ -9,20 +9,30 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 
 /// 发送回调事件到前端（Tauri WebView + WebSocket 浏览器客户端）
-pub fn emit_callback_event<S: Into<String>>(app: &AppHandle, message: S, details: S) {
+pub fn emit_callback_event<S: Into<String>>(
+    app: &AppHandle,
+    instance_id: &str,
+    message: S,
+    details: S,
+) {
     let message = message.into();
     let details = details.into();
 
     // 广播到所有 WebSocket 客户端
     if let Some(ws) = app.try_state::<Arc<WsBroadcast>>() {
         ws.send(WsEvent::MaaCallback {
+            instance_id: instance_id.to_string(),
             message: message.clone(),
             details: details.clone(),
         });
     }
 
     // 发送到 Tauri WebView
-    let event = MaaCallbackEvent { message, details };
+    let event = MaaCallbackEvent {
+        instance_id: instance_id.to_string(),
+        message,
+        details,
+    };
     if let Err(e) = app.emit("maa-callback", event) {
         log::error!("Failed to emit maa-callback: {}", e);
     }
@@ -59,6 +69,7 @@ pub fn handle_task_callback(
     maa_state: &Arc<MaaState>,
     app: &AppHandle,
     instance_id: &str,
+    lifetime: &super::callback_lifecycle::CallbackGuard,
     message: &str,
     details: &str,
 ) {
@@ -79,7 +90,8 @@ pub fn handle_task_callback(
         None => return,
     };
 
-    let all_done = {
+    let mut completion = None;
+    {
         let mut instances = match maa_state.instances.lock() {
             Ok(g) => g,
             Err(_) => return,
@@ -88,6 +100,17 @@ pub fn handle_task_callback(
             Some(i) => i,
             None => return,
         };
+        if !instance.callback_lifetime.is_current(lifetime) {
+            return;
+        }
+        // Old/duplicate events from a removed queue must not mutate a new run.
+        if !instance.task_run_state.pending_task_ids.contains(&task_id) {
+            return;
+        }
+        if !is_started {
+            instance.task_results.insert(task_id, is_succeeded);
+        }
+
         let state = &mut instance.task_run_state;
 
         if is_started {
@@ -98,7 +121,6 @@ pub fn handle_task_callback(
             if let Some(selected_id) = state.mappings.get(&task_id).cloned() {
                 state.statuses.insert(selected_id, "running".to_string());
             }
-            false // 未完成
         } else {
             // 任务成功或失败
             let status_str = if is_succeeded { "succeeded" } else { "failed" };
@@ -106,24 +128,13 @@ pub fn handle_task_callback(
                 state.statuses.insert(selected_id, status_str.to_string());
             }
 
-            // 检查所有已入队任务是否均已完成
-            let all_completed = state.pending_task_ids.iter().all(|id| {
-                state
-                    .mappings
-                    .get(id)
-                    .and_then(|sel_id| state.statuses.get(sel_id))
-                    .map(|s| s == "succeeded" || s == "failed")
-                    .unwrap_or(false)
-            });
-
+            // selected_task_id is optional in both HTTP APIs. Framework task IDs,
+            // rather than UI status mappings, determine whether the queue finished.
+            let result = instance.queue_result();
+            let all_completed = result.is_some() || instance.stop_in_progress;
             if all_completed {
-                let has_failed = state.statuses.values().any(|s| s == "failed");
-                state.overall_status =
-                    Some(if has_failed { "Failed" } else { "Succeeded" }.to_string());
-                instance.task_ids.clear();
+                completion = instance.begin_completion(result == Some(true));
             }
-
-            all_completed
         }
     }; // 锁在此处释放
 
@@ -133,36 +144,90 @@ pub fn handle_task_callback(
     } else {
         super::telemetry::on_task_finished(instance_id, task_id, is_succeeded);
     }
-    if all_done {
-        super::telemetry::on_run_finished(instance_id);
-    }
-
     // 通知前端刷新状态
     emit_state_changed(app, instance_id, "task-progress");
-    if all_done {
-        emit_state_changed(app, instance_id, "tasks-completed");
-
-        // 实例内全部任务结束后清理旧 agent，避免 agent 进程跨轮累积
-        if let Err(e) = super::maa_agent::stop_agent_impl(maa_state, instance_id) {
-            log::warn!(
-                "[handle_task_callback] Failed to stop agents after tasks completed: {}",
-                e
-            );
-        }
+    if let Some((tasker, completion)) = completion {
+        schedule_run_completion(maa_state, app, instance_id, tasker, completion);
     }
+}
+
+/// Every terminal path shares the same idle/cleanup/notification barrier. Called
+/// only after releasing the instance and telemetry locks; begin() owns the worker.
+pub(super) fn schedule_run_completion(
+    maa_state: &Arc<MaaState>,
+    app: &AppHandle,
+    instance_id: &str,
+    tasker: Option<maa_framework::tasker::Tasker>,
+    completion: Arc<super::run_completion::RunCompletion>,
+) {
+    let maa_state = Arc::clone(maa_state);
+    let app = app.clone();
+    let instance_id = instance_id.to_string();
+    // The framework can become idle only after its callback returns. Never
+    // disconnect synchronously on the callback dispatch thread.
+    std::thread::spawn(move || {
+        completion.finish_when_idle(
+            || {
+                tasker.as_ref().is_some_and(|tasker| tasker.running())
+                    || maa_state.instances.lock().ok().is_some_and(|instances| {
+                        instances.get(&instance_id).is_some_and(|instance| {
+                            Arc::ptr_eq(&instance.run_completion, &completion)
+                                && instance
+                                    .tasker
+                                    .as_ref()
+                                    .is_some_and(|tasker| tasker.running())
+                        })
+                    })
+            },
+            || {
+                // Start permits are blocked while completion is pending. An
+                // already admitted append finishes registering before idle.
+                let agents = maa_state.instances.lock().ok().and_then(|mut instances| {
+                    instances.get_mut(&instance_id).and_then(|instance| {
+                        Arc::ptr_eq(&instance.run_completion, &completion).then(|| {
+                            (
+                                std::mem::take(&mut instance.agent_clients),
+                                std::mem::take(&mut instance.agent_children),
+                                instance.stop_in_progress,
+                                instance.queue_result() == Some(true),
+                            )
+                        })
+                    })
+                });
+                if let Some((clients, children, cancelled, succeeded)) = agents {
+                    // Finish telemetry after the startup permit: a cancellation
+                    // during Agent registration can precede on_run_start. Never
+                    // take its RUNS lock while holding the instance lock.
+                    if cancelled {
+                        super::telemetry::on_run_cancelled(&instance_id);
+                    } else {
+                        super::telemetry::on_run_finished(&instance_id, succeeded);
+                    }
+                    super::maa_agent::stop_agent_resources(clients, children);
+                }
+            },
+            || emit_state_changed(&app, &instance_id, "tasks-completed"),
+        );
+    });
 }
 
 /// 发送配置变更事件（双通道：WS 浏览器客户端 + Tauri WebView）
 ///
-/// 各客户端收到后应重新拉取配置并 `importConfig`（需配合 `consumeSelfSave` 跳过自身触发）。
-pub fn emit_config_changed(app: &AppHandle) {
+/// 发送方 ID 用于准确跳过自身通知，避免按事件到达顺序误吞其它客户端的更新。
+pub fn emit_config_changed(app: &AppHandle, client_id: &str, revision: &str) {
     // 广播到所有 WebSocket 客户端
     if let Some(ws) = app.try_state::<Arc<WsBroadcast>>() {
-        ws.send(WsEvent::ConfigChanged);
+        ws.send(WsEvent::ConfigChanged {
+            client_id: client_id.to_string(),
+            revision: revision.to_string(),
+        });
     }
 
     // 发送到 Tauri WebView
-    if let Err(e) = app.emit("config-changed-external", ()) {
+    if let Err(e) = app.emit(
+        "config-changed-external",
+        serde_json::json!({ "client_id": client_id, "revision": revision }),
+    ) {
         log::error!("Failed to emit config-changed-external: {}", e);
     }
 }
@@ -221,26 +286,71 @@ pub fn normalize_path(path: &str) -> PathBuf {
 pub fn get_logs_dir() -> PathBuf {
     get_app_data_dir()
         .unwrap_or_else(|_| {
-            // 回退到 exe 目录
-            let exe_path = std::env::current_exe().unwrap_or_default();
-            exe_path
-                .parent()
-                .unwrap_or(std::path::Path::new("."))
-                .to_path_buf()
+            // 回退到运行时项目目录
+            get_exe_directory().unwrap_or_else(|_| PathBuf::from("."))
         })
         .join("debug")
 }
 
-/// 获取 exe 所在目录路径（内部使用）
+/// 获取运行时项目目录（内部使用）。
+///
+/// Windows/Linux 下为可执行文件所在目录；macOS 使用 `.app` 发布时，
+/// 为 `.app` 所在目录，使 `interface.json`、`maafw/` 等项目资源仍可与
+/// 应用包并列放置。
 pub fn get_exe_directory() -> Result<PathBuf, String> {
     let exe_path = std::env::current_exe().map_err(|e| format!("获取 exe 路径失败: {}", e))?;
-    exe_path
+    let exe_dir = exe_path
         .parent()
         .map(|p| p.to_path_buf())
-        .ok_or_else(|| "无法获取 exe 所在目录".to_string())
+        .ok_or_else(|| "无法获取 exe 所在目录".to_string())?;
+
+    #[cfg(target_os = "macos")]
+    if let Some(bundle) = macos_app_bundle(&exe_path) {
+        if let Some(project_dir) = bundle.parent() {
+            return Ok(project_dir.to_path_buf());
+        }
+    }
+
+    Ok(exe_dir)
 }
 
-/// 获取可执行文件所在目录下的 maafw 子目录
+#[cfg(any(target_os = "macos", test))]
+fn macos_app_bundle(exe_path: &std::path::Path) -> Option<PathBuf> {
+    let macos_dir = exe_path.parent()?;
+    if macos_dir.file_name()? != "MacOS" {
+        return None;
+    }
+    let contents_dir = macos_dir.parent()?;
+    if contents_dir.file_name()? != "Contents" {
+        return None;
+    }
+    let bundle = contents_dir.parent()?;
+    (bundle.extension()? == "app").then(|| bundle.to_path_buf())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn detects_macos_app_bundle_inside_project_directory() {
+        let bundle = macos_app_bundle(Path::new("project/MXU.app/Contents/MacOS/mxu"));
+        assert_eq!(bundle.as_deref(), Some(Path::new("project/MXU.app")));
+        assert_eq!(
+            bundle.as_deref().and_then(std::path::Path::parent),
+            Some(Path::new("project"))
+        );
+    }
+
+    #[test]
+    fn ignores_non_app_executables() {
+        assert!(macos_app_bundle(Path::new("project/mxu")).is_none());
+        assert!(macos_app_bundle(Path::new("project/MXU.app/mxu")).is_none());
+    }
+}
+
+/// 获取运行时项目目录下的 maafw 子目录
 pub fn get_maafw_dir() -> Result<PathBuf, String> {
     Ok(get_exe_directory()?.join("maafw"))
 }
@@ -252,6 +362,58 @@ pub fn build_user_agent() -> String {
     let arch = std::env::consts::ARCH;
     let tauri_version = tauri::VERSION;
     format!("MXU/{} ({}; {}) Tauri/{}", version, os, arch, tauri_version)
+}
+
+/// macOS 便携目录规范化后，旧资源路径通过符号链接指向此目录。
+/// 只接受当前 .app 内的真实资源目录，不能通过符号链接扩大到包外。
+#[cfg(any(target_os = "macos", test))]
+pub(crate) fn get_macos_bundle_resource_dir(exe_path: &std::path::Path) -> Option<PathBuf> {
+    let macos_dir = exe_path.parent()?;
+    if macos_dir.file_name()? != "MacOS" {
+        return None;
+    }
+    let contents = macos_dir.parent()?;
+    if contents.file_name()? != "Contents" || contents.parent()?.extension()? != "app" {
+        return None;
+    }
+    let contents = contents.canonicalize().ok()?;
+    let resources = contents
+        .join("Resources")
+        .join("MXU-portable")
+        .canonicalize()
+        .ok()?;
+    (resources.is_dir() && resources.starts_with(&contents)).then_some(resources)
+}
+
+#[cfg(test)]
+mod bundle_resource_tests {
+    use super::*;
+
+    #[test]
+    fn macos_relocated_resources_are_scoped_to_the_current_bundle() {
+        let root = std::env::temp_dir().join(format!(
+            "mxu-bundle-resources-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let contents = root.join("MaaEnd.app").join("Contents");
+        let macos = contents.join("MacOS");
+        let executable = macos.join("mxu");
+        let resources = contents.join("Resources").join("MXU-portable");
+        std::fs::create_dir_all(&macos).unwrap();
+        assert!(get_macos_bundle_resource_dir(&executable).is_none());
+        std::fs::create_dir_all(&resources).unwrap();
+        assert_eq!(
+            get_macos_bundle_resource_dir(&executable),
+            Some(resources.canonicalize().unwrap())
+        );
+        assert!(get_macos_bundle_resource_dir(&root.join("mxu")).is_none());
+        assert!(get_macos_bundle_resource_dir(&resources.join("mxu")).is_none());
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }
 
 /// 构建启动程序的 Command

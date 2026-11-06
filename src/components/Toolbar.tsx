@@ -1,3 +1,4 @@
+import { getControllerDisplayOptions } from '@/utils/controllerDisplay';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -12,7 +13,10 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { isTaskCompatible } from '@/stores/helpers';
-import { maaService } from '@/services/maaService';
+import { maaService, controllerErrorMessage } from '@/services/maaService';
+import { preservesTaskRun } from '@/utils/taskErrors';
+import { ControllerConnectionSupersededError } from '@/utils/controllerErrors';
+
 import { buildTaskOptionSummary } from '@/services/telemetryService';
 import { collectPasswordPlaintextsFromRunnableTasks } from '@/utils/passwordOptionValues';
 import clsx from 'clsx';
@@ -57,6 +61,7 @@ import { PermissionModal } from './toolbar/PermissionModal';
 import { ScheduleButton } from './toolbar/ScheduleButton';
 import {
   startGlobalCallbackListener,
+  waitForCtrlResult,
   waitForResResult,
 } from '@/components/connection/callbackCache';
 import { scheduleService } from '@/services/scheduleService';
@@ -64,7 +69,6 @@ import { stopInstanceTasks } from '@/services/taskStopService';
 import { taskStartService, type TaskStartOptions } from '@/services/taskStartService';
 import { isTaskSelectedForRun, filterTasksForRun } from '@/utils/taskRunFilter';
 import { isTauri } from '@/utils/paths';
-import { onStateChanged } from '@/services/wsService';
 import { buildPiEnvVars } from '@/utils/piEnv';
 import {
   formatCheckboxCountViolation,
@@ -237,7 +241,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
   const allEnabled = useMemo(() => {
     if (tasks.length === 0) return false;
     const compatibleTasks = tasks.filter((t) => {
-      const taskDef = projectInterface?.task.find((td) => td.name === t.taskName);
+      const taskDef = resolveCompatTaskDef(projectInterface, t.taskName);
       return isTaskCompatible(taskDef, currentControllerName, currentResourceName);
     });
     return compatibleTasks.length > 0 && compatibleTasks.every((t) => t.enabled);
@@ -503,7 +507,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               const displayName =
                 resolveI18nText(item.label, translations) || item.name || item.exec;
 
-              log.info(`实例 ${targetInstance.name}: 执行预任务:`, item.exec, args);
+              log.info(`实例 ${targetInstance.name}: 执行预任务:`, item.exec);
               addLog(targetId, {
                 type: 'info',
                 message: t('action.pretaskStarting', { name: displayName }),
@@ -514,11 +518,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               throwIfPreActionStopped(targetId);
 
               if (exitCode !== 0) {
-                log.warn(`实例 ${targetInstance.name}: 预任务退出码非零:`, exitCode);
-                addLog(targetId, {
-                  type: 'warning',
-                  message: t('action.pretaskExitCode', { code: exitCode }),
-                });
+                throw new Error(t('action.pretaskExitCode', { code: exitCode }));
               } else {
                 addLog(targetId, {
                   type: 'success',
@@ -527,7 +527,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               }
             }
           } catch (err) {
-            if ((err instanceof Error ? err.message : String(err)) === PRE_ACTION_CANCELLED_ERROR) {
+            if (controllerErrorMessage(err) === PRE_ACTION_CANCELLED_ERROR) {
               // 取消由外层统一处理，finally 会清理前置控制状态
               throw err;
             }
@@ -536,6 +536,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               type: 'error',
               message: t('action.pretaskFailed', { error: String(err) }),
             });
+            throw err;
           } finally {
             await endPreActionControl(targetId);
           }
@@ -645,13 +646,6 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                     } else {
                       deviceFound = windows.length > 0;
                     }
-                  } else if (controllerType === 'WlRoots') {
-                    const sockets = await maaService.findWlrootsSockets();
-                    if (savedDevice?.wlrSocketPath) {
-                      deviceFound = sockets.includes(savedDevice.wlrSocketPath);
-                    } else {
-                      deviceFound = sockets.length > 0;
-                    }
                   } else {
                     deviceFound = true;
                   }
@@ -702,16 +696,6 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                           }),
                         });
                       }
-                    } else if (controllerType === 'WlRoots') {
-                      const sockets = await maaService.findWlrootsSockets();
-                      if (sockets.length > 0) {
-                        addLog(targetId, {
-                          type: 'info',
-                          message: t('taskList.autoConnect.autoSelectedDevice', {
-                            name: sockets[0],
-                          }),
-                        });
-                      }
                     }
                   } catch {
                     // 忽略二次搜索错误
@@ -739,7 +723,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               }
             }
           } catch (err) {
-            if ((err instanceof Error ? err.message : String(err)) === PRE_ACTION_CANCELLED_ERROR) {
+            if (controllerErrorMessage(err) === PRE_ACTION_CANCELLED_ERROR) {
               throw err;
             }
             log.error(`实例 ${targetInstance.name}: 前置动作执行失败:`, err);
@@ -805,7 +789,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                 screencap_methods: matchedDevice.screencap_methods,
                 input_methods: matchedDevice.input_methods,
                 config: matchedDevice.config,
-                display_short_side: controller.display_short_side,
+                ...getControllerDisplayOptions(controller),
               };
               deviceName = matchedDevice.name || matchedDevice.address;
               targetType = 'device';
@@ -821,25 +805,11 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               config = buildDesktopWindowControllerConfig(controller, matchedWindow.handle);
               deviceName = matchedWindow.window_name || matchedWindow.class_name;
               targetType = 'window';
-            } else if (controllerType === 'WlRoots' && savedDevice.wlrSocketPath) {
-              const sockets = await maaService.findWlrootsSockets();
-              if (!sockets.includes(savedDevice.wlrSocketPath)) {
-                return failStart(
-                  t('taskList.autoConnect.deviceNotFound', { name: savedDevice.wlrSocketPath }),
-                );
-              }
-              config = {
-                type: 'WlRoots',
-                wlr_socket_path: savedDevice.wlrSocketPath,
-                use_win32_vk_code: controller.wlroots?.use_win32_vk_code ?? false,
-              };
-              deviceName = savedDevice.wlrSocketPath;
-              targetType = 'device';
             } else if (controllerType === 'PlayCover' && savedDevice.playcoverAddress) {
               config = buildPlayCoverControllerConfig(
                 savedDevice.playcoverAddress,
                 controller.playcover?.uuid,
-                controller.display_short_side,
+                controller,
               );
               deviceName = savedDevice.playcoverAddress;
               targetType = 'device';
@@ -881,7 +851,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                 screencap_methods: firstDevice.screencap_methods,
                 input_methods: firstDevice.input_methods,
                 config: firstDevice.config,
-                display_short_side: controller.display_short_side,
+                ...getControllerDisplayOptions(controller),
               };
               deviceName = firstDevice.name || firstDevice.address;
               targetType = 'device';
@@ -903,26 +873,6 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               config = buildDesktopWindowControllerConfig(controller, firstWindow.handle);
               deviceName = firstWindow.window_name || firstWindow.class_name;
               targetType = 'window';
-            } else if (controllerType === 'WlRoots') {
-              const sockets = await maaService.findWlrootsSockets();
-              if (sockets.length === 0) {
-                return failStart(t('taskList.autoConnect.noDeviceFound'));
-              }
-              const firstSocket = sockets[0];
-              log.info(`实例 ${targetInstance.name}: 自动选择 WlRoots socket: ${firstSocket}`);
-              addLog(targetId, {
-                type: 'info',
-                message: t('taskList.autoConnect.autoSelectedDevice', {
-                  name: firstSocket,
-                }),
-              });
-              config = {
-                type: 'WlRoots',
-                wlr_socket_path: firstSocket,
-                use_win32_vk_code: controller.wlroots?.use_win32_vk_code ?? false,
-              };
-              deviceName = firstSocket;
-              targetType = 'device';
             } else if (controllerType === 'PlayCover') {
               // PlayCover 没有搜索功能，无法自动连接
               return failStart(t('taskList.autoConnect.needConfig'));
@@ -967,125 +917,17 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               await waitWithStopCheck(2000, targetId);
             }
 
-            // 提前注册回调收集器，await 完成后再发起连接，避免竞态
-            const collectedCallbacks: Array<{ message: string; details: { ctrl_id?: number } }> =
-              [];
-            const unsubscribe = await maaService.onCallback((message, details) => {
-              if (
-                message === 'Controller.Action.Succeeded' ||
-                message === 'Controller.Action.Failed'
-              ) {
-                collectedCallbacks.push({ message, details });
-              }
-            });
-
-            let ctrlId: number;
-            try {
-              ctrlId = await maaService.connectController(targetId, config);
-            } catch (err) {
-              unsubscribe();
-              throw err;
-            }
-
-            // 注册 ctrl_id 与设备名/类型的映射
+            // Start the cache before posting, including native/synthetic callbacks
+            // which can arrive before connectController returns its operation ID.
+            await startGlobalCallbackListener();
+            const ctrlId = await maaService.connectController(targetId, config);
             registerCtrlIdName(targetId, ctrlId, deviceName, targetType);
-
-            // 等待连接完成（同时监听 maa-callback 和 state-changed 两条路径）
-            connectResult = await new Promise<boolean>((resolve) => {
-              let resolved = false;
-
-              const handleSuccess = () => {
-                if (resolved) return;
-                resolved = true;
-                clearTimeout(timeout);
-                unsubscribe();
-                unlistenCb?.();
-                unlistenState?.();
-                setInstanceConnectionStatus(targetId, 'Connected');
-                resolve(true);
-              };
-
-              const handleFailure = () => {
-                if (resolved) return;
-                resolved = true;
-                clearTimeout(timeout);
-                unsubscribe();
-                unlistenCb?.();
-                unlistenState?.();
-                resolve(false);
-              };
-
-              const timeout = setTimeout(() => {
-                if (!resolved) {
-                  log.warn(`实例 ${targetInstance.name}: 连接超时`);
-                  handleFailure();
-                }
-              }, 30000);
-
-              // 路径 1：继续监听新的 maa-callback（Controller.Action.Succeeded/Failed）
-              let unlistenCb: (() => void) | undefined;
-              // 路径 2：监听 state-changed（兜底：后端已广播 connected 但 Action.Succeeded 可能因竞态丢失）
-              // Tauri 桌面端走 app.emit() → listen()，WebSocket 端走 wsService
-              let unlistenState: (() => void) | undefined;
-
-              // 检查已收集的回调（注册监听器在 connectController 之前已完成）
-              const match = collectedCallbacks.find((cb) => cb.details.ctrl_id === ctrlId);
-              if (match) {
-                if (match.message === 'Controller.Action.Succeeded') {
-                  handleSuccess();
-                } else {
-                  handleFailure();
-                }
-                return;
-              }
-
-              maaService
-                .onCallback((message, details) => {
-                  if (resolved) return;
-                  if (details.ctrl_id !== ctrlId) return;
-                  if (message === 'Controller.Action.Succeeded') {
-                    handleSuccess();
-                  } else if (message === 'Controller.Action.Failed') {
-                    handleFailure();
-                  }
-                })
-                .then((cb) => {
-                  if (!resolved) {
-                    unlistenCb = cb;
-                  } else {
-                    cb();
-                  }
-                })
-                .catch((err) => {
-                  log.error(`实例 ${targetInstance.name}: 注册 maa-callback 监听失败:`, err);
-                  handleFailure();
-                });
-              const handleStateChanged = (instanceId: string, kind: string) => {
-                if (resolved) return;
-                if (instanceId === targetId && kind === 'connected') {
-                  log.info(`实例 ${targetInstance.name}: 通过 state-changed 兜底判定连接成功`);
-                  handleSuccess();
-                }
-              };
-
-              if (isTauri()) {
-                import('@tauri-apps/api/event')
-                  .then(({ listen }) =>
-                    listen<{ instance_id: string; kind: string }>('state-changed', (event) =>
-                      handleStateChanged(event.payload.instance_id, event.payload.kind),
-                    ),
-                  )
-                  .then((dispose) => {
-                    if (resolved) dispose();
-                    else unlistenState = dispose;
-                  })
-                  .catch((err) => {
-                    log.warn('注册 state-changed 监听失败:', err);
-                  });
-              } else {
-                unlistenState = onStateChanged(handleStateChanged);
-              }
-            });
+            // A state-changed notification belongs to the instance, not this request.
+            // Only this globally unique action ID can complete this connection.
+            connectResult = (await waitForCtrlResult(ctrlId)) === 'succeeded';
+            if (connectResult) {
+              setInstanceConnectionStatus(targetId, 'Connected');
+            }
           }
 
           if (!connectResult) {
@@ -1286,7 +1128,21 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
       } catch (err) {
         log.error(`实例 ${targetInstance.name}: 任务启动异常:`, err);
 
-        const errMsg = err instanceof Error ? err.message : String(err);
+        if (err instanceof ControllerConnectionSupersededError) {
+          // A later connection or recreated instance owns this ID. Do not stop its
+          // Agent or overwrite its task state while handling the old request.
+          try {
+            const states = await maaService.getAllStates();
+            if (states) {
+              useAppStore.getState().restoreBackendStates(states, { skipRunningState: true });
+            }
+          } catch (syncError) {
+            log.warn('Failed to refresh state after a superseded connection:', syncError);
+          }
+          return false;
+        }
+
+        const errMsg = controllerErrorMessage(err);
         const cancelled = errMsg === PRE_ACTION_CANCELLED_ERROR;
         if (!cancelled) {
           const localizedErrMsg = errMsg
@@ -1305,6 +1161,12 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
           });
         }
 
+        if (preservesTaskRun(err)) {
+          const backendStates = await maaService.getAllStates();
+          if (backendStates) useAppStore.getState().restoreBackendStates(backendStates);
+          return false;
+        }
+
         const failedAgentConfigs = normalizeAgentConfigs(projectInterface?.agent);
         if (failedAgentConfigs && failedAgentConfigs.length > 0) {
           for (let i = 0; i < failedAgentConfigs.length; i++) {
@@ -1320,11 +1182,8 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               }),
             });
           }
-          try {
-            await maaService.stopAgent(targetId);
-          } catch {
-            // 忽略停止 agent 的错误
-          }
+          // Startup rolls back its own Agents in the backend. A later cleanup
+          // RPC cannot safely identify which run this failed request owned.
         }
 
         updateInstance(targetId, { isRunning: false });
@@ -1526,7 +1385,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
           }
         } catch (err) {
           log.error('任务启动异常:', err);
-          setAutoConnectError(err instanceof Error ? err.message : String(err));
+          setAutoConnectError(controllerErrorMessage(err));
           setAutoConnectPhase('idle');
         } finally {
           setIsStarting(false);

@@ -1,3 +1,4 @@
+import { getControllerDisplayOptions } from '@/utils/controllerDisplay';
 import type { ControllerItem, ControllerType, SavedDeviceInfo } from '@/types/interface';
 import type { AdbDevice, ControllerConfig } from '@/types/maa';
 import { hasValidUinputDimensions } from '@/utils/linuxUinput';
@@ -88,7 +89,7 @@ export function buildDesktopWindowControllerConfig(
       screencap_method: parseWin32ScreencapMethod(controller.win32?.screencap || ''),
       mouse_method: parseWin32InputMethod(controller.win32?.mouse || ''),
       keyboard_method: parseWin32InputMethod(controller.win32?.keyboard || ''),
-      display_short_side: controller.display_short_side,
+      ...getControllerDisplayOptions(controller),
     };
   }
 
@@ -98,7 +99,7 @@ export function buildDesktopWindowControllerConfig(
       handle,
       screencap_method: parseMacOSScreencapMethod(controller.macos?.screencap || ''),
       input_method: parseMacOSInputMethod(controller.macos?.input || ''),
-      display_short_side: controller.display_short_side,
+      ...getControllerDisplayOptions(controller),
     };
   }
 
@@ -106,7 +107,11 @@ export function buildDesktopWindowControllerConfig(
     return {
       type: 'Gamepad',
       handle,
-      display_short_side: controller.display_short_side,
+      gamepad_type: controller.gamepad?.gamepad_type,
+      screencap_method: controller.gamepad?.screencap
+        ? parseWin32ScreencapMethod(controller.gamepad.screencap)
+        : undefined,
+      ...getControllerDisplayOptions(controller),
     };
   }
 
@@ -115,9 +120,9 @@ export function buildDesktopWindowControllerConfig(
 
 const WORKSTATION_UNLOCK_REQUIREMENT: Record<ControllerType, boolean> = {
   Adb: false,
+  IOS: false,
   Win32: true,
   MacOS: false,
-  WlRoots: false,
   Linux: false,
   PlayCover: false,
   Gamepad: true,
@@ -270,6 +275,6 @@ export function buildLinuxControllerConfig(
     uinput_screen_width: discovery.uinputScreenWidth,
     uinput_screen_height: discovery.uinputScreenHeight,
     use_win32_vk_code: linux?.use_win32_vk_code ?? false,
-    display_short_side: controller?.display_short_side,
+    ...getControllerDisplayOptions(controller),
   };
 }
