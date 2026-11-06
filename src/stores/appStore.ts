@@ -412,7 +412,7 @@ export const useAppStore = create<AppState>()(
           defaultTasks.push({
             id: generateId(),
             taskName: pretaskName(item),
-            expanded: true,
+            expanded: false, // pretask 选项通常一次性配置，新建配置时默认收起
             enabled: isTaskCompatible(
               buildPretaskDef(item),
               pi.controller[0]?.name,
@@ -666,7 +666,7 @@ export const useAppStore = create<AppState>()(
           taskName,
           enabled: presetTask.enabled !== false,
           optionValues,
-          expanded: true,
+          expanded: !isPretaskName(taskName), // pretask 默认收起
         };
       };
 
