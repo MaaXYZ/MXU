@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { maaService } from '@/services/maaService';
-import { useResolvedContent } from '@/services/contentResolver';
+import { detectContentType, useResolvedContent } from '@/services/contentResolver';
 import { loggers, generateTaskPipelineOverride } from '@/utils';
 import { getInterfaceLangKey } from '@/i18n';
 import {
@@ -223,13 +223,24 @@ export function AddTaskPanel() {
   const filteredTasks = useMemo(() => {
     if (!projectInterface) return [];
 
+    const searchLower = searchQuery.trim().toLowerCase();
+    if (!searchLower) return projectInterface.task;
+
     return projectInterface.task.filter((task) => {
       const label = resolveI18nText(task.label, langKey) || task.name;
-      const searchLower = searchQuery.toLowerCase();
+      if (
+        task.name.toLowerCase().includes(searchLower) ||
+        label.toLowerCase().includes(searchLower)
+      ) {
+        return true;
+      }
 
-      // 只根据搜索关键词过滤
+      // 描述仅匹配直接文本；文件路径 / URL 形式的描述不参与搜索，避免误命中路径字符串
+      const description = task.description ? resolveI18nText(task.description, langKey) : '';
       return (
-        task.name.toLowerCase().includes(searchLower) || label.toLowerCase().includes(searchLower)
+        !!description &&
+        detectContentType(description) === 'text' &&
+        description.toLowerCase().includes(searchLower)
       );
     });
   }, [projectInterface, searchQuery, resolveI18nText, langKey]);
