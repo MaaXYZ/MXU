@@ -243,7 +243,8 @@ export function InstallConfirmModal() {
           timestamp: Date.now(),
           requireVersionCheck: true,
         });
-        clearPendingUpdateInfo();
+        // 打开安装程序不代表安装成功；取消或失败后仍需在下次启动恢复该更新。
+        // 待启动时确认版本已更新，再清除待安装记录。
         // 不关闭弹窗、不重启
         return;
       }

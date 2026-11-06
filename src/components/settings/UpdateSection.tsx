@@ -22,6 +22,7 @@ import {
   checkAndPrepareDownload,
   openMirrorChyanWebsite,
   downloadUpdate,
+  savePendingUpdateInfo,
   getUpdateSavePath,
   cancelDownload,
   MIRRORCHYAN_ERROR_CODES,
@@ -123,7 +124,7 @@ export function UpdateSection() {
 
   // 开始下载
   const startDownload = useCallback(
-    async (targetUpdateInfo?: typeof updateInfo) => {
+    async (targetUpdateInfo?: typeof updateInfo, installAfterDownload = false) => {
       const info = targetUpdateInfo || updateInfo;
       if (!info?.downloadUrl) return;
 
@@ -156,9 +157,26 @@ export function UpdateSection() {
         });
 
         if (result.success) {
-          // 使用实际保存路径（可能与请求路径不同，如果从 302 重定向检测到正确文件名）
+          // 使用实际保存路径，并保留记录供下次启动安装。
+          savePendingUpdateInfo({
+            versionName: info.versionName,
+            releaseNote: info.releaseNote,
+            channel: info.channel,
+            downloadSavePath: result.actualSavePath,
+            fileSize: info.fileSize,
+            updateType: info.updateType,
+            downloadSource: info.downloadSource,
+            timestamp: Date.now(),
+          });
           setDownloadSavePath(result.actualSavePath);
           setDownloadStatus('completed');
+          if (
+            installAfterDownload &&
+            !useAppStore.getState().instances.some((instance) => instance.isRunning)
+          ) {
+            setInstallStatus('installing');
+            setShowInstallConfirmModal(true);
+          }
         } else {
           setDownloadStatus('failed');
         }
@@ -173,6 +191,8 @@ export function UpdateSection() {
       setDownloadStatus,
       setDownloadProgress,
       setDownloadSavePath,
+      setInstallStatus,
+      setShowInstallConfirmModal,
       proxySettings,
       mirrorChyanSettings.cdk,
     ],
@@ -350,7 +370,7 @@ export function UpdateSection() {
             addDebugLog(
               `下载来源: ${result.downloadSource === 'github' ? 'GitHub' : 'Mirror酱 CDN'}`,
             );
-            startDownload(result);
+            startDownload(result, true);
           } else {
             addDebugLog('无可用下载链接');
           }
@@ -645,7 +665,7 @@ export function UpdateSection() {
                       onInstallClick={handleInstallNow}
                       onRetryClick={() => {
                         resetDownloadState();
-                        startDownload();
+                        startDownload(undefined, true);
                       }}
                       progressBgClass="bg-bg-secondary"
                       onSlowDownloadHintClick={handleScrollToCdkInput}

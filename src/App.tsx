@@ -55,6 +55,7 @@ import {
   getPendingUpdateInfo,
   clearPendingUpdateInfo,
   isDebugVersion,
+  isExecutableInstaller,
 } from '@/services/updateService';
 import { initTelemetry, isTelemetryBlockedByBuild } from '@/services/telemetryService';
 import { runAutoUpdateCheck } from '@/services/autoUpdateCheck';
@@ -1066,6 +1067,7 @@ function App() {
             normalizeVersion(currentVersionNow) === normalizeVersion(updateCompleteInfo.newVersion)
           ) {
             log.info('版本已更新到目标版本');
+            clearPendingUpdateInfo();
             if (isAutoStartModeNow) {
               // 无人值守：跳过弹窗，继续检查是否有更新版本
               log.info('自启动模式，跳过更新完成弹窗');
@@ -1112,6 +1114,19 @@ function App() {
             downloadSource: pendingUpdate.downloadSource,
           });
           setDownloadSavePath(pendingUpdate.downloadSavePath);
+          // 前端刷新时后端任务可能仍在运行；隐藏自启动也不能等待交互式安装程序。
+          const backendStates = await maaService.getAllStates();
+          if (
+            !backendStates ||
+            Object.values(backendStates.instances).some((instance) => instance.isRunning) ||
+            useAppStore.getState().instances.some((instance) => instance.isRunning) ||
+            (isAutoStartModeNow && isExecutableInstaller(pendingUpdate.downloadSavePath))
+          ) {
+            log.info('本次启动跳过安装，保留更新包并继续任务');
+            setDownloadStatus('completed');
+            dispatchPendingAutoStartTasks();
+            return;
+          }
           // 启动时安装已下载的更新，完成重启后再执行自动任务。
           useAppStore.getState().setInstallStatus('installing');
           setDownloadStatus('completed');
