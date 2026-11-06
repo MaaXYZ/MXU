@@ -786,6 +786,8 @@ export default {
       exeMissing:
         'The program file is missing. It may have been deleted or quarantined by security software. Add the installation folder to the security software allowlist, then download the update again.',
     },
+    signedAppUpdateUnsupported:
+      'In-place updates inside a macOS app bundle are unavailable. Quit the app and install the complete new version; manually replaced files require re-signing. The downloaded update is kept.',
     installNow: 'Install Now',
     installUpdate: 'Install Update',
     installStages: {
