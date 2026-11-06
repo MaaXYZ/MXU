@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "0.1",
+  "id": "studio.example.little-trouble",
+  "name": {
+    "zh-CN": "捣蛋小怪兽",
+    "en-US": "Little Trouble"
+  },
+  "version": "1.0.0",
+  "mxu": {
+    "skinApi": "0.1"
+  },
+  "capabilities": {
+    "required": ["tokens.v1"],
+    "optional": ["scene.l1", "reservation.edge.v1", "bleed.stage.v1"]
+  },
+  "fallback": {
+    "mode": "tokens-only"
+  },
+  "tokens": {
+    "light": { "--color-accent": "#7357d8" },
+    "dark": { "--color-accent": "#b6a4ff" }
+  },
+  "scene": {
+    "entry": "scene.html",
+    "initialState": "idle"
+  },
+  "placements": [
+    {
+      "element": "mascot",
+      "anchor": "toolbar.primary",
+      "align": "outside-start-center",
+      "offset": { "x": -12, "y": 0 },
+      "layer": "ornament-front",
+      "bleed": { "top": 48, "right": 16, "bottom": 12, "left": 24 },
+      "hitTest": "host-hotspot"
+    }
+  ],
+  "reservations": [
+    {
+      "id": "mascot-space",
+      "slot": "toolbar.actions",
+      "edge": "inline-start",
+      "size": 112,
+      "maxFraction": 0.28,
+      "when": { "scene.state": "mischief" }
+    }
+  ],
+  "bindings": [
+    {
+      "event": "scene.hotspot.activate",
+      "target": "mascot",
+      "setSceneState": "mischief"
+    },
+    {
+      "event": "scene.state.timeout",
+      "state": "mischief",
+      "afterMs": 2400,
+      "setSceneState": "idle"
+    },
+    {
+      "event": "task.runState.changed",
+      "equals": "running",
+      "setSceneState": "cheer"
+    }
+  ]
+}

@@ -1,0 +1,923 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>MXU Skin Protocol 0.1 · 协议草案</title>
+    <style>
+      :root {
+        --ink: #20212b;
+        --muted: #747582;
+        --line: #e7e7ef;
+        --accent: #6454d8;
+        --paper: #fff;
+        --wash: #f6f6fb;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+        scroll-padding-top: 32px;
+      }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font:
+          15px/1.85 -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          'PingFang SC',
+          'Microsoft YaHei',
+          sans-serif;
+      }
+      a {
+        color: var(--accent);
+        text-underline-offset: 4px;
+      }
+      a:hover {
+        color: #40349f;
+      }
+      a:focus-visible {
+        outline: 3px solid #b3a9ff;
+        outline-offset: 4px;
+      }
+      header {
+        padding: 28px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .wrap {
+        width: min(1120px, calc(100% - 64px));
+        margin: auto;
+      }
+      .nav {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+      }
+      .brand {
+        font-size: 17px;
+        letter-spacing: 0.06em;
+        font-weight: 800;
+        text-decoration: none;
+        color: var(--ink);
+      }
+      .meta {
+        font:
+          12px/1.5 ui-monospace,
+          SFMono-Regular,
+          Consolas,
+          monospace;
+        color: var(--muted);
+      }
+      .hero {
+        padding: 70px 0 46px;
+        max-width: 850px;
+      }
+      .eyebrow {
+        font:
+          600 12px/1.5 ui-monospace,
+          SFMono-Regular,
+          Consolas,
+          monospace;
+        letter-spacing: 0.15em;
+        color: var(--accent);
+      }
+      h1 {
+        font-size: clamp(32px, 5vw, 54px);
+        line-height: 1.18;
+        letter-spacing: -0.04em;
+        margin: 16px 0 24px;
+      }
+      h1 small {
+        display: block;
+        font-size: 19px;
+        font-weight: 500;
+        letter-spacing: 0;
+        margin-top: 17px;
+        color: var(--muted);
+      }
+      .lead {
+        font-size: 20px;
+        line-height: 1.75;
+        color: #51525f;
+        max-width: 790px;
+      }
+      .badge {
+        display: inline-block;
+        background: #eeebff;
+        color: #5946c2;
+        border: 1px solid #ded7ff;
+        border-radius: 5px;
+        padding: 3px 9px;
+        font-size: 12px;
+        font-weight: 600;
+        margin-right: 8px;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: 190px minmax(0, 1fr);
+        gap: 55px;
+        align-items: start;
+        padding-bottom: 90px;
+      }
+      aside {
+        position: sticky;
+        top: 32px;
+        font-size: 13px;
+        line-height: 2.35;
+      }
+      aside a {
+        display: block;
+        text-decoration: none;
+        color: var(--muted);
+      }
+      aside a:hover {
+        color: var(--accent);
+      }
+      aside strong {
+        display: block;
+        margin-bottom: 10px;
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        color: #383848;
+      }
+      article {
+        max-width: 820px;
+        min-width: 0;
+      }
+      section {
+        padding: 4px 0 30px;
+        border-bottom: 1px solid var(--line);
+        margin-bottom: 29px;
+      }
+      section:last-child {
+        border: 0;
+      }
+      h2 {
+        font-size: 25px;
+        line-height: 1.4;
+        margin: 0 0 20px;
+        letter-spacing: -0.02em;
+      }
+      h2 .num {
+        color: #aaa7c1;
+        font-size: 13px;
+        margin-right: 14px;
+        font-weight: 500;
+      }
+      h3 {
+        font-size: 17px;
+        margin: 26px 0 10px;
+      }
+      p {
+        margin: 12px 0;
+      }
+      ul,
+      ol {
+        padding-left: 23px;
+        margin: 13px 0;
+      }
+      li {
+        padding-left: 3px;
+        margin-bottom: 7px;
+      }
+      code {
+        font:
+          12.5px/1.65 ui-monospace,
+          SFMono-Regular,
+          Consolas,
+          monospace;
+        background: #f1f0f8;
+        border-radius: 4px;
+        padding: 2px 5px;
+        color: #6452ba;
+        overflow-wrap: anywhere;
+      }
+      pre {
+        background: #191c29;
+        color: #e6e5f3;
+        border-radius: 12px;
+        padding: 25px;
+        overflow: auto;
+        font:
+          12px/1.8 ui-monospace,
+          SFMono-Regular,
+          Consolas,
+          monospace;
+        margin: 18px 0;
+      }
+      pre code {
+        color: inherit;
+        background: none;
+        padding: 0;
+        overflow-wrap: normal;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 13px;
+        margin: 19px 0;
+      }
+      th,
+      td {
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid var(--line);
+        padding: 13px 12px;
+      }
+      th {
+        background: var(--wash);
+        font-weight: 600;
+      }
+      th:first-child,
+      td:first-child {
+        padding-left: 14px;
+      }
+      .table-wrap {
+        overflow-x: auto;
+      }
+      .note {
+        padding: 17px 20px;
+        background: var(--wash);
+        border-left: 3px solid #aca1f4;
+        border-radius: 0 8px 8px 0;
+        color: #555665;
+        margin: 20px 0;
+        font-size: 13px;
+      }
+      .diagram {
+        display: flex;
+        align-items: stretch;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin: 25px 0;
+      }
+      .diagram div {
+        flex: 1;
+        min-width: 150px;
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: var(--wash);
+        font-size: 13px;
+      }
+      .diagram b {
+        display: block;
+        color: var(--accent);
+        font-size: 11px;
+        letter-spacing: 0.09em;
+        margin-bottom: 5px;
+      }
+      .file {
+        font-size: 12px;
+      }
+      footer {
+        border-top: 1px solid var(--line);
+        padding: 25px 0 40px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .button {
+        display: inline-block;
+        text-decoration: none;
+        background: var(--accent);
+        color: white;
+        padding: 9px 15px;
+        border-radius: 7px;
+        font-size: 13px;
+      }
+      .button:hover {
+        background: #5041bd;
+        color: white;
+      }
+      .small {
+        font-size: 13px;
+        color: var(--muted);
+      }
+      @media (max-width: 800px) {
+        .wrap {
+          width: calc(100% - 36px);
+        }
+        .hero {
+          padding: 42px 0 32px;
+        }
+        .layout {
+          display: block;
+        }
+        aside {
+          position: static;
+          margin-bottom: 35px;
+          display: flex;
+          gap: 5px 17px;
+          flex-wrap: wrap;
+        }
+        aside strong {
+          width: 100%;
+          margin: 0;
+        }
+        aside a {
+          display: inline;
+        }
+        .lead {
+          font-size: 18px;
+        }
+        pre {
+          padding: 17px;
+        }
+        th,
+        td {
+          min-width: 110px;
+          padding: 11px 8px;
+        }
+        .nav {
+          align-items: flex-start;
+        }
+        .meta {
+          font-size: 10px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+      }
+      @media print {
+        header,
+        aside,
+        .button {
+          display: none;
+        }
+        .wrap {
+          width: 100%;
+        }
+        .layout {
+          display: block;
+        }
+        .hero {
+          padding: 0 0 25px;
+        }
+        body {
+          font-size: 10pt;
+        }
+        h1 {
+          font-size: 28pt;
+        }
+        h2 {
+          font-size: 17pt;
+        }
+        pre {
+          white-space: pre-wrap;
+          background: #f4f4f7;
+          color: #222;
+          border: 1px solid #ddd;
+          font-size: 8pt;
+        }
+        section {
+          break-inside: auto;
+        }
+        h2,
+        h3 {
+          break-after: avoid;
+        }
+        table {
+          font-size: 9pt;
+        }
+        a {
+          color: inherit;
+          text-decoration: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="wrap nav">
+        <a class="brand" href="./index.html"
+          >MXU <span style="font-weight: 400; color: #a9a6ba">/</span> SKIN LAB</a
+        ><span class="meta">PROTOCOL DRAFT 0.1<br />2026.11 · DESIGN PROPOSAL</span>
+      </div>
+    </header>
+    <main class="wrap">
+      <div class="hero">
+        <div class="eyebrow">WEB STANDARDS, HOST GUARANTEES.</div>
+        <h1>皮肤，是可编排的界面。<small>MXU Skin Protocol 0.1 · 设计草案</small></h1>
+        <p class="lead">
+          复用 HTML、CSS、SVG 的表现力。MXU
+          只补上五件事：包加载、语义锚点、布局协商、图层合成，以及受控的状态与动作接口。
+        </p>
+        <span class="badge">规范提案</span><span class="badge">兼容现有主题</span
+        ><span class="badge">L0 + L1 优先</span>
+      </div>
+      <div class="layout">
+        <aside aria-label="文档目录">
+          <strong>CONTENTS</strong><a href="#decision">01 · 技术选择</a
+          ><a href="#levels">02 · 能力分级</a><a href="#package">03 · 包与协议</a
+          ><a href="#layout">04 · 占位与越框</a><a href="#bridge">05 · 状态与动作</a
+          ><a href="#host">06 · 宿主职责</a><a href="#security">07 · 导入与隔离</a
+          ><a href="#compat">08 · 降级与预算</a><a href="#integration">09 · 接入现有 MXU</a
+          ><a href="#demo">10 · 演示边界</a>
+        </aside>
+        <article>
+          <section id="decision">
+            <h2><span class="num">01</span>直接使用 Web，但不把业务交给皮肤</h2>
+            <p>
+              MXU 已使用 React 19、TypeScript、Vite、Tailwind、Zustand，以及 Tauri 2 /
+              Axum。建议沿用浏览器渲染器：Grid/Flex 负责排版，CSS 变量负责主题，SVG、CSS animation
+              和 Web Animations API 负责角色与特效。v0.1
+              不引入自研渲染引擎、物理碰撞系统或另一套布局语言。
+            </p>
+            <p>
+              皮肤控制“长什么样、装饰在哪里、什么时候做什么表演”；宿主继续控制“按钮是什么、现在能不能点、点击后发生什么”。启动、停止、设备选择等仍是
+              MXU 的真实 React 控件，保留键盘操作、无障碍语义与既有业务判断。皮肤不能通过 CSS
+              选择器依赖 MXU 内部 DOM。
+            </p>
+            <div class="diagram" aria-label="架构：皮肤描述交给宿主，再映射为浏览器能力">
+              <div><b>AUTHOR</b>skin.json<br />HTML / CSS / SVG / assets</div>
+              <div><b>MXU HOST</b>校验、锚点、占位、图层<br />受控状态与动作</div>
+              <div><b>WEB RUNTIME</b>真实控件 + 隔离装饰层<br />Grid / Flex / CSS animation</div>
+            </div>
+            <p>
+              这里的“HTML/CSS 自定义”首先指装饰场景和已公开的样式变量。任意 HTML
+              接管整棵应用、修改私有业务 DOM，不属于 v0.1 皮肤能力；更高权限的应用插件应另立契约。
+            </p>
+          </section>
+          <section id="levels">
+            <h2><span class="num">02</span>从颜色到会表演的场景</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>层级</th>
+                    <th>作者提供</th>
+                    <th>能做什么</th>
+                    <th>v0.1</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>L0 · Tokens</strong></td>
+                    <td>JSON 色值、圆角、间距等已注册变量</td>
+                    <td>现有明暗主题、强调色、背景，以及后续开放的控件外观</td>
+                    <td>首先落地</td>
+                  </tr>
+                  <tr>
+                    <td><strong>L1 · Scene</strong></td>
+                    <td>受限 HTML/CSS/SVG、本地资源、声明式事件绑定</td>
+                    <td>会动的角色、跨卡片武器、布局占位、任务状态联动</td>
+                    <td>目标能力</td>
+                  </tr>
+                  <tr>
+                    <td><strong>L2 · Script</strong></td>
+                    <td>可选隔离脚本与声明的能力请求</td>
+                    <td>程序化动作、复杂状态机、粒子与可选 WebGL 场景</td>
+                    <td>仅预留；不能在 v0.1 加载</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p>
+              作者只需实现自己需要的层级。L1 设计使用 CSS
+              关键帧、状态属性和宿主事件，就能覆盖实验场六个内置场景的主要表现；不必为了一个眨眼动作写脚本。内置皮肤与用户导入皮肤使用同一份协议，安装来源不自动扩大权限。
+            </p>
+          </section>
+          <section id="package">
+            <h2><span class="num">03</span>一个可离线安装的皮肤包</h2>
+            <p>
+              <code>.mxuskin</code> 是 ZIP 容器，根目录必须有
+              <code>skin.json</code
+              >。文件名只是容器约定，真正的版本由清单决定。最小皮肤可以只有清单，复杂皮肤再附带场景和资源。
+            </p>
+            <pre><code>little-trouble.mxuskin
+├── skin.json
+├── scene.html
+├── scene.css
+├── preview.webp
+└── assets/
+    └── mascot.svg</code></pre>
+            <p>
+              下面的 manifest 是拟议正式协议样例，不是当前 MXU
+              已支持的配置。锚点与槽位名也需要由宿主实现后发布。下载内容只有清单示例，尚需配套场景和资源，不能直接作为完整皮肤安装。
+            </p>
+            <pre><code>{
+  "schemaVersion": "0.1",
+  "id": "studio.example.little-trouble",
+  "name": { "zh-CN": "捣蛋小怪兽", "en-US": "Little Trouble" },
+  "version": "1.0.0",
+  "mxu": { "skinApi": "0.1" },
+  "capabilities": {
+    "required": ["tokens.v1"],
+    "optional": ["scene.l1", "reservation.edge.v1", "bleed.stage.v1"]
+  },
+  "fallback": { "mode": "tokens-only" },
+  "tokens": {
+    "light": { "--color-accent": "#7357d8" },
+    "dark": { "--color-accent": "#b6a4ff" }
+  },
+  "scene": { "entry": "scene.html", "initialState": "idle" },
+  "placements": [{
+    "element": "mascot",
+    "anchor": "toolbar.primary",
+    "align": "outside-start-center",
+    "offset": { "x": -12, "y": 0 },
+    "layer": "ornament-front",
+    "bleed": { "top": 48, "right": 16, "bottom": 12, "left": 24 },
+    "hitTest": "host-hotspot"
+  }],
+  "reservations": [{
+    "id": "mascot-space",
+    "slot": "toolbar.actions",
+    "edge": "inline-start",
+    "size": 112,
+    "maxFraction": 0.28,
+    "when": { "scene.state": "mischief" }
+  }],
+  "bindings": [
+    { "event": "scene.hotspot.activate", "target": "mascot",
+      "setSceneState": "mischief" },
+    { "event": "scene.state.timeout", "state": "mischief",
+      "afterMs": 2400, "setSceneState": "idle" },
+    { "event": "task.runState.changed", "equals": "running",
+      "setSceneState": "cheer" }
+  ]
+}</code></pre>
+            <a class="button" href="./examples/mascot.skin.json" download>下载 manifest 样例</a>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>字段</th>
+                    <th>约定</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>schemaVersion</code> / <code>mxu.skinApi</code></td>
+                    <td>
+                      分别标识清单格式与宿主皮肤接口；与皮肤自己的 SemVer
+                      <code>version</code> 分离。0.x 不假设跨 minor 兼容。
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><code>id</code> / <code>name</code></td>
+                    <td>
+                      稳定的反向域名式标识与多语言名称；同 ID 更新须显式选择，不能静默覆盖另一来源。
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><code>capabilities</code> / <code>fallback</code></td>
+                    <td>
+                      缺少 required 则拒绝启用；缺少 optional
+                      则移除相关能力，并按清单降级。本例可只保留 tokens。
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><code>tokens</code></td>
+                    <td>
+                      仅接受宿主注册的变量和对应类型；本例色值不能替换为任意
+                      CSS。现有用户的明暗模式偏好继续有效。
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><code>placements</code></td>
+                    <td>
+                      将场景元素绑定到语义锚点，声明对齐、偏移、层级、最大越框量和命中方式。所有长度均为
+                      CSS px。
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><code>reservations</code></td>
+                    <td>
+                      向宿主边缘槽位申请真实布局空间；<code>size</code> 是请求值，<code
+                        >maxFraction</code
+                      >
+                      是作者上限，宿主还要施加自身上限。
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><code>bindings</code></td>
+                    <td>
+                      白名单事件到有限状态的映射。<code>when</code> 只做已公开字段的相等匹配，不执行
+                      JS 表达式；超时计时器由宿主管理。
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p>
+              事件按宿主接收顺序处理；进入新状态时取消旧状态的定时器。<code>cheer</code>
+              等状态须在场景样式中有对应定义；生产版的清单与场景校验应检查所有引用，未定义状态视为包错误。以下
+              HTML/CSS 仅为概念切片，省略了样式引用和部分状态，不是完整场景文件。
+            </p>
+            <pre><code>&lt;!-- scene.html：普通表现元素，不能声明业务按钮 --&gt;
+&lt;div id="mascot" class="mascot" aria-hidden="true"&gt;
+  &lt;img src="assets/mascot.svg" alt=""&gt;
+&lt;/div&gt;
+
+/* scene.css：data-scene-state 由受信任 runtime 更新 */
+.mascot { animation: breathe 2.8s ease-in-out infinite; }
+[data-scene-state="mischief"] .mascot { rotate: -8deg; }
+@keyframes breathe { 50% { translate: 0 -6px; } }
+@media (prefers-reduced-motion: reduce) {
+  .mascot { animation: none; }
+}</code></pre>
+          </section>
+          <section id="layout">
+            <h2><span class="num">04</span>“挤开”与“戳出去”是两种能力</h2>
+            <h3>Reservation：角色占空间，按钮真的移动</h3>
+            <p>
+              角色进入捣蛋状态时，宿主在 <code>toolbar.actions</code> 的逻辑起始边插入占位轨道，把
+              Grid/Flex 中的真实按钮向旁边排开。结束后释放占位，DOM
+              身份、焦点与事件处理器不变。仅对角色或按钮使用
+              <code>transform</code> 不能改变兄弟元素的布局，也不应冒充排斥能力。
+            </p>
+            <p>
+              v0.1 只支持边缘槽位和面板
+              inset，不支持任意多边形障碍、二维碰撞或物理推挤。可用宽度不足时，宿主先缩小占位，仍不足就返回零占位并让角色移到备用锚点或隐藏。多个请求按稳定优先级顺序分配，合计不得侵占控件最小宽度。
+            </p>
+            <p>
+              宿主返回实际分配的 <code>acceptedSize</code> 和原因，场景据此摆位；不允许角色按“申请
+              112”绘制，而按钮只让出
+              40。指针按下、拖拽或键盘操作正在进行时延后变更，避免按钮从用户手下逃走。
+            </p>
+            <h3>Bleed：越过面板边框，仍在应用视口内</h3>
+            <p>
+              机甲的武器挂在根级
+              <code>SkinStage</code>，跟随被锚定面板的位置绘制，绕过该卡片及其滚动容器的裁切。<code
+                >bleed</code
+              >
+              是允许伸出的最大范围，最终取皮肤请求、宿主安全区、视口边界的交集。它不参与布局，不自动推开其他面板。
+            </p>
+            <p>
+              <code>overflow: visible</code> 不能穿过 iframe、WebView 或原生窗口的边界。装饰
+              renderer 必须覆盖宿主允许的 stage，而不是塞进一张小卡片
+              iframe。所谓“破框”指应用内部面板；真正伸到操作系统桌面需要额外透明窗口与系统级命中处理，明确不属于本协议。
+            </p>
+            <h3>图层与命中</h3>
+            <p>
+              宿主固定合成顺序：<code
+                >background → content → ornament-front → host-popover → host-modal →
+                emergency-controls</code
+              >。皮肤只能选允许的层，不得提交任意全局 z-index。前景装饰默认
+              <code>pointer-events: none</code>，不得遮住开始/停止等保护区或焦点环。
+            </p>
+            <p>
+              需要“戳一下角色”时，由宿主生成有大小上限、名称和键盘行为的
+              hotspot，验证其不覆盖关键控件后再投递场景事件。不要让透明的全屏 iframe
+              接管整个窗口的鼠标。
+            </p>
+          </section>
+          <section id="bridge">
+            <h2><span class="num">05</span>状态可以驱动皮肤，动作必须经过宿主</h2>
+            <p>
+              皮肤只获得公开视图模型，例如 <code>task.runState</code>（idle / running / paused /
+              success / error /
+              cancelled）、归一化进度、当前明暗模式、动效偏好以及已注册锚点的矩形。它不读取整个
+              Zustand
+              store、任务密码、原始日志、文件路径或设备凭据。状态由宿主裁剪后推送，不能反向修改。
+            </p>
+            <p>
+              L1 的点击、超时和任务状态事件映射为 CSS
+              属性或有限场景状态；完成时角色欢呼，失败时灯光变色，运行时反应堆发光，都不需要作者脚本。宿主实现应区分“任务完成”和“成功”，取消/失败不能播放成功反馈。
+            </p>
+            <p>
+              v0.1 业务操作由真实宿主控件触发。未来可公开
+              <code>requestAction("task.start")</code> 这类语义接口，但必须校验消息来源、允许的
+              action、最新运行状态与真实用户手势，继续经过 MXU 现有启动流程；不能开放
+              <code>invoke(command, args)</code>、任意 HTTP、文件读写或通用状态
+              setter。纯场景事件不等于执行自动化的权限。
+            </p>
+            <p>
+              最小桥接只需三类信息：宿主向场景发
+              <code>state/anchors/preferences</code>；场景提交预先声明的
+              <code>reservation</code>；宿主返回 <code>reservationResult</code> 与点击事件。L1
+              由受信任 runtime 代办，作者无需调用 SDK。不同页面实例的消息携带
+              generation，切换皮肤后丢弃旧消息。
+            </p>
+          </section>
+          <section id="host">
+            <h2><span class="num">06</span>MXU 只新增五项职责</h2>
+            <ol>
+              <li>
+                <strong>SkinLoader：</strong>解包、schema
+                校验、版本协商、资源索引和可回滚启用。安装成功不代表马上替换当前皮肤。
+              </li>
+              <li>
+                <strong>AnchorRegistry：</strong>公开稳定的槽位名和矩形；通过
+                ResizeObserver、滚动监听和合并后的帧更新同步位置。名称属于协议，CSS 类名不属于协议。
+              </li>
+              <li>
+                <strong>LayoutCoordinator：</strong
+                >分配边缘占位、保护控件最小尺寸，返回实际布局结果；响应窗口缩放、语言变化和移动布局。
+              </li>
+              <li>
+                <strong>SkinStage：</strong
+                >管理前后装饰层、越框裁切、hotspot、动效生命周期和受信任的紧急恢复入口。
+              </li>
+              <li>
+                <strong>SkinBridge：</strong>从 Zustand
+                派生只读状态，验证消息、调度声明式事件并管理卸载。保留原有业务服务与操作权限。
+              </li>
+            </ol>
+            <p>
+              皮肤卸载须清除定时器、观察器、资源
+              URL、占位和事件订阅。应用崩溃后再次启动，可在主界面渲染前禁用最后启用的皮肤并回到内置主题。
+            </p>
+          </section>
+          <section id="security">
+            <h2><span class="num">07</span>导入文件是一条独立的信任边界</h2>
+            <p>
+              建议生产版 L1 使用覆盖允许区域的隔离装饰 renderer：加载受限 HTML/CSS/SVG，使用受信任
+              bootstrap 接收消息；用户片段不能执行脚本。宿主 React 控件留在主文档。Shadow DOM
+              可避免样式串扰，但不是安全沙箱。
+            </p>
+            <p>
+              若采用 iframe，使用不含 <code>allow-same-origin</code> 的 sandbox；仅在受信任
+              bootstrap 必须运行时给予 <code>allow-scripts</code>，并以严格 CSP nonce/hash
+              限定执行者。不要同时给不可信同源内容这两项权限。禁止弹窗、导航、表单和下载；桥接使用绑定实例的
+              MessageChannel，校验消息结构与额度，不能把
+              <code>origin === "null"</code> 当作身份凭证。Tauri 的权限桥接是否隔离必须在各平台
+              WebView 实测。
+            </p>
+            <ul>
+              <li>
+                <strong>ZIP：</strong
+                >拒绝绝对路径、<code>..</code>、符号链接、重复/大小写冲突路径与超限条目；流式计算实际解压体积，防止
+                ZIP bomb。建议初始上限：压缩包 20 MiB、解压 60 MiB、256 文件、单文件 16
+                MiB，后续用实测调整。
+              </li>
+              <li>
+                <strong>资源：</strong>只读包内索引，禁止网络资源、任意
+                <code>file:</code> 和系统路径；限制图像解码后尺寸，检查实际 MIME。SVG
+                必须消毒，移除脚本、事件属性、外链与 foreignObject。
+              </li>
+              <li>
+                <strong>HTML/CSS：</strong>使用成熟解析器及 allowlist，不能用正则过滤。禁止
+                script、iframe、object、embed、表单与事件属性；检查所有 CSS
+                URL、<code>@import</code>、字体来源和嵌套规则。<code>img-src</code>、<code>font-src</code>、<code>connect-src</code>、<code
+                  >form-action</code
+                >
+                等由独立 CSP 封闭。
+              </li>
+              <li>
+                <strong>宿主：</strong>皮肤不能接触 Tauri 全局对象、invoke、WebUI API
+                或原生权限。当前项目主窗口配置有 <code>withGlobalTauri: true</code>、<code
+                  >csp: null</code
+                >，所以直接向主文档注入第三方 HTML/JS 不可作为实现方案。
+              </li>
+            </ul>
+            <p>
+              包导入在暂存区完成校验，预览确认后原子切换，失败恢复上一个可用皮肤；更新不自动增加权限。内置包走同一校验通路。未来
+              L2 应单独设计无原生权限、默认无网络、可终止的隔离执行域；不把任意 JavaScript 作为 L1
+              的隐藏开关。
+            </p>
+          </section>
+          <section id="compat">
+            <h2><span class="num">08</span>降级、无障碍与动效预算</h2>
+            <p>
+              宿主先检查 schema 与 required
+              capabilities，再检查锚点是否存在。非当前视图的锚点视为暂不可见；隐藏相关装饰并释放占位。旧客户端不支持场景时可降为
+              L0，未知 required 能力必须拒绝启用；不能悄悄忽略必需字段。新增字段应由 schema
+              明确标注为可选，不使用随意容忍拼写错误的解析器。
+            </p>
+            <p>
+              为兼容不同 WebView，基础方案优先 Grid/Flex、CSS 变量、SVG 和经典关键帧。CSS anchor
+              positioning、复杂滤镜、WebGL、Lottie/Rive
+              可在以后作为独立能力检测与适配器加入；协议不以某一个动画库为核心。
+            </p>
+            <ul>
+              <li>
+                <strong>可操作性：</strong
+                >宿主控件保留文本替代、键盘焦点和足够对比度。角色装饰对读屏隐藏；hotspot
+                有本地化名称。错误/停止入口和恢复默认皮肤入口保持可见，不由皮肤接管。
+              </li>
+              <li>
+                <strong>减弱动效：</strong>响应系统 <code>prefers-reduced-motion</code> 和 MXU
+                手动设置，关掉循环弹跳、强闪光与大幅视差；布局需求仍可生效，但瞬时或短淡变完成，不能因关动画而失去功能。
+              </li>
+              <li>
+                <strong>运行预算：</strong>建议默认最多 4
+                个持续动画角色，状态与锚点更新合并至每帧一次；占位只在状态切换时变化，避免用每帧重排模拟物理。离屏、窗口隐藏或后台时暂停表演。
+              </li>
+              <li>
+                <strong>性能退化：</strong
+                >以普通设备实测帧耗时和内存为准，持续超预算则关闭滤镜/粒子、改静态图，最终移除场景保留
+                tokens。JavaScript watchdog 不能中断任意 CSS
+                渲染卡顿，因此导入时还需限制节点数量与昂贵效果。
+              </li>
+            </ul>
+            <p>
+              这里的数值是实现起点，不是已经测得的 MXU
+              性能承诺。宿主同时需要测试中文/英文长标签、125%/150%
+              缩放、窄窗口、右侧面板折叠、移动端 WebUI，以及运行中切换皮肤。
+            </p>
+          </section>
+          <section id="integration">
+            <h2><span class="num">09</span>在现有代码上渐进接入</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>已有实现</th>
+                    <th>沿用与新增</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="file">
+                      <code>src/themes/types.ts</code><br /><code>src/themes/index.ts</code>
+                    </td>
+                    <td>
+                      保留 ModeTheme、AccentTheme、applyTheme 与现有 CSS 变量作为 L0；新增
+                      SkinManifest 与变量注册/类型校验，不替换当前主题体系。
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="file"><code>src/components/settings/AppearanceSection.tsx</code></td>
+                    <td>
+                      在明暗模式、强调色、背景设置旁新增“皮肤”选择、预览、导入、恢复默认。明确用户覆盖项与包默认值的优先级。
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="file"><code>src/App.tsx</code></td>
+                    <td>
+                      在可控根容器添加 SkinStage。当前桌面分栏和右侧面板有 overflow
+                      裁切，装饰不能直接塞进这些容器。
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="file"><code>src/components/Toolbar.tsx</code></td>
+                    <td>
+                      注册 toolbar.actions / toolbar.primary
+                      等语义契约，插入占位轨道。保留实际启动/停止逻辑，不由皮肤复制。
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="file">
+                      <code>src/stores/types.ts</code><br /><code>src/stores/appStore.ts</code>
+                    </td>
+                    <td>
+                      新增 activeSkinId 与个人配置、派生有限公开状态。沿用桌面和 WebUI
+                      已有外观偏好分离策略，避免一个浏览器改皮肤影响所有客户端。
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="file">
+                      <code>src-tauri/tauri.conf.json</code><br /><code
+                        >src-tauri/capabilities/default.json</code
+                      >
+                    </td>
+                    <td>
+                      审查独立皮肤渲染域的 CSP
+                      与原生权限隔离；导入服务只操作指定皮肤目录，不把主窗口能力暴露给皮肤。
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p>
+              建议顺序：① L0 清单、schema 与旧主题适配；②
+              实现少量稳定锚点和边缘占位，用内置皮肤验证三种视觉行为；③ 加入隔离
+              renderer、资源校验、导入预览与回滚；④ 完成跨平台、无障碍和恶意包测试后开放用户导入；⑤
+              有明确需求时再定义 L2。所有新宿主界面文案进入现有 i18n 资源。
+            </p>
+            <p>
+              优先级建议为“宿主默认值 → 皮肤对应明暗模式的默认值 →
+              用户明确覆盖项”，高对比度与减弱动效属于宿主强制策略。现有主题用户无需迁移，即可保持原来的显示结果。
+            </p>
+          </section>
+          <section id="demo">
+            <h2><span class="num">10</span>当前 demo 证明什么</h2>
+            <p>
+              演示器包含捣蛋团子、机甲、生态舱、黑胶、纸张、声呐六个内置场景，分别探索角色占位、装饰越框，以及状态驱动生长、旋转、印章和扫描；同时提供减弱动效、布局轮廓和运行模拟。它证明标准
+              Web 技术可以表达这些视觉行为，帮助讨论协议的边界与交互手感。
+            </p>
+            <div class="note">
+              <strong>实现边界：</strong>demo 的场景代码是可信内置内容，使用本地模拟任务；它没有接入
+              MaaFramework，也不是生产级皮肤沙箱。演示器导入/导出的
+              <code>mxu-skin-demo/0.1</code> JSON
+              仅描述名称、六种内置场景选择、受限十六进制色值、场景数值参数与效果开关，不等于
+              <code>.mxuskin</code> 安装器，不会执行导入文件中的 HTML/CSS/JS。本页正式 manifest
+              是待实现的规范样例。实验场的代码窗是概念切片，不能作为完整规范对象或安装文件直接复制使用。
+            </div>
+            <p>
+              当前占位 demo 使用有百分比上限的 Flex
+              轨道证明真实重排；完整的占位结果回传、交互期间延后移动、保护区域裁切和隔离导入仍需在
+              MXU 宿主实现。演示器中切换场景会重置模拟任务，生产版换肤则应保持业务任务继续运行。
+            </p>
+            <p><a href="./index.html">← 回到可交互的 Skin Lab</a></p>
+          </section>
+        </article>
+      </div>
+    </main>
+    <footer>
+      <div class="wrap">
+        MXU Skin Protocol 0.1 · 规范草案 · 基于当前 MXU 技术栈提出，尚未接入主程序。仓库讨论以
+        ../protocol.md 为准。
+      </div>
+    </footer>
+  </body>
+</html>

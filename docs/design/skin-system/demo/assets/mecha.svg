@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">白隼，携带青绿色能量长枪的机甲</title>
+  <desc id="desc">白灰装甲、橘色肩甲与长长的发光武器。武器向右上方突出，适合演示越过面板边框的装饰。</desc>
+  <defs>
+    <linearGradient id="armor" x1="120" y1="130" x2="420" y2="440" gradientUnits="userSpaceOnUse"><stop stop-color="#FCFDF4"/><stop offset=".45" stop-color="#DFE9DF"/><stop offset="1" stop-color="#8DABA8"/></linearGradient>
+    <linearGradient id="orange" x1="127" y1="170" x2="210" y2="260" gradientUnits="userSpaceOnUse"><stop stop-color="#FFAB71"/><stop offset="1" stop-color="#F0634B"/></linearGradient>
+    <linearGradient id="blade" x1="370" y1="280" x2="566" y2="23" gradientUnits="userSpaceOnUse"><stop stop-color="#0B9F9A"/><stop offset=".45" stop-color="#6AE6CC"/><stop offset="1" stop-color="#D3FFF0"/></linearGradient>
+    <linearGradient id="shadowarmor" x1="170" y1="250" x2="315" y2="490" gradientUnits="userSpaceOnUse"><stop stop-color="#819B99"/><stop offset="1" stop-color="#284547"/></linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="5"/></filter>
+  </defs>
+  <ellipse cx="259" cy="566" rx="159" ry="14" fill="#173D42" opacity=".12"/>
+  <g id="mecha-body" class="mecha-body" stroke="#18393B" stroke-width="3" stroke-linejoin="round">
+    <g id="backpack">
+      <path d="M190 203L154 124L171 104L212 187L263 178L326 116L345 130L301 221Z" fill="#456363"/>
+      <path d="M167 130L181 127L203 181L188 188Z" fill="#D9E8DD"/>
+      <path d="M303 169L331 131L336 137L316 178Z" fill="#F98460"/>
+      <path d="M154 224L124 244L127 315L154 330L171 294Z" fill="#6B8584"/>
+    </g>
+    <g id="legs">
+      <path d="M202 345L248 355L231 439L186 445L177 413Z" fill="url(#armor)"/>
+      <path d="M252 354L301 344L325 417L298 450L261 432Z" fill="url(#armor)"/>
+      <path d="M195 369L219 372L208 412L188 409Z" fill="#ADBFBA"/>
+      <path d="M274 367L291 361L310 412L287 418Z" fill="#F58362"/>
+      <path d="M181 429L230 427L236 459L222 473L182 464L172 448Z" fill="#315153"/>
+      <path d="M281 428L324 414L337 442L321 467L288 462Z" fill="#315153"/>
+      <path d="M181 457L222 466L210 529L164 536L154 514Z" fill="url(#armor)"/>
+      <path d="M290 456L325 450L355 515L345 536L304 534L284 494Z" fill="url(#armor)"/>
+      <path d="M183 474L204 479L192 514L173 517Z" fill="#687F7E"/>
+      <path d="M305 469L319 468L338 513L322 516Z" fill="#687F7E"/>
+      <path d="M163 523L210 521L218 552L167 563L133 555L139 540Z" fill="#D1DFD5"/>
+      <path d="M303 521L344 521L373 545L372 557L315 562L296 548Z" fill="#D1DFD5"/>
+      <path d="M138 546L170 548L207 540M312 548L354 547" stroke="#55736F"/>
+      <path d="M134 555L167 563L218 552L217 561L165 572L133 564Z" fill="#2A484B"/>
+      <path d="M315 562L372 557L372 564L315 570L296 556L296 548Z" fill="#2A484B"/>
+    </g>
+    <g id="torso">
+      <path d="M183 215L225 187L277 190L310 217L296 291L271 325L217 327L184 283Z" fill="url(#armor)"/>
+      <path d="M222 189L244 219L277 190L286 211L250 245L207 222Z" fill="#F28561"/>
+      <path d="M204 227L248 252L288 223L278 258L247 277L213 255Z" fill="#325151"/>
+      <path d="M224 244L246 256L267 243L262 256L247 266L228 256Z" fill="#65E7C8" stroke="none"/>
+      <path d="M185 241L205 248L216 286L206 301L192 278Z" fill="#6F8C86"/>
+      <path d="M285 263L295 256L290 289L277 303L264 295Z" fill="#829F98"/>
+      <path d="M216 291L268 292L277 322L262 341L226 340L211 322Z" fill="#26464A"/>
+      <path d="M221 306L267 306M222 318L269 318" stroke="#719B93"/>
+      <path d="M204 325L227 332L218 373L181 369L185 347Z" fill="url(#armor)"/>
+      <path d="M268 332L291 321L313 355L299 375L268 364Z" fill="url(#armor)"/>
+      <path d="M228 332L263 331L268 363L247 376L223 363Z" fill="#91ABA1"/>
+      <path d="M234 339L257 339L258 353L235 353Z" fill="#EE8060"/>
+      <path d="M193 340L213 344M282 337L294 354" stroke="#FFFFFF" stroke-width="4"/>
+      <path d="M206 208L216 203M280 216L286 211" stroke="#FFFCED" stroke-width="4"/>
+    </g>
+    <g id="left-arm">
+      <path d="M174 213L144 241L142 292L161 307L188 278L198 237Z" fill="#305052"/>
+      <path d="M163 189L195 204L204 239L177 262L128 250L120 220Z" fill="url(#orange)"/>
+      <path d="M129 218L165 198L187 210L167 235L136 237Z" fill="#FFC18A"/>
+      <path d="M168 245L183 231L189 244L177 255Z" fill="#2E4B4B"/>
+      <path d="M135 254L162 265L159 294L134 286Z" fill="#D6E7DE"/>
+      <path d="M137 292L162 295L166 311L154 326L134 319L128 306Z" fill="#1E3A3E"/>
+      <path d="M132 315L158 323L157 359L139 384L115 366L115 341Z" fill="url(#armor)"/>
+      <path d="M120 341L144 344L138 368L123 360Z" fill="#EC8766"/>
+      <path d="M126 375L143 380L142 398L127 406L113 395L115 381Z" fill="#2D4B4D"/>
+      <path d="M119 385L133 389M119 393L130 398" stroke="#75948E"/>
+    </g>
+    <g id="head">
+      <path d="M221 181L226 204L253 215L272 195L270 174Z" fill="#29484A"/>
+      <path d="M217 129L242 112L266 118L285 147L278 181L254 196L226 183L213 159Z" fill="url(#armor)"/>
+      <path d="M226 137L243 124L263 129L270 145L249 152Z" fill="#F9FCF0"/>
+      <path d="M217 149L249 160L280 146L274 169L250 179L225 167Z" fill="#19393D"/>
+      <path d="M226 155L247 163L245 168L229 164Z" fill="#74F4D1" stroke="none"/>
+      <path d="M253 163L272 154L270 163L253 170Z" fill="#74F4D1" stroke="none"/>
+      <path d="M246 170L253 168L261 184L251 193L241 185Z" fill="#F28D6B"/>
+      <path d="M225 180L218 166L210 169L215 188L230 195Z" fill="#94B0A6"/>
+      <path d="M277 176L285 164L290 170L283 190L269 198Z" fill="#94B0A6"/>
+      <path d="M238 142L206 98L214 135L232 157L250 161L268 144L284 100L254 139L246 146Z" fill="#F9FCED"/>
+      <path d="M239 143L248 150L254 141L249 126L241 129Z" fill="#F0825C"/>
+    </g>
+    <g id="right-arm">
+      <path d="M291 212L326 206L344 237L327 266L303 258Z" fill="#355354"/>
+      <path d="M283 193L311 185L345 208L341 240L312 250L293 227Z" fill="url(#armor)"/>
+      <path d="M304 194L332 212L330 228L316 232L302 216Z" fill="#D9E9DD"/>
+      <path d="M312 204L321 209L320 220L313 217Z" fill="#F18460" stroke="none"/>
+      <path d="M318 257L341 246L360 266L346 289L324 283Z" fill="#6D8884"/>
+      <path d="M341 278L357 259L389 274L390 295L376 313L345 301Z" fill="url(#armor)"/>
+      <path d="M352 278L362 271L380 278L375 292Z" fill="#F3946D"/>
+      <path d="M379 271L389 257L404 260L410 277L400 292L386 292Z" fill="#25494B"/>
+    </g>
+    <g id="energy-lance" class="energy-lance">
+      <path d="M356 321L369 328L416 263L404 255Z" fill="#718D85"/>
+      <path d="M359 316L371 324M367 305L379 313M375 294L387 302" stroke="#173D40" stroke-width="5"/>
+      <path d="M381 257L401 235L432 252L414 279Z" fill="#E4EFE1"/>
+      <path d="M398 242L405 233L431 248L424 258Z" fill="#F28B61"/>
+      <path d="M410 239L449 172L470 164L561 28L542 182L510 216L434 258Z" fill="#21484B"/>
+      <path d="M425 232L462 180L479 174L555 45L533 173L506 204L435 246Z" fill="url(#blade)" stroke="#8AF0D3" stroke-width="2"/>
+      <path d="M435 229L509 191L553 48L492 174Z" fill="#C9FFEA" stroke="none" opacity=".68"/>
+      <path d="M427 239L505 190L552 49" stroke="#D9FFF2" stroke-width="2.5"/>
+      <path d="M412 245L445 203L452 207L425 249Z" fill="#F0F6E8"/>
+      <path d="M446 190L459 175L467 176L454 194Z" fill="#EE9472" stroke="none"/>
+      <path d="M480 195L488 181M489 200L498 185" stroke="#0E8281" stroke-width="2"/>
+    </g>
+  </g>
+  <g id="lance-particles" fill="#A0F1D9"><path d="M565 72L570 82L565 92L560 82Z"/><circle cx="537" cy="33" r="2.5"/><circle cx="575" cy="126" r="2"/><path d="M529 216L533 222L529 228L525 222Z"/></g>
+</svg>
