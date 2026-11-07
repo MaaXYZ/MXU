@@ -292,26 +292,26 @@ pub fn get_logs_dir() -> PathBuf {
         .join("debug")
 }
 
-/// 获取运行时项目目录（内部使用）。
-///
-/// Windows/Linux 下为可执行文件所在目录；macOS 使用 `.app` 发布时，
-/// 为 `.app` 所在目录，使 `interface.json`、`maafw/` 等项目资源仍可与
-/// 应用包并列放置。
+/// 获取运行时项目目录（内部使用）：macOS `.app` 内没有 `interface.json` 时为 `.app` 所在目录，否则为可执行文件所在目录。
 pub fn get_exe_directory() -> Result<PathBuf, String> {
     let exe_path = std::env::current_exe().map_err(|e| format!("获取 exe 路径失败: {}", e))?;
-    let exe_dir = exe_path
-        .parent()
-        .map(|p| p.to_path_buf())
-        .ok_or_else(|| "无法获取 exe 所在目录".to_string())?;
+    project_dir_for_executable(&exe_path).ok_or_else(|| "无法获取 exe 所在目录".to_string())
+}
+
+fn project_dir_for_executable(exe_path: &std::path::Path) -> Option<PathBuf> {
+    let exe_dir = exe_path.parent()?;
 
     #[cfg(target_os = "macos")]
-    if let Some(bundle) = macos_app_bundle(&exe_path) {
-        if let Some(project_dir) = bundle.parent() {
-            return Ok(project_dir.to_path_buf());
+    if !exe_dir.join("interface.json").exists() {
+        if let Some(project_dir) = macos_app_bundle(exe_path)
+            .as_deref()
+            .and_then(std::path::Path::parent)
+        {
+            return Some(project_dir.to_path_buf());
         }
     }
 
-    Ok(exe_dir)
+    Some(exe_dir.to_path_buf())
 }
 
 #[cfg(any(target_os = "macos", test))]
@@ -347,6 +347,35 @@ mod tests {
     fn ignores_non_app_executables() {
         assert!(macos_app_bundle(Path::new("project/mxu")).is_none());
         assert!(macos_app_bundle(Path::new("project/MXU.app/mxu")).is_none());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_project_dir_follows_interface_location() {
+        let root = std::env::temp_dir().join(format!(
+            "mxu-project-dir-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let project = root.join("project");
+        let macos = project.join("MaaEnd.app/Contents/MacOS");
+        let portable = root.join("portable");
+        std::fs::create_dir_all(&macos).unwrap();
+        std::fs::create_dir_all(&portable).unwrap();
+        let exe = macos.join("MaaEnd");
+
+        assert_eq!(project_dir_for_executable(&exe), Some(project));
+        std::fs::write(macos.join("interface.json"), b"{}").unwrap();
+        assert_eq!(project_dir_for_executable(&exe), Some(macos));
+        assert_eq!(
+            project_dir_for_executable(&portable.join("mxu")),
+            Some(portable)
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
 
