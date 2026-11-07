@@ -441,6 +441,11 @@ export interface AppState {
   isAutoStartMode: boolean;
   setIsAutoStartMode: (mode: boolean) => void;
 
+  // 本次进程内自动执行（autostart / autoRunOnLaunch）的任务是否已成功启动过
+  // 用于更新重启后避免重复执行同一批自动任务
+  autoTasksRanInSession: boolean;
+  setAutoTasksRanInSession: (ran: boolean) => void;
+
   // 启动后自动执行的实例 ID
   autoStartInstanceId: string | undefined;
   setAutoStartInstanceId: (id: string | undefined) => void;

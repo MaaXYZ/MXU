@@ -2115,6 +2115,10 @@ export const useAppStore = create<AppState>()(
     isAutoStartMode: false,
     setIsAutoStartMode: (mode) => set({ isAutoStartMode: mode }),
 
+    // 本次进程内自动执行的任务是否已成功启动过
+    autoTasksRanInSession: false,
+    setAutoTasksRanInSession: (ran) => set({ autoTasksRanInSession: ran }),
+
     // 启动后自动执行的实例 ID
     autoStartInstanceId: undefined,
     setAutoStartInstanceId: (id) =>

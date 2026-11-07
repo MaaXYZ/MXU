@@ -1280,6 +1280,12 @@ export interface UpdateCompleteInfo {
    * - false/undefined: 直接显示更新完成弹窗
    */
   requireVersionCheck?: boolean;
+  /**
+   * 安装前本次进程是否已成功启动过自动执行任务（autostart / autoRunOnLaunch）
+   * - true: 重启后不再分发自动任务，避免同一批任务重复执行
+   * - false/undefined: 重启后按正常流程分发
+   */
+  autoTasksAlreadyRan?: boolean;
 }
 
 /**
