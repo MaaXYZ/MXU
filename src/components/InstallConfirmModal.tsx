@@ -41,6 +41,7 @@ export function InstallConfirmModal() {
     updateInfo,
     projectInterface,
     basePath,
+    dataPath,
     downloadSavePath,
     showInstallConfirmModal,
     installStatus,
@@ -76,6 +77,7 @@ export function InstallConfirmModal() {
       const success = await installUpdate({
         zipPath: downloadSavePath,
         targetDir: basePath,
+        dataPath,
         newVersion: updateInfo.versionName,
         projectName,
         onProgress: (stage, detail) => {
@@ -100,7 +102,16 @@ export function InstallConfirmModal() {
       setInstallStatus('failed');
       setInstallError(formatInstallError(error, t));
     }
-  }, [downloadSavePath, basePath, updateInfo, projectName, setInstallStatus, setInstallError, t]);
+  }, [
+    downloadSavePath,
+    basePath,
+    dataPath,
+    updateInfo,
+    projectName,
+    setInstallStatus,
+    setInstallError,
+    t,
+  ]);
 
   // 重启应用（直接重启，不再确认）
   const handleRestart = useCallback(async () => {
@@ -181,6 +192,7 @@ export function InstallConfirmModal() {
           const success = await installUpdate({
             zipPath: downloadSavePath,
             targetDir: basePath,
+            dataPath,
             newVersion: updateInfo.versionName,
             projectName,
             onProgress: (stage, detail) => {
@@ -219,6 +231,7 @@ export function InstallConfirmModal() {
     installStatus,
     downloadSavePath,
     basePath,
+    dataPath,
     updateInfo,
     projectName,
     setInstallStatus,

@@ -13,7 +13,7 @@ use super::types::GitHubRelease;
 use reqwest::header::{ACCEPT, AUTHORIZATION, USER_AGENT};
 
 use super::types::{DownloadProgressEvent, DownloadResult};
-use super::update::move_to_old_folder;
+use super::update::archive_to_data_old;
 use super::utils::build_user_agent;
 
 /// 进度上报任务的守卫，在函数任意返回路径上都能确保发送停止信号
@@ -434,9 +434,9 @@ pub async fn download_file(
         },
     );
 
-    // 将可能存在的旧文件移动到 old 文件夹
+    // 将可能存在的旧文件归档到数据目录的 old 文件夹
     if actual_save_path_obj.exists() {
-        let _ = move_to_old_folder(actual_save_path_obj);
+        let _ = archive_to_data_old(actual_save_path_obj);
     }
 
     // 重命名临时文件（使用异步版本避免阻塞 runtime 线程）

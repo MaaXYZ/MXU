@@ -47,7 +47,7 @@ fn ensure_update_path(path: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
-/// cache/old 目录锁：全量更新期间旧文件作为回滚备份放在 cache/old，
+/// 安装目录 cache/old 目录锁：全量更新期间旧文件作为回滚备份放在那里，
 /// 启动时的异步清理必须与之互斥，避免备份在回滚前被删掉
 pub static OLD_DIR_LOCK: Mutex<()> = Mutex::new(());
 
@@ -256,15 +256,18 @@ pub fn cleanup_dir_contents(dir: &std::path::Path) -> (usize, usize) {
     (deleted, failed)
 }
 
-/// 将文件或目录移动到 cache/old 文件夹，处理重名冲突
-/// 供前端调用，统一文件移动逻辑
+/// 将更新包归档到数据目录下的 cache/old 文件夹
 #[tauri::command]
-pub fn move_file_to_old(file_path: String) -> Result<(), String> {
-    let path = std::path::Path::new(&file_path);
-    move_to_old_folder(path)
+pub fn move_update_package_to_old(file_path: String) -> Result<(), String> {
+    archive_to_data_old(Path::new(&file_path))
 }
 
-/// 获取 cache/old 目录路径（启动清理也使用此路径，保证与移入旧文件的位置一致）
+/// 将数据目录中的文件归档到同一文件系统的 cache/old
+pub fn archive_to_data_old(source: &Path) -> Result<(), String> {
+    move_to_old_folder_in_dir(source, &get_data_old_dir()?).map(|_| ())
+}
+
+/// 获取安装目录 cache/old 路径（程序旧文件与回滚备份）
 pub fn get_old_dir() -> Result<PathBuf, String> {
     old_dir_for_executable(&get_exe_directory()?, get_app_data_dir)
 }
@@ -285,6 +288,11 @@ fn old_dir_for_executable(
     Ok(old_dir)
 }
 
+/// 获取数据目录 cache/old 路径（更新包归档）
+pub fn get_data_old_dir() -> Result<PathBuf, String> {
+    Ok(get_app_data_dir()?.join("cache").join("old"))
+}
+
 /// 清空 cache/old 目录，返回 (成功数, 失败数)。
 /// 删不掉的文件（如仍被旧进程占用）会保留，后续移动遇到重名时自动加后缀
 fn clear_old_folder(old_dir: &Path) -> (usize, usize) {
@@ -302,11 +310,12 @@ pub fn move_to_old_folder(source: &std::path::Path) -> Result<(), String> {
     move_to_old_folder_dest(source).map(|_| ())
 }
 
-/// 将文件或目录移动到 cache/old，返回移动后的路径（源不存在时返回 None）
+/// 将文件或目录移动到安装目录的 cache/old，返回移动后的路径（源不存在时返回 None）
 fn move_to_old_folder_dest(source: &Path) -> Result<Option<PathBuf>, String> {
     move_to_old_folder_in_dir(source, &get_old_dir()?)
 }
 
+/// 将文件或目录移动到指定 cache/old，返回移动后的路径（源不存在时返回 None）
 fn move_to_old_folder_in_dir(source: &Path, old_dir: &Path) -> Result<Option<PathBuf>, String> {
     ensure_update_path(source)?;
     // 只有确认不存在才跳过；其他错误（如权限不足）不能当作不存在，否则回滚时无从还原

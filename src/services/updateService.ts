@@ -37,14 +37,14 @@ export function hasInstallFailedInSession(): boolean {
 }
 
 /**
- * 将文件移动到 cache/old 文件夹（调用 Rust 端统一实现）
+ * 将更新包归档到数据目录的 cache/old 文件夹（调用 Rust 端统一实现）
  */
-async function moveToOldFolder(filePath: string): Promise<void> {
+async function moveUpdatePackageToOld(filePath: string): Promise<void> {
   try {
-    await invoke('move_file_to_old', { filePath });
-    log.info(`已移动到 cache/old: ${filePath}`);
+    await invoke('move_update_package_to_old', { filePath });
+    log.info(`更新包已归档到数据目录 cache/old: ${filePath}`);
   } catch (error) {
-    log.warn(`移动文件到 cache/old 失败: ${filePath}`, error);
+    log.warn(`归档更新包失败: ${filePath}`, error);
   }
 }
 
@@ -942,8 +942,8 @@ export async function checkAndPrepareDownload(
 
 /**
  * 获取更新包保存路径
- * @param dataPath 数据目录（macOS: ~/Library/Application
- *     Support/MXU/，其他平台: exe 目录）
+ * 使用应用数据目录（macOS: ~/Library/Application Support/MXU/，
+ * Linux 启用 xdg-data-dir feature: $XDG_DATA_HOME/{项目名}，否则为 exe 目录）。
  * @param filename 文件名（可选）。如果不提供，使用默认名称。
  *                 注意：实际保存路径可能由 Rust 下载时从 302 重定向或
  * Content-Disposition 检测后覆盖
@@ -970,6 +970,7 @@ interface ChangesJson {
 export interface InstallUpdateOptions {
   zipPath: string; // 下载的更新包路径
   targetDir: string; // 目标安装目录
+  dataPath: string; // 数据目录（配置备份来源）
   newVersion: string; // 新版本号（用于兜底时创建文件夹）
   projectName?: string; // 项目名称（用于备份配置文件）
   onProgress?: (stage: string, detail?: string) => void;
@@ -1063,7 +1064,7 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
   }
   isInstalling = true;
 
-  const { zipPath, targetDir, newVersion, projectName, onProgress } = options;
+  const { zipPath, targetDir, dataPath, newVersion, projectName, onProgress } = options;
 
   log.info(`开始安装更新: ${zipPath} -> ${targetDir}`);
 
@@ -1082,7 +1083,7 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
     // 对于 exe/dmg 文件，直接打开而不是解压
     if (isExecutableInstaller(zipPath)) {
       log.info(`检测到可执行安装程序，直接打开: ${zipPath}`);
-      await backupConfigBeforeUpdate(targetDir, projectName);
+      await backupConfigBeforeUpdate(dataPath, projectName);
       onProgress?.('opening', zipPath);
 
       try {
@@ -1127,7 +1128,7 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
 
       if (isExtractError(error) && error.corrupt) {
         // 包已损坏，移走并放弃，避免每次都拿同一个坏包重试
-        await moveToOldFolder(zipPath);
+        await moveUpdatePackageToOld(zipPath);
         discardPendingPackage();
         throw new UpdateInstallError('packageCorrupt', error.message);
       }
@@ -1135,7 +1136,7 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
     }
 
     // 解压成功后再备份配置，避免每次失败的尝试都轮换掉旧备份
-    await backupConfigBeforeUpdate(targetDir, projectName);
+    await backupConfigBeforeUpdate(dataPath, projectName);
 
     try {
       // 2. 检查是否为增量包
@@ -1180,8 +1181,8 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
 
       await invoke('cleanup_extract_dir', { extractDir });
 
-      // 将下载的 zip 文件移动到 old 文件夹
-      await moveToOldFolder(zipPath);
+      // 将下载的 zip 文件归档到数据目录的 old 文件夹
+      await moveUpdatePackageToOld(zipPath);
 
       // 清理更新残留产物：target_dir/changes.json 和 cache/*.downloading
       const cacheDir = await getCacheDir();
@@ -1217,8 +1218,8 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
 
         // 清理临时解压目录
         await invoke('cleanup_extract_dir', { extractDir }).catch(() => {});
-        // 清理下载的 zip 文件
-        await moveToOldFolder(zipPath);
+        // 归档下载的 zip 文件
+        await moveUpdatePackageToOld(zipPath);
 
         // 抛出特殊错误，告知用户可以使用兜底文件夹
         throw new FallbackUpdateError(
