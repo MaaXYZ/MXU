@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">微光温室</title>
+  <desc id="desc">玻璃罩中的蓝绿色植物和一颗漂浮的暖橘色小行星。</desc>
+  <defs>
+    <linearGradient id="glass" x1="75" y1="76" x2="287" y2="291" gradientUnits="userSpaceOnUse"><stop stop-color="#96E4DF" stop-opacity=".2"/><stop offset=".6" stop-color="#5184A4" stop-opacity=".07"/><stop offset="1" stop-color="#96E4DF" stop-opacity=".2"/></linearGradient>
+    <linearGradient id="leaf" x1="107" y1="166" x2="218" y2="294" gradientUnits="userSpaceOnUse"><stop stop-color="#9AE4C8"/><stop offset="1" stop-color="#2D817D"/></linearGradient>
+    <linearGradient id="blueleaf" x1="164" y1="158" x2="260" y2="281" gradientUnits="userSpaceOnUse"><stop stop-color="#87CAE7"/><stop offset="1" stop-color="#306D90"/></linearGradient>
+    <linearGradient id="planet" x1="206" y1="86" x2="260" y2="141" gradientUnits="userSpaceOnUse"><stop stop-color="#FFDB9F"/><stop offset="1" stop-color="#EB8C6B"/></linearGradient>
+    <radialGradient id="soil"><stop stop-color="#538785"/><stop offset="1" stop-color="#224A59"/></radialGradient>
+  </defs>
+  <ellipse cx="180" cy="325" rx="126" ry="17" fill="#071D2A" opacity=".18"/>
+  <g id="terrarium-body" class="terrarium-body">
+    <path d="M80 270V132C80 78 123 43 179 43C235 43 280 78 280 132V270" fill="url(#glass)" stroke="#9BC9CF" stroke-opacity=".7" stroke-width="2"/>
+    <ellipse cx="180" cy="274" rx="100" ry="29" fill="url(#soil)" stroke="#91C9C7" stroke-width="1.5"/>
+    <ellipse cx="180" cy="275" rx="86" ry="22" fill="#254C54"/>
+    <path d="M81 274V292C81 310 127 324 180 324C233 324 279 310 279 292V274C279 292 234 306 180 306C126 306 81 292 81 274Z" fill="#33576B" stroke="#86B9C1" stroke-width="1.5"/>
+    <path d="M84 294C106 311 151 319 180 319C219 319 257 310 276 295" stroke="#5D8B9D"/>
+    <path d="M93 130C93 91 116 63 151 57" stroke="#D3F1E3" stroke-opacity=".7" stroke-width="4" stroke-linecap="round"/>
+    <path d="M92 145V197" stroke="#D3F1E3" stroke-opacity=".38" stroke-width="4" stroke-linecap="round"/>
+    <path d="M269 210V263" stroke="#D3F1E3" stroke-opacity=".25" stroke-width="3" stroke-linecap="round"/>
+    <g id="garden" class="garden" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M157 277C151 240 147 217 131 182M175 281C182 235 196 209 219 181M195 281C209 251 224 238 246 223" stroke="#80B8A9" stroke-width="3"/>
+      <path d="M149 231C127 232 103 213 105 184C130 189 151 207 149 231Z" fill="url(#leaf)" stroke="#83CEB3"/>
+      <path d="M146 215C159 194 156 175 144 161C132 180 133 201 146 215Z" fill="#74BCA2" stroke="#A0E0C4"/>
+      <path d="M137 193C115 191 101 173 105 153C124 159 138 174 137 193Z" fill="#87D0B7" stroke="#A9EDD0"/>
+      <path d="M130 179C116 165 119 143 129 127C143 144 143 164 130 179Z" fill="#B6DDAD" stroke="#C9E8BC"/>
+      <path d="M152 257C127 259 108 244 102 227C128 224 149 235 152 257Z" fill="#428E84" stroke="#6BBDA7"/>
+      <path d="M157 255C172 245 183 228 174 209C158 217 150 236 157 255Z" fill="#74BBA4" stroke="#9DD7B6"/>
+      <path d="M185 242C191 210 210 195 235 201C230 222 211 237 185 242Z" fill="url(#blueleaf)" stroke="#90CDE1"/>
+      <path d="M197 221C183 204 182 184 195 169C208 187 211 207 197 221Z" fill="#71AFC6" stroke="#95CBD7"/>
+      <path d="M211 201C210 176 224 161 244 157C243 179 230 197 211 201Z" fill="#99D3D7" stroke="#B9E7E5"/>
+      <path d="M179 264C183 246 206 234 221 240C211 259 195 269 179 264Z" fill="#3C889B" stroke="#72B3C1"/>
+      <path d="M218 254C214 234 221 215 234 210C244 226 234 246 218 254Z" fill="#4AA193" stroke="#86CFB7"/>
+      <path d="M227 247C241 226 258 222 271 230C259 247 245 253 227 247Z" fill="#7EC5AC" stroke="#9ED9BB"/>
+      <path d="M199 276C211 259 233 253 245 260C232 276 214 280 199 276Z" fill="#65AFA3" stroke="#8BCBBA"/>
+      <path d="M181 282C164 266 160 253 165 241C181 251 185 265 181 282Z" fill="#B9C99C"/>
+      <path d="M135 265L129 248M130 251L118 242M211 210L225 182M191 231L215 213" stroke="#D7F2D0" stroke-opacity=".5" stroke-width="1"/>
+    </g>
+    <g id="floating-planet" class="floating-planet">
+      <ellipse cx="229" cy="117" rx="49" ry="11" transform="rotate(-24 229 117)" stroke="#F7D3A2" stroke-width="2.5"/>
+      <circle cx="228" cy="111" r="28" fill="url(#planet)"/>
+      <path d="M210 93C205 99 203 107 205 115" stroke="#FFF0C9" stroke-width="3" stroke-linecap="round"/>
+      <path d="M237 91C249 110 246 126 230 139C245 138 257 126 256 111C255 102 249 94 237 91Z" fill="#D47E6D" opacity=".35"/>
+      <path d="M184 130C187 138 211 134 236 124C259 114 276 104 273 98" stroke="#F7D3A2" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="233" cy="101" r="3" fill="#E6A17B" opacity=".45"/>
+      <circle cx="220" cy="120" r="5" fill="#ECA47A" opacity=".5"/>
+    </g>
+    <g id="spores" fill="#C3F0C6"><circle cx="119" cy="110" r="2.5"/><circle cx="163" cy="137" r="2"/><circle cx="246" cy="255" r="2"/><circle cx="183" cy="92" r="2"/><circle cx="258" cy="177" r="2.5"/><path d="M170 173L172 178L177 180L172 182L170 187L168 182L163 180L168 178Z"/><path d="M249 67L251 72L256 74L251 76L249 81L247 76L242 74L247 72Z"/></g>
+    <g fill="#658B87"><ellipse cx="127" cy="281" rx="12" ry="5"/><ellipse cx="231" cy="284" rx="15" ry="5"/><ellipse cx="169" cy="290" rx="8" ry="3"/></g>
+    <path d="M161 310H199" stroke="#A1D2D3" stroke-width="3" stroke-linecap="round"/>
+    <path d="M174 33H184C189 33 191 36 191 40V44H167V40C167 36 170 33 174 33Z" fill="#779DA6" stroke="#B4DBD5"/>
+  </g>
+</svg>
