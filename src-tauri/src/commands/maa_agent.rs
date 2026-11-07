@@ -553,6 +553,64 @@ async fn start_single_agent(
     }).await.map_err(|e| e.to_string())?
 }
 
+/// 创建带回调 sink 的 Tasker（初始装配与连接自愈共用）
+///
+/// 只负责 new + 挂 sink；bind 与写入 instance.tasker 由调用方决定，
+/// 便于自愈路径按当下最新的 resource/controller 重新绑定。
+fn create_tasker_with_sinks(
+    app: &tauri::AppHandle,
+    maa_state: &Arc<MaaState>,
+    instance_id: &str,
+    instance: &super::types::InstanceRuntime,
+) -> Result<Tasker, String> {
+    debug!("[start_tasks] Creating new tasker...");
+    let t = Tasker::new().map_err(|e| e.to_string())?;
+    debug!("[start_tasks] Tasker created");
+
+    // 添加回调 Sink，用于接收任务状态通知并更新后端 TaskRunState
+    debug!("[start_tasks] Adding tasker sink...");
+    let app_handle = app.clone();
+    let maa_state_for_sink = Arc::clone(maa_state);
+    let inst_id_for_sink = instance_id.to_string();
+    let lifetime = instance.callback_lifetime.clone();
+    t.add_sink(move |msg, detail| {
+        if !lifetime.is_active() {
+            return;
+        }
+        // 先更新后端 TaskRunState（单一真相来源）
+        handle_task_callback(
+            &maa_state_for_sink,
+            &app_handle,
+            &inst_id_for_sink,
+            &lifetime,
+            msg,
+            detail,
+        );
+        // 再转发原始回调到前端
+        emit_callback_event(&app_handle, &inst_id_for_sink, msg, detail);
+    })
+    .map_err(|e| e.to_string())?;
+    debug!("[start_tasks] Tasker sink added");
+
+    // 添加 Context Sink，用于接收 Node 级别的通知（包含 focus 消息）
+    debug!("[start_tasks] Adding tasker context sink...");
+    let app_handle = app.clone();
+    let inst_id_for_ctx_sink = instance_id.to_string();
+    let lifetime = instance.callback_lifetime.clone();
+    t.add_context_sink(move |msg, detail| {
+        if !lifetime.is_active() {
+            return;
+        }
+        // 遥测：把失败节点挂到任务 Span 下，形成失败链路
+        super::telemetry::on_node_event(&inst_id_for_ctx_sink, msg, detail);
+        super::focus::emit_context(&app_handle, &inst_id_for_ctx_sink, msg, detail, &lifetime);
+    })
+    .map_err(|e| e.to_string())?;
+    debug!("[start_tasks] Tasker context sink added");
+
+    Ok(t)
+}
+
 /// 启动任务的核心实现（Tauri invoke 和 HTTP handler 共享）
 pub async fn start_tasks_impl(
     app: tauri::AppHandle,
@@ -592,7 +650,7 @@ pub async fn start_tasks_impl(
     );
     info!("cwd: {}, tcp_compat_mode: {}", cwd, tcp_compat_mode);
 
-    let (resource, controller, tasker) = {
+    let (resource, mut controller, mut tasker) = {
         debug!("[start_tasks] Acquiring instances lock...");
         let mut instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
         debug!("[start_tasks] Instances lock acquired");
@@ -630,56 +688,7 @@ pub async fn start_tasks_impl(
                 instance.tasker = None;
             }
 
-            debug!("[start_tasks] Creating new tasker...");
-            let t = Tasker::new().map_err(|e| e.to_string())?;
-            debug!("[start_tasks] Tasker created");
-
-            // 添加回调 Sink，用于接收任务状态通知并更新后端 TaskRunState
-            debug!("[start_tasks] Adding tasker sink...");
-            let app_handle = app.clone();
-            let maa_state_for_sink = Arc::clone(maa_state);
-            let inst_id_for_sink = instance_id.clone();
-            let lifetime = instance.callback_lifetime.clone();
-            t.add_sink(move |msg, detail| {
-                if !lifetime.is_active() {
-                    return;
-                }
-                // 先更新后端 TaskRunState（单一真相来源）
-                handle_task_callback(
-                    &maa_state_for_sink,
-                    &app_handle,
-                    &inst_id_for_sink,
-                    &lifetime,
-                    msg,
-                    detail,
-                );
-                // 再转发原始回调到前端
-                emit_callback_event(&app_handle, &inst_id_for_sink, msg, detail);
-            })
-            .map_err(|e| e.to_string())?;
-            debug!("[start_tasks] Tasker sink added");
-
-            // 添加 Context Sink，用于接收 Node 级别的通知（包含 focus 消息）
-            debug!("[start_tasks] Adding tasker context sink...");
-            let app_handle = app.clone();
-            let inst_id_for_ctx_sink = instance_id.clone();
-            let lifetime = instance.callback_lifetime.clone();
-            t.add_context_sink(move |msg, detail| {
-                if !lifetime.is_active() {
-                    return;
-                }
-                // 遥测：把失败节点挂到任务 Span 下，形成失败链路
-                super::telemetry::on_node_event(&inst_id_for_ctx_sink, msg, detail);
-                super::focus::emit_context(
-                    &app_handle,
-                    &inst_id_for_ctx_sink,
-                    msg,
-                    detail,
-                    &lifetime,
-                );
-            })
-            .map_err(|e| e.to_string())?;
-            debug!("[start_tasks] Tasker context sink added");
+            let t = create_tasker_with_sinks(&app, maa_state, &instance_id, instance)?;
 
             debug!("[start_tasks] Binding resource and controller...");
             t.bind(&res, &ctrl).map_err(|e| e.to_string())?;
@@ -696,10 +705,127 @@ pub async fn start_tasks_impl(
     };
     debug!("[start_tasks] Resource, controller and tasker acquired, proceeding...");
 
-    // 检查 Tasker 初始化状态
+    // 检查 Tasker 初始化状态。
+    //
+    // inited() 是瞬时快照：并发连接场景下（典型：preActions 触发的"重置连接
+    // 状态"与重连请求并发），刚 bind 的控制器可能仍处于异步连接中，甚至
+    // 刚被并发的替换流程销毁重建——tasker 引用与实例当前控制器脱节后，
+    // inited() 永远不会自行变为 true。快照失败时立即报错会让"连接成功"后
+    // 启动的任务必然失败。
+    //
+    // 策略：有限时间内轮询 + 分层自愈——
+    //   1. 等待异步连接完成（半成品控制器只是需要时间）；
+    //   2. 实例当前控制器已 connected 但 tasker 未 inited（绑定了过期/已销毁
+    //      的引用）：丢弃 tasker，重建并绑定当前活控制器；
+    //   3. 实例控制器也未连接（可能已被并发替换流程销毁）：重新走完整
+    //      连接流程（connect_controller_impl），完成后再按 2 重绑；
+    //   4. 超时才报错，并在日志中输出诊断信息。
     if !tasker.inited() {
-        error!("[start_tasks] Tasker not properly initialized");
-        return Err("Tasker not properly initialized".to_string());
+        warn!("[start_tasks] Tasker not inited yet, waiting for controller connection...");
+        const WAIT_TIMEOUT_MS: u64 = 20_000;
+        const POLL_INTERVAL_MS: u64 = 250;
+        const HEAL_INTERVAL_MS: u64 = 2_000;
+        let mut waited_ms: u64 = 0;
+        let mut since_heal_ms: u64 = 0;
+        let mut rebound = false;
+        let mut reconnected = false;
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(POLL_INTERVAL_MS)).await;
+            waited_ms += POLL_INTERVAL_MS;
+            since_heal_ms += POLL_INTERVAL_MS;
+
+            if tasker.inited() {
+                info!(
+                    "[start_tasks] tasker ready after {}ms (rebound={}, reconnected={}), proceeding",
+                    waited_ms, rebound, reconnected
+                );
+                break;
+            }
+
+            if since_heal_ms < HEAL_INTERVAL_MS {
+                continue;
+            }
+            since_heal_ms = 0;
+
+            // 锁内决策：实例当前控制器是否存活；存活则就地重绑 tasker。
+            let (ctrl_alive, rebound_tasker, config) = {
+                let mut instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
+                let instance = instances.get_mut(&instance_id).ok_or("INSTANCE_REPLACED")?;
+                if !Arc::ptr_eq(&instance.run_completion, &completion) {
+                    return Err("INSTANCE_REPLACED".to_string());
+                }
+                let ctrl_alive = instance.controller.as_ref().is_some_and(|c| c.connected());
+                let config = instance.controller_config.clone();
+
+                let rebound_tasker = if ctrl_alive && !rebound {
+                    warn!(
+                        "[start_tasks] instance controller is connected but tasker not inited, \
+                         rebuilding tasker binding"
+                    );
+                    rebound = true;
+                    let res_now = instance
+                        .resource
+                        .as_ref()
+                        .ok_or("Resource not loaded")?
+                        .clone();
+                    let ctrl_now = instance.controller.as_ref().unwrap().clone();
+                    let t = create_tasker_with_sinks(&app, maa_state, &instance_id, instance)?;
+                    t.bind(&res_now, &ctrl_now).map_err(|e| e.to_string())?;
+                    instance.tasker = Some(t.clone());
+                    Some((t, ctrl_now))
+                } else {
+                    None
+                };
+                (ctrl_alive, rebound_tasker, config)
+            };
+
+            if let Some((t, c)) = rebound_tasker {
+                tasker = t;
+                controller = c;
+                continue;
+            }
+
+            warn!(
+                "[start_tasks] waited {}ms: tasker still not inited, instance controller connected={}",
+                waited_ms, ctrl_alive
+            );
+
+            // 控制器已死且尚未重连过：重新走完整连接流程。
+            if !ctrl_alive && !reconnected && waited_ms >= HEAL_INTERVAL_MS * 2 {
+                reconnected = true;
+                rebound = false; // 新控制器连接完成后允许重绑
+                if let Some(cfg) = config {
+                    warn!("[start_tasks] instance controller not connected, retrying full connection...");
+                    let ev_app = app.clone();
+                    let ev_id = instance_id.clone();
+                    let on_event: Arc<dyn Fn(&str, &str) + Send + Sync + 'static> =
+                        Arc::new(move |msg, detail| {
+                            emit_callback_event(&ev_app, &ev_id, msg, detail);
+                        });
+                    match super::maa_core::connect_controller_impl(
+                        Arc::clone(maa_state),
+                        instance_id.clone(),
+                        cfg,
+                        on_event,
+                    )
+                    .await
+                    {
+                        Ok(_) => info!("[start_tasks] reconnect request accepted"),
+                        Err(e) => warn!("[start_tasks] reconnect attempt failed: {}", e),
+                    }
+                }
+                continue;
+            }
+
+            if waited_ms >= WAIT_TIMEOUT_MS {
+                error!(
+                    "[start_tasks] Tasker not properly initialized after waiting {}ms \
+                     (controller connected={}, rebound={}, reconnected={})",
+                    waited_ms, ctrl_alive, rebound, reconnected
+                );
+                return Err("Tasker not properly initialized".to_string());
+            }
+        }
     }
 
     // 启动所有 Agent（如果配置了）
