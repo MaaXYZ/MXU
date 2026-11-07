@@ -42,6 +42,7 @@ export function UpdatePanel({ onClose, anchorRef }: UpdatePanelProps) {
     setDownloadProgress,
     setDownloadSavePath,
     resetDownloadState,
+    setInstallStatus,
     setShowInstallConfirmModal,
   } = useAppStore();
 
@@ -92,6 +93,11 @@ export function UpdatePanel({ onClose, anchorRef }: UpdatePanelProps) {
           downloadSource: updateInfo.downloadSource,
           timestamp: Date.now(),
         });
+        // 此入口仅由用户点击重试触发，下载完成后直接安装。
+        if (!useAppStore.getState().instances.some((instance) => instance.isRunning)) {
+          setInstallStatus('installing');
+          setShowInstallConfirmModal(true);
+        }
       } else {
         setDownloadStatus('failed');
       }
@@ -106,6 +112,8 @@ export function UpdatePanel({ onClose, anchorRef }: UpdatePanelProps) {
     setDownloadStatus,
     setDownloadProgress,
     setDownloadSavePath,
+    setInstallStatus,
+    setShowInstallConfirmModal,
   ]);
 
   // 自动下载已由 App.tsx 在检查更新后立即触发，此处不再重复处理

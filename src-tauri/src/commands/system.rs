@@ -875,7 +875,11 @@ pub fn migrate_legacy_autostart(project_name: Option<&str>) {
     }
     // 旧版计划任务 "MXU" 迁移到 "MXU-{项目名}"，避免两个任务同时存在
     if task_name != LEGACY_AUTOSTART_TASK_NAME {
-        if let Some(legacy_xml) = query_schtask_xml(LEGACY_AUTOSTART_TASK_NAME) {
+        if let Some(legacy_xml) = query_schtask_xml(LEGACY_AUTOSTART_TASK_NAME).filter(|xml| {
+            std::env::current_exe()
+                .map(|exe| schtask_xml_targets_exe(xml, &exe))
+                .unwrap_or(false)
+        }) {
             // 旧任务启用、而新任务不存在或已禁用时，以旧任务为准重建新任务；
             // 旧任务被用户手动禁用时不新建，保留"已关闭"的状态
             let target_enabled = query_schtask_xml(task_name)
@@ -979,6 +983,62 @@ fn xml_tag_equals(xml: &str, tag: &str, expected: &str) -> bool {
     Regex::new(&pattern)
         .map(|re| re.is_match(xml))
         .unwrap_or(false)
+}
+
+/// 只有 Command 指向当前可执行文件时，才允许迁移旧任务。
+#[cfg(any(windows, test))]
+fn schtask_xml_targets_exe(xml: &str, exe: &std::path::Path) -> bool {
+    let Some(command) = regex::Regex::new(r"(?is)<Command>\s*(.*?)\s*</Command>")
+        .ok()
+        .and_then(|re| re.captures(xml))
+        .and_then(|caps| caps.get(1))
+    else {
+        return false;
+    };
+    let command = command
+        .as_str()
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&");
+    let normalize = |path: &std::path::Path| {
+        path.canonicalize()
+            .unwrap_or_else(|_| path.to_path_buf())
+            .to_string_lossy()
+            .trim_start_matches(r"\\?\")
+            .replace('/', r"\")
+            .to_lowercase()
+    };
+    normalize(std::path::Path::new(command.trim().trim_matches('"'))) == normalize(exe)
+}
+
+#[cfg(test)]
+mod autostart_tests {
+    use super::schtask_xml_targets_exe;
+    use std::path::Path;
+
+    #[test]
+    fn legacy_task_must_target_the_current_installation() {
+        let exe = Path::new(r"C:\MXU-B\mxu.exe");
+        assert!(!schtask_xml_targets_exe(
+            r"<Exec><Command>C:\MXU-A\mxu.exe</Command></Exec>",
+            exe
+        ));
+        assert!(schtask_xml_targets_exe(
+            r"<Exec><Command>c:/mxu-b/MXU.EXE</Command></Exec>",
+            exe
+        ));
+        assert!(!schtask_xml_targets_exe("<Exec></Exec>", exe));
+    }
+
+    #[test]
+    fn legacy_task_command_supports_xml_escaping_and_quoted_paths() {
+        assert!(schtask_xml_targets_exe(
+            r"<Exec><Command>&quot;C:\Maa &amp; MXU\mxu.exe&quot;</Command></Exec>",
+            Path::new(r"C:\Maa & MXU\mxu.exe")
+        ));
+    }
 }
 
 /// 判断计划任务是否处于启用状态

@@ -1404,23 +1404,14 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
   useEffect(() => {
     const handleStartTasks = async (evt: Event) => {
       const detail = (evt as CustomEvent | undefined)?.detail as
-        | { source?: string; combo?: string; onSettled?: (started: boolean) => void }
+        | { source?: string; combo?: string }
         | undefined;
       const isHotkey = detail?.source === 'hotkey' || detail?.source === 'global-hotkey';
-      let settled = false;
-      const notifySettled = (started: boolean) => {
-        if (settled) return;
-        settled = true;
-        detail?.onSettled?.(started);
-      };
-
       if (hotkeyStartingRef.current) {
-        notifySettled(false);
         return;
       }
       const currentInstance = useAppStore.getState().getActiveInstance();
       if (!currentInstance) {
-        notifySettled(false);
         return;
       }
 
@@ -1447,10 +1438,8 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
             message: t('logs.messages.hotkeyStartSuccess'),
           });
         }
-        notifySettled(success);
       } finally {
         hotkeyStartingRef.current = false;
-        notifySettled(false);
       }
     };
 

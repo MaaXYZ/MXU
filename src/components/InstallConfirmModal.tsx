@@ -53,8 +53,6 @@ export function InstallConfirmModal() {
     setInstallError,
     setJustUpdatedInfo,
     resetInstallState,
-    autoInstallPending,
-    setAutoInstallPending,
   } = useAppStore();
 
   const currentVersion = projectInterface?.version || '';
@@ -226,23 +224,6 @@ export function InstallConfirmModal() {
     t,
   ]);
 
-  // 自动安装：由 tryAutoInstallUpdate 触发，通过 autoInstallPending 标记
-  useEffect(() => {
-    if (showInstallConfirmModal && autoInstallPending && installStatus === 'idle') {
-      setAutoInstallPending(false);
-      // 标记已触发，防止 handleInstall 设置 installStatus='installing' 后
-      // 上方的 installStatus==='installing' effect 再次调用 installUpdate（竞态双发）
-      autoInstallTriggered.current = true;
-      handleInstall();
-    }
-  }, [
-    showInstallConfirmModal,
-    autoInstallPending,
-    installStatus,
-    setAutoInstallPending,
-    handleInstall,
-  ]);
-
   // 判断当前是否为可执行安装程序（exe/dmg）
   const isExeInstaller = downloadSavePath && isExecutableInstaller(downloadSavePath);
 
@@ -262,7 +243,8 @@ export function InstallConfirmModal() {
           timestamp: Date.now(),
           requireVersionCheck: true,
         });
-        clearPendingUpdateInfo();
+        // 打开安装程序不代表安装成功；取消或失败后仍需在下次启动恢复该更新。
+        // 待启动时确认版本已更新，再清除待安装记录。
         // 不关闭弹窗、不重启
         return;
       }
@@ -455,15 +437,18 @@ export function InstallConfirmModal() {
           )}
 
           {/* 下载完成，可以安装 */}
-          {!isJustUpdatedMode && isDownloadComplete && installStatus === 'idle' && (
-            <button
-              onClick={handleInstall}
-              className="flex items-center gap-2 px-4 py-2 text-sm bg-accent text-white hover:bg-accent-hover rounded-lg transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              {t('mirrorChyan.installNow')}
-            </button>
-          )}
+          {!isJustUpdatedMode &&
+            isDownloadComplete &&
+            downloadSavePath &&
+            installStatus === 'idle' && (
+              <button
+                onClick={handleInstall}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-accent text-white hover:bg-accent-hover rounded-lg transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                {t('mirrorChyan.installNow')}
+              </button>
+            )}
 
           {/* 正在安装 */}
           {!isJustUpdatedMode && isInstalling && (
@@ -485,7 +470,7 @@ export function InstallConfirmModal() {
               >
                 {t('common.close')}
               </button>
-              {!restartFailed && (
+              {!restartFailed && downloadSavePath && (
                 <button
                   onClick={() => {
                     resetInstallState();
@@ -495,6 +480,18 @@ export function InstallConfirmModal() {
                 >
                   <RefreshCw className="w-4 h-4" />
                   {t('mirrorChyan.retry')}
+                </button>
+              )}
+              {!restartFailed && !downloadSavePath && (
+                <button
+                  onClick={() => {
+                    handleClose();
+                    openUpdateSettings();
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 text-sm bg-accent text-white hover:bg-accent-hover rounded-lg transition-colors"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  {t('mirrorChyan.checkUpdate')}
                 </button>
               )}
             </>

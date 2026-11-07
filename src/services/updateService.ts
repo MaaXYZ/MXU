@@ -26,15 +26,6 @@ let isDownloading = false;
 let downloadCancelled = false;
 // 安装互斥锁，防止并发 installUpdate 导致目录竞争
 let isInstalling = false;
-// 本次运行中是否有安装失败过：失败后不再自动重试，手动安装和下次启动不受影响
-let installFailedInSession = false;
-
-/**
- * 本次运行中是否有安装失败过（用于阻止自动安装反复重试）
- */
-export function hasInstallFailedInSession(): boolean {
-  return installFailedInSession;
-}
 
 /**
  * 将文件移动到 cache/old 文件夹（调用 Rust 端统一实现）
@@ -838,8 +829,6 @@ export async function downloadUpdate(
     currentSessionId = result.session_id;
 
     log.info(`下载完成 (session ${result.session_id})`);
-    // 新的更新包下载完成，允许再次自动安装
-    installFailedInSession = false;
     log.info(`实际保存路径: ${result.actual_save_path}`);
     if (result.detected_filename) {
       log.info(`检测到文件名: ${result.detected_filename}`);
@@ -1239,9 +1228,6 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
         throw new Error(getErrorMessage(error)); // 抛出原始错误
       }
     }
-  } catch (error) {
-    installFailedInSession = true;
-    throw error;
   } finally {
     isInstalling = false;
   }
