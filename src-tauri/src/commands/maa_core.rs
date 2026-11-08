@@ -1693,6 +1693,23 @@ pub fn stop_task_impl(
         if running {
             tasker.unwrap().post_stop().map_err(|e| e.to_string())?;
         }
+
+        // [PATCH-ZC-STOP-CTRL] 停止任务时把该实例的控制器从复用池里移除并
+        // 置空。游戏崩溃/窗口失效后，池里缓存的 Controller 可能仍报告
+        // connected()，下次「停止后重开」会直接复用这个死句柄，截屏在
+        // 失效 HWND 上失败，进而把任务甚至游戏带崩。强制下一次连接重新
+        // 走 ControllerPool miss → 新建控制器，保证截屏通道是干净的。
+        if let Some(cfg) = instance.controller_config.take() {
+            let mut pool = state.controller_pool.lock().map_err(|e| e.to_string())?;
+            if pool.remove(&cfg).is_some() {
+                info!("ControllerPool: dropped controller after task stop, will recreate on next run");
+            }
+        }
+        if let Some(subscribers) = instance.controller_subscribers.take() {
+            subscribers.unsubscribe(instance_id);
+        }
+        instance.controller = None;
+
         instance.stop_in_progress = true;
         instance.stop_started_at = Some(Instant::now());
         for status in instance.task_run_state.statuses.values_mut() {

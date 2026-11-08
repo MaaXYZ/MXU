@@ -1024,7 +1024,27 @@ async fn handle_stop_task(
     State(state): State<WebState>,
     axum::extract::Path(instance_id): axum::extract::Path<String>,
 ) -> impl IntoResponse {
-    match stop_task_impl(&state.app_handle, &state.maa_state, &instance_id) {
+    // [PATCH-ZC-STOP] stop_task_impl 是同步阻塞调用（内部会 post_stop 并等待
+    // 框架事件循环推进）。直接在 axum 的 async worker 线程上执行会阻塞该线程，
+    // 导致 post_stop 依赖的任务回调无法被处理，形成死锁——用户表现为
+    // WebUI 点「停止」无反应，只能去托盘右键停止（那条路径走 Tauri 命令，
+    // 在独立线程上执行所以正常）。这里包进 spawn_blocking 让它跑在
+    // 阻塞线程池，不占用 async runtime。
+    let app_handle = state.app_handle.clone();
+    let maa_state = state.maa_state.clone();
+    let instance_id_for_task = instance_id.clone();
+
+    let result = tokio::task::spawn_blocking(move || {
+        stop_task_impl(&app_handle, &maa_state, &instance_id_for_task)
+    })
+    .await;
+
+    let outcome = match result {
+        Ok(inner) => inner,
+        Err(join_err) => Err(format!("停止任务线程异常: {join_err}")),
+    };
+
+    match outcome {
         Ok(()) => {
             emit_state_changed(&state.app_handle, &instance_id, "task-stopped");
             Json(serde_json::json!({ "ok": true })).into_response()
