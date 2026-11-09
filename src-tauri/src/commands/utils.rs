@@ -181,10 +181,21 @@ fn handle_post_stop_callback(
             None => return,
         };
         if !instance.callback_lifetime.is_current(lifetime)
+            // MXU 自己发起的停止已由 stop_task_impl 收尾
+            || instance.stop_in_progress
             || instance.task_run_state.pending_task_ids.is_empty()
             || instance.queue_result().is_some()
         {
             return;
+        }
+        // 与 stop_task_impl 对齐：阻止已准入的追加提交，被清掉的任务标记为失败
+        instance.run_completion.cancel_submission();
+        instance.stop_in_progress = true;
+        instance.stop_started_at = Some(std::time::Instant::now());
+        for status in instance.task_run_state.statuses.values_mut() {
+            if status == "pending" || status == "running" {
+                *status = "failed".to_string();
+            }
         }
         instance.begin_completion(false)
     };
