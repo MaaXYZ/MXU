@@ -95,6 +95,7 @@ export async function stopInstanceTasksAndExitApp(instanceId: string): Promise<b
     return true;
   }
 
+  log.info(`[task-stop#${instanceId}] 任务已停止，请求退出应用`);
   const { exit } = await import('@tauri-apps/plugin-process');
   await exit(0);
   return true;

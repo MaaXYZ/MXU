@@ -374,15 +374,31 @@ pub fn run() {
                 }
                 // 窗口关闭请求：检查是否最小化到托盘
                 tauri::WindowEvent::CloseRequested { api, .. } => {
-                    if tray::handle_close_requested(window.app_handle()) {
+                    let minimize_to_tray = tray::handle_close_requested(window.app_handle());
+                    log::info!(
+                        "[exit] Window '{}' close requested, minimize_to_tray={}",
+                        window.label(),
+                        minimize_to_tray
+                    );
+                    if minimize_to_tray {
                         api.prevent_close();
                     }
                 }
                 // 窗口销毁时清理所有 agent 子进程
                 tauri::WindowEvent::Destroyed => {
+                    log::info!(
+                        "[exit] Window '{}' destroyed, cleaning up agent children",
+                        window.label()
+                    );
+                    let start = std::time::Instant::now();
                     if let Some(state) = window.try_state::<Arc<MaaState>>() {
                         state.cleanup_all_agent_children();
                     }
+                    log::info!(
+                        "[exit] Window '{}' cleanup finished in {}ms",
+                        window.label(),
+                        start.elapsed().as_millis()
+                    );
                 }
                 _ => {}
             }
@@ -396,13 +412,15 @@ pub fn run() {
     let final_exit_code = requested_exit_code.clone();
 
     let on_event = move |_app_handle: &tauri::AppHandle, event: tauri::RunEvent| {
-        #[cfg(windows)]
         if let tauri::RunEvent::ExitRequested { code, .. } = &event {
+            log::info!("[exit] Exit requested, code={:?}", code);
+            #[cfg(windows)]
             requested_exit_code.set(*code);
         }
 
         // 退出前收尾遥测（结束 Session 与悬挂 Transaction 并 flush）
         if matches!(event, tauri::RunEvent::Exit) {
+            log::info!("[exit] Event loop exiting, running final cleanup");
             commands::focus::cancel_all();
             #[cfg(target_os = "macos")]
             commands::notification::shutdown_macos_notifications();
@@ -418,7 +436,12 @@ pub fn run() {
         // tauri-runtime-wry 2.9.3 的 ControlFlow::Exit 丢失请求的退出码。
         // 先让事件循环完成退出回调和框架清理，再向操作系统报告该退出码。
         let runtime_exit_code = app.run_return(on_event);
-        std::process::exit(final_exit_code.get().unwrap_or(runtime_exit_code));
+        let exit_code = final_exit_code.get().unwrap_or(runtime_exit_code);
+        log::info!(
+            "[exit] Event loop returned, exiting process with code {}",
+            exit_code
+        );
+        std::process::exit(exit_code);
     }
     #[cfg(not(windows))]
     app.run(on_event);
