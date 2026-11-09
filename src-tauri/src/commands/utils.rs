@@ -81,14 +81,22 @@ pub fn handle_task_callback(
         return;
     }
 
-    // 解析 task_id
-    let task_id: i64 = match serde_json::from_str::<serde_json::Value>(details)
-        .ok()
+    // 解析 task_id 与 entry
+    let detail_json = serde_json::from_str::<serde_json::Value>(details).ok();
+    let task_id: i64 = match detail_json
+        .as_ref()
         .and_then(|v| v.get("task_id").and_then(|id| id.as_i64()))
     {
         Some(id) => id,
         None => return,
     };
+    let entry = detail_json
+        .as_ref()
+        .and_then(|v| v.get("entry").and_then(|e| e.as_str()));
+    if !is_started && entry == Some(POST_STOP_ENTRY) {
+        handle_post_stop_callback(maa_state, app, instance_id, lifetime);
+        return;
+    }
 
     let mut completion = None;
     {
@@ -147,6 +155,42 @@ pub fn handle_task_callback(
     // 通知前端刷新状态
     emit_state_changed(app, instance_id, "task-progress");
     if let Some((tasker, completion)) = completion {
+        schedule_run_completion(maa_state, app, instance_id, tasker, completion);
+    }
+}
+
+/// MaaFramework `Tasker::post_stop` 补发的停止任务 entry
+const POST_STOP_ENTRY: &str = "MaaTaskerPostStop";
+
+/// `Tasker::post_stop` 会清空排队任务且不为其发送回调，只补发一个停止任务。
+/// Agent 内部调用 PostStop 时，这是本轮唯一必定到达的终态回调：若仍有任务没有结果，
+/// 按失败收尾以回收本轮 Agent；队列已全部有结果时由原路径收尾，这里不覆盖其状态。
+fn handle_post_stop_callback(
+    maa_state: &Arc<MaaState>,
+    app: &AppHandle,
+    instance_id: &str,
+    lifetime: &super::callback_lifecycle::CallbackGuard,
+) {
+    let completion = {
+        let mut instances = match maa_state.instances.lock() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+        let instance = match instances.get_mut(instance_id) {
+            Some(i) => i,
+            None => return,
+        };
+        if !instance.callback_lifetime.is_current(lifetime)
+            || instance.task_run_state.pending_task_ids.is_empty()
+            || instance.queue_result().is_some()
+        {
+            return;
+        }
+        instance.begin_completion(false)
+    };
+
+    if let Some((tasker, completion)) = completion {
+        emit_state_changed(app, instance_id, "task-progress");
         schedule_run_completion(maa_state, app, instance_id, tasker, completion);
     }
 }
