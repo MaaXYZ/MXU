@@ -3,6 +3,7 @@
 //! 提供 MaaFramework 初始化、版本检查、设备搜索、控制器、资源和任务管理
 
 use log::{debug, error, info, warn};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -19,8 +20,8 @@ use maa_framework::MaaStatus;
 
 use super::callback_lifecycle::CallbackGuard;
 use super::types::{
-    AdbDevice, ConnectionStatus, ControllerConfig, GamescopeInstance, MaaState, TaskStatus,
-    VersionCheckResult, Win32Window,
+    AdbDevice, ConnectionStatus, ControllerConfig, GamescopeInstance, InstanceRuntime, MaaState,
+    TaskStatus, VersionCheckResult, Win32Window,
 };
 use super::utils::{emit_callback_event, get_maafw_dir, handle_task_callback, normalize_path};
 
@@ -1659,8 +1660,17 @@ pub fn stop_task_impl(
     state: &Arc<MaaState>,
     instance_id: &str,
 ) -> Result<(), String> {
-    let completion = {
+    // What still has to happen once the `instances` lock is released.
+    // The controller handle must be dropped outside the lock: native destruction
+    // can block on callbacks which re-acquire `instances`.
+    let mut pending_completion: Option<(Option<Tasker>, Arc<super::run_completion::RunCompletion>)> = None;
+    let mut pending_drop: Option<Controller> = None;
+    {
         let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
+        // Computed before taking the mutable borrow below: sharing only depends on
+        // controller_config, and the borrow checker will not let us read the map
+        // while `instance` is mutably borrowed.
+        let config_shared = is_controller_config_shared(&instances, instance_id);
         let instance = instances.get_mut(instance_id).ok_or("Instance not found")?;
         // Serialize focus reopening and cancellation with queue admission. Always
         // release a modal waiter before posting the framework stop operation.
@@ -1675,56 +1685,111 @@ pub fn stop_task_impl(
             if tasker.is_none() {
                 return Err("Tasker not created".to_string());
             }
-            return Ok(());
-        }
-
-        if instance.stop_in_progress {
-            let elapsed = instance
+            // An idle Tasker is exactly the post-crash case this patch exists for:
+            // the game died, the Tasker went idle by itself, and the pooled
+            // controller may still claim connected(). Invalidate before returning
+            // so the next run cannot reuse the dead handle.
+            pending_drop =
+                invalidate_instance_controller(state, instance, instance_id, config_shared);
+        } else if instance.stop_in_progress
+            && instance
                 .stop_started_at
-                .map(|t| t.elapsed())
-                .unwrap_or(Duration::from_secs(0));
-            if elapsed < Duration::from_millis(500) {
-                return Ok(());
+                .map(|t| t.elapsed() < Duration::from_millis(500))
+                .unwrap_or(false)
+        {
+            return Ok(());
+        } else {
+            // Schedule cleanup even when all queued jobs are cancelled before they
+            // start, since that path need not emit a Tasker.Task terminal callback.
+            if running {
+                tasker.unwrap().post_stop().map_err(|e| e.to_string())?;
             }
-        }
 
-        // Schedule cleanup even when all queued jobs are cancelled before they
-        // start, since that path need not emit a Tasker.Task terminal callback.
-        if running {
-            tasker.unwrap().post_stop().map_err(|e| e.to_string())?;
-        }
+            let shared = config_shared;
+            pending_drop = invalidate_instance_controller(state, instance, instance_id, shared);
 
-        // [PATCH-ZC-STOP-CTRL] 停止任务时把该实例的控制器从复用池里移除并
-        // 置空。游戏崩溃/窗口失效后，池里缓存的 Controller 可能仍报告
-        // connected()，下次「停止后重开」会直接复用这个死句柄，截屏在
-        // 失效 HWND 上失败，进而把任务甚至游戏带崩。强制下一次连接重新
-        // 走 ControllerPool miss → 新建控制器，保证截屏通道是干净的。
-        if let Some(cfg) = instance.controller_config.take() {
-            let mut pool = state.controller_pool.lock().map_err(|e| e.to_string())?;
-            if pool.remove(&cfg).is_some() {
-                info!("ControllerPool: dropped controller after task stop, will recreate on next run");
+            instance.stop_in_progress = true;
+            instance.stop_started_at = Some(Instant::now());
+            for status in instance.task_run_state.statuses.values_mut() {
+                if status == "pending" || status == "running" {
+                    *status = "failed".to_string();
+                }
             }
+            pending_completion = instance.begin_completion(false);
         }
-        if let Some(subscribers) = instance.controller_subscribers.take() {
-            subscribers.unsubscribe(instance_id);
-        }
-        instance.controller = None;
-
-        instance.stop_in_progress = true;
-        instance.stop_started_at = Some(Instant::now());
-        for status in instance.task_run_state.statuses.values_mut() {
-            if status == "pending" || status == "running" {
-                *status = "failed".to_string();
-            }
-        }
-        instance.begin_completion(false)
-    };
+    }
 
     // Telemetry and Agent cleanup run after the submission permit is released.
-    if let Some((tasker, completion)) = completion {
+    if let Some((tasker, completion)) = pending_completion {
         super::utils::schedule_run_completion(state, app, instance_id, tasker, completion);
     }
+    // Native handle destruction can block on callbacks that take the `instances`
+    // lock, so it happens only after that lock has been released.
+    drop(pending_drop);
     Ok(())
+}
+
+/// 除 `instance_id` 外是否还有别的实例共用同一控制器配置。
+fn is_controller_config_shared(
+    instances: &HashMap<String, InstanceRuntime>,
+    instance_id: &str,
+) -> bool {
+    let Some(config) = instances
+        .get(instance_id)
+        .and_then(|inst| inst.controller_config.as_ref())
+    else {
+        return false;
+    };
+    instances
+        .iter()
+        .any(|(id, inst)| id.as_str() != instance_id && inst.controller_config.as_ref() == Some(config))
+}
+
+/// [PATCH-ZC-STOP-CTRL] 把实例的控制器从复用池里移除并置空。
+///
+/// 游戏崩溃/窗口失效后，池里缓存的 Controller 可能仍报告 connected()，下次
+/// 「停止后重开」会直接复用这个死句柄，截屏在失效 HWND 上失败，进而把任务
+/// 甚至游戏带崩。这里强制下一次连接走 ControllerPool miss → 新建控制器。
+///
+/// 池条目只在没有任何其他实例共享同一配置时才移除（`config_shared`），否则会
+/// 把共用同一设备的实例拆成两份控制器（共用 ADB/Win32 句柄时互相抢截屏）。
+/// 返回被摘下的控制器句柄，调用方必须在 `instances` 锁之外释放它。
+fn invalidate_instance_controller(
+    state: &Arc<MaaState>,
+    instance: &mut InstanceRuntime,
+    instance_id: &str,
+    config_shared: bool,
+) -> Option<Controller> {
+    // Cancel any in-flight connect so a late publish cannot restore the stale
+    // handle after cleanup (destroy_instance_impl does the same).
+    instance.controller_request.cancel();
+
+    let config = instance.controller_config.take();
+    if let Some(subscribers) = instance.controller_subscribers.take() {
+        subscribers.unsubscribe(instance_id);
+    }
+    let dropped = instance.controller.take();
+
+    if let Some(cfg) = config {
+        if config_shared {
+            info!("ControllerPool: entry still shared by another instance, keeping it");
+        } else {
+            // Best effort: a poisoned pool lock must not abort the stop path and
+            // leave stop_in_progress unset.
+            match state.controller_pool.lock() {
+                Ok(mut pool) => {
+                    if pool.remove(&cfg).is_some() {
+                        info!("ControllerPool: dropped controller after task stop, will recreate on next run");
+                    }
+                }
+                Err(err) => {
+                    warn!("ControllerPool: pool lock poisoned during stop cleanup: {err}");
+                }
+            }
+        }
+    }
+
+    dropped
 }
 
 #[tauri::command]
