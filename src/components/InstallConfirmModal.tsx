@@ -116,6 +116,7 @@ export function InstallConfirmModal() {
           releaseNote: updateInfo.releaseNote,
           channel: updateInfo.channel,
           timestamp: Date.now(),
+          autoTasksAlreadyRan: useAppStore.getState().autoTasksRanInSession,
         });
       }
       await restartApp();

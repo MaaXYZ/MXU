@@ -114,6 +114,26 @@ import {
 
 const log = loggers.app;
 
+/**
+ * 分发自动执行任务（autostart / autoRunOnLaunch），启动成功时记录本次进程已执行过，
+ * 以便更新重启后跳过重复分发
+ */
+function dispatchAutoStartTasks(onSettled?: (started: boolean) => void) {
+  document.dispatchEvent(
+    new CustomEvent('mxu-start-tasks', {
+      detail: {
+        source: 'autostart',
+        onSettled: (started: boolean) => {
+          if (started) {
+            useAppStore.getState().setAutoTasksRanInSession(true);
+          }
+          onSettled?.(started);
+        },
+      },
+    }),
+  );
+}
+
 type LoadingState = 'loading' | 'success' | 'error';
 
 // 页面过渡动画时长（ms）
@@ -1069,25 +1089,24 @@ function App() {
         autoStartTasksPending = false;
         autoTaskLaunchPendingRef.current = true;
         setTimeout(() => {
-          document.dispatchEvent(
-            new CustomEvent('mxu-start-tasks', {
-              detail: {
-                source: 'autostart',
-                onSettled: () => {
-                  autoTaskLaunchPendingRef.current = false;
-                  // 启动失败时任务不会产生 running -> idle 状态变化，需要在这里补一次安装检查；
-                  // 启动成功时仍处于运行态，本次检查会直接返回，并在任务结束后再次触发。
-                  tryAutoInstallUpdate();
-                },
-              },
-            }),
-          );
+          dispatchAutoStartTasks(() => {
+            autoTaskLaunchPendingRef.current = false;
+            // 启动失败时任务不会产生 running -> idle 状态变化，需要在这里补一次安装检查；
+            // 启动成功时仍处于运行态，本次检查会直接返回，并在任务结束后再次触发。
+            tryAutoInstallUpdate();
+          });
         }, 500);
       };
 
       // 检查是否刚更新完成（重启后）
       const isAutoStartModeNow = useAppStore.getState().isAutoStartMode;
       const updateCompleteInfo = consumeUpdateCompleteInfo();
+      if (updateCompleteInfo?.autoTasksAlreadyRan && autoStartTasksPending) {
+        // 更新前本次进程已执行过自动任务（任务结束后才自动安装并重启），
+        // 重启沿用原命令行参数会再次进入自动执行，这里跳过以避免重复执行
+        log.info('更新重启：更新前已执行过自动任务，跳过本次自动执行');
+        autoStartTasksPending = false;
+      }
       if (updateCompleteInfo) {
         const currentVersionNow = result.interface.version || '';
 
@@ -1603,9 +1622,7 @@ function App() {
       pendingAutoTasksRef.current = false;
       log.info('下载失败或取消，分发挂起的自动任务');
       setTimeout(() => {
-        document.dispatchEvent(
-          new CustomEvent('mxu-start-tasks', { detail: { source: 'autostart' } }),
-        );
+        dispatchAutoStartTasks();
       }, 500);
     }
   }, [downloadStatus]);
@@ -1616,9 +1633,7 @@ function App() {
       pendingAutoTasksRef.current = false;
       log.info('弹窗关闭，分发挂起的自动任务');
       setTimeout(() => {
-        document.dispatchEvent(
-          new CustomEvent('mxu-start-tasks', { detail: { source: 'autostart' } }),
-        );
+        dispatchAutoStartTasks();
       }, 500);
     }
   }, [showInstallConfirmModal]);
