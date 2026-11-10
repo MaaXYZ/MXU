@@ -801,7 +801,13 @@ pub struct MaaState {
 impl MaaState {
     /// 清理所有实例的 agent 子进程
     pub fn cleanup_all_agent_children(&self) {
-        if let Ok(mut instances) = self.instances.lock() {
+        let lock_start = std::time::Instant::now();
+        let instances = self.instances.lock();
+        log::info!(
+            "[exit] Acquired instances lock for agent cleanup in {}ms",
+            lock_start.elapsed().as_millis()
+        );
+        if let Ok(mut instances) = instances {
             for (id, instance) in instances.iter_mut() {
                 for mut child in instance.agent_children.drain(..) {
                     log::info!("Killing agent child process for instance: {}", id);
