@@ -5,7 +5,7 @@
 use log::{debug, error, info, warn};
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use tauri::State;
 
@@ -1469,7 +1469,23 @@ pub fn maa_destroy_resource(
 // 任务命令
 // ============================================================================
 
-/// 运行任务（异步，通过回调通知完成状态）
+/// Return only jobs accepted by the native queue.
+pub(super) fn post_task_id(tasker: &Tasker, entry: &str, pipeline: &str) -> Result<i64, String> {
+    // The Rust binding wraps MaaInvalidId in Ok(TaskJob). Such a job has no callback.
+    let id = tasker
+        .post_task(entry, pipeline)
+        .map_err(|e| e.to_string())?
+        .id;
+    if id != 0 {
+        return Ok(id);
+    }
+    if tasker.stopping() {
+        Err("TASKER_STOPPING".into())
+    } else {
+        Err(maa_framework::MaaError::TaskFailed.to_string())
+    }
+}
+
 /// 运行单个任务的内部实现（可从 Tauri 命令和 HTTP 处理器共享调用）
 pub fn run_task_impl(
     app: &tauri::AppHandle,
@@ -1488,114 +1504,134 @@ pub fn run_task_impl(
                 .run_completion,
         )
     };
-    let _start_permit = completion.acquire_start();
+    loop {
+        let start_permit =
+            super::utils::acquire_task_start(state, app, instance_id, &completion, false)?;
 
-    let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
-    let instance = instances.get_mut(instance_id).ok_or("INSTANCE_REPLACED")?;
-    if !Arc::ptr_eq(&instance.run_completion, &completion) {
-        return Err("INSTANCE_REPLACED".to_string());
-    }
-    if instance.prepare_submission(false)? {
-        super::focus::begin_run(instance_id);
-    }
-
-    let resource = instance.resource.as_ref().ok_or("Resource not loaded")?;
-    let controller = instance
-        .controller
-        .as_ref()
-        .ok_or("Controller not connected")?;
-
-    // 创建或获取 tasker
-    let needs_new_tasker = match instance.tasker.as_ref() {
-        None => true,
-        Some(t) => !t.inited(),
-    };
-    if needs_new_tasker {
-        if instance.tasker.is_some() {
-            warn!("[run_task] Existing tasker is not initialized, discarding and rebuilding...");
-            instance.tasker = None;
+        let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
+        let instance = instances.get_mut(instance_id).ok_or("INSTANCE_REPLACED")?;
+        if !Arc::ptr_eq(&instance.run_completion, &completion) {
+            return Err("INSTANCE_REPLACED".to_string());
+        }
+        if instance.has_abandoned_queue() {
+            let finishing = instance.begin_stop();
+            drop(instances);
+            drop(start_permit);
+            if let Some((tasker, finishing)) = finishing {
+                super::utils::schedule_run_completion(state, app, instance_id, tasker, finishing);
+            }
+            continue;
         }
 
-        let tasker = Tasker::new().map_err(|e| e.to_string())?;
+        let resource = instance.resource.as_ref().ok_or("Resource not loaded")?;
+        let controller = instance
+            .controller
+            .as_ref()
+            .ok_or("Controller not connected")?;
 
-        let app_for_sink = app.clone();
-        let maa_state_for_sink = Arc::clone(state);
-        let instance_id_for_sink = instance_id.to_string();
-        let lifetime = instance.callback_lifetime.clone();
-        tasker
-            .add_sink(move |msg, detail| {
-                if !lifetime.is_active() {
-                    return;
-                }
-                handle_task_callback(
-                    &maa_state_for_sink,
-                    &app_for_sink,
-                    &instance_id_for_sink,
-                    &lifetime,
-                    msg,
-                    detail,
+        // 创建或获取 tasker
+        let needs_new_tasker = match instance.tasker.as_ref() {
+            None => true,
+            Some(t) => !t.inited(),
+        };
+        if needs_new_tasker {
+            if instance.tasker.is_some() {
+                warn!(
+                    "[run_task] Existing tasker is not initialized, discarding and rebuilding..."
                 );
-                emit_callback_event(&app_for_sink, &instance_id_for_sink, msg, detail);
-            })
-            .map_err(|e| e.to_string())?;
+                instance.tasker = None;
+            }
 
-        let app_for_context_sink = app.clone();
-        let instance_id_for_context_sink = instance_id.to_string();
-        let lifetime = instance.callback_lifetime.clone();
-        tasker
-            .add_context_sink(move |msg, detail| {
-                if !lifetime.is_active() {
-                    return;
-                }
-                // 遥测：把失败节点挂到任务 Span 下，形成失败链路
-                super::telemetry::on_node_event(&instance_id_for_context_sink, msg, detail);
-                super::focus::emit_context(
-                    &app_for_context_sink,
-                    &instance_id_for_context_sink,
-                    msg,
-                    detail,
-                    &lifetime,
-                );
-            })
-            .map_err(|e| e.to_string())?;
+            let tasker = Tasker::new().map_err(|e| e.to_string())?;
 
-        tasker
-            .bind(resource, controller)
-            .map_err(|e| e.to_string())?;
+            let app_for_sink = app.clone();
+            let maa_state_for_sink = Arc::clone(state);
+            let instance_id_for_sink = instance_id.to_string();
+            let lifetime = instance.callback_lifetime.clone();
+            tasker
+                .add_sink(move |msg, detail| {
+                    if !lifetime.is_active() {
+                        return;
+                    }
+                    handle_task_callback(
+                        &maa_state_for_sink,
+                        &app_for_sink,
+                        &instance_id_for_sink,
+                        &lifetime,
+                        msg,
+                        detail,
+                    );
+                    emit_callback_event(&app_for_sink, &instance_id_for_sink, msg, detail);
+                })
+                .map_err(|e| e.to_string())?;
 
-        instance.tasker = Some(tasker);
+            let app_for_context_sink = app.clone();
+            let instance_id_for_context_sink = instance_id.to_string();
+            let lifetime = instance.callback_lifetime.clone();
+            tasker
+                .add_context_sink(move |msg, detail| {
+                    if !lifetime.is_active() {
+                        return;
+                    }
+                    // 遥测：把失败节点挂到任务 Span 下，形成失败链路
+                    super::telemetry::on_node_event(&instance_id_for_context_sink, msg, detail);
+                    super::focus::emit_context(
+                        &app_for_context_sink,
+                        &instance_id_for_context_sink,
+                        msg,
+                        detail,
+                        &lifetime,
+                    );
+                })
+                .map_err(|e| e.to_string())?;
+
+            tasker
+                .bind(resource, controller)
+                .map_err(|e| e.to_string())?;
+
+            instance.tasker = Some(tasker);
+        }
+
+        let tasker = instance.tasker.as_ref().unwrap();
+
+        if !tasker.inited() {
+            return Err("Tasker not initialized even after rebuild".to_string());
+        }
+
+        let task_id = post_task_id(tasker, entry, pipeline_override)?;
+
+        if !instance.task_ids.contains(&task_id) {
+            instance.task_ids.push(task_id);
+        }
+
+        let task_run_state = &mut instance.task_run_state;
+        if !task_run_state.pending_task_ids.contains(&task_id) {
+            task_run_state.pending_task_ids.push(task_id);
+        }
+        task_run_state.overall_status = Some("Running".to_string());
+        if let Some(selected_task_id) = selected_task_id {
+            task_run_state
+                .mappings
+                .insert(task_id, selected_task_id.to_string());
+            task_run_state
+                .statuses
+                .insert(selected_task_id.to_string(), "pending".to_string());
+        }
+
+        let observer = completion.begin_idle_observer();
+        drop(instances);
+        if let Some(generation) = observer {
+            super::utils::schedule_idle_observer(
+                state,
+                app,
+                instance_id,
+                Arc::clone(&completion),
+                generation,
+            );
+        }
+
+        return Ok(task_id);
     }
-
-    let tasker = instance.tasker.as_ref().unwrap();
-
-    if !tasker.inited() {
-        return Err("Tasker not initialized even after rebuild".to_string());
-    }
-
-    let job = tasker
-        .post_task(entry, pipeline_override)
-        .map_err(|e| e.to_string())?;
-    let task_id = job.id;
-
-    if !instance.task_ids.contains(&task_id) {
-        instance.task_ids.push(task_id);
-    }
-
-    let task_run_state = &mut instance.task_run_state;
-    if !task_run_state.pending_task_ids.contains(&task_id) {
-        task_run_state.pending_task_ids.push(task_id);
-    }
-    task_run_state.overall_status = Some("Running".to_string());
-    if let Some(selected_task_id) = selected_task_id {
-        task_run_state
-            .mappings
-            .insert(task_id, selected_task_id.to_string());
-        task_run_state
-            .statuses
-            .insert(selected_task_id.to_string(), "pending".to_string());
-    }
-
-    Ok(task_id)
 }
 
 /// 运行单个任务
@@ -1693,14 +1729,7 @@ pub fn stop_task_impl(
         if running {
             tasker.unwrap().post_stop().map_err(|e| e.to_string())?;
         }
-        instance.stop_in_progress = true;
-        instance.stop_started_at = Some(Instant::now());
-        for status in instance.task_run_state.statuses.values_mut() {
-            if status == "pending" || status == "running" {
-                *status = "failed".to_string();
-            }
-        }
-        instance.begin_completion(false)
+        instance.begin_stop()
     };
 
     // Telemetry and Agent cleanup run after the submission permit is released.

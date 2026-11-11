@@ -367,6 +367,41 @@ mod tests {
     }
 
     #[test]
+    fn abandoned_queue_cannot_be_reset_and_stays_idle_after_stop_flag_is_cleared() {
+        let mut instance = InstanceRuntime::default();
+        instance.prepare_submission(false).unwrap();
+        instance.task_run_state.pending_task_ids = vec![1, 2];
+        instance.task_run_state.overall_status = Some("Running".into());
+        instance.task_results.insert(1, true);
+        let generation = instance.run_completion.generation();
+        assert!(
+            instance.is_running(),
+            "native idle does not finish abandoned accepted IDs"
+        );
+        assert_eq!(
+            instance.prepare_submission(false).unwrap_err(),
+            "TASK_QUEUE_ABANDONED"
+        );
+        assert_eq!(instance.run_completion.generation(), generation);
+        assert_eq!(instance.task_run_state.pending_task_ids, [1, 2]);
+
+        let (_, finishing) = instance.begin_stop().unwrap();
+        finishing.finish_when_idle(|| false, || {}, || {});
+        for _ in 0..3 {
+            assert!(!instance.is_running());
+            // The desktop and HTTP snapshot handlers clear this transient flag.
+            instance.stop_in_progress = false;
+            instance.stop_started_at = None;
+        }
+        assert_eq!(
+            instance.task_run_state.overall_status.as_deref(),
+            Some("Failed")
+        );
+        assert!(instance.prepare_submission(false).unwrap());
+        assert_ne!(instance.run_completion.generation(), generation);
+    }
+
+    #[test]
     fn cancellation_before_tasker_setup_is_not_cleared_by_preparation() {
         let mut instance = InstanceRuntime::default();
         let completion = std::sync::Arc::clone(&instance.run_completion);
@@ -591,6 +626,9 @@ impl InstanceRuntime {
         if self.run_completion.submission_cancelled() {
             return Err("TASKER_STOPPING".to_string());
         }
+        if !running && self.has_unfinished_queue() {
+            return Err("TASK_QUEUE_ABANDONED".to_string());
+        }
         if running {
             if self.stop_in_progress {
                 return Err("TASKER_STOPPING".to_string());
@@ -622,6 +660,41 @@ impl InstanceRuntime {
         .map(|succeeded| succeeded && !self.submission_failed && !self.stop_in_progress)
     }
 
+    /// A native Stop can discard accepted IDs without delivering a last callback.
+    pub(super) fn has_unfinished_queue(&self) -> bool {
+        self.task_run_state.overall_status.as_deref() == Some("Running")
+            && !self.stop_in_progress
+            && self.queue_result().is_none()
+    }
+
+    pub(super) fn has_abandoned_queue(&self) -> bool {
+        self.has_unfinished_queue() && !self.tasker.as_ref().is_some_and(|tasker| tasker.running())
+    }
+
+    /// A late marker from an older Tasker must not stop the current queue.
+    pub(super) fn begin_framework_stop(
+        &mut self,
+    ) -> Option<(Option<Tasker>, Arc<super::run_completion::RunCompletion>)> {
+        if self.stop_in_progress || !self.tasker.as_ref().is_some_and(|t| t.stopping()) {
+            return None;
+        }
+        self.run_completion.cancel_submission();
+        self.begin_stop()
+    }
+
+    pub(super) fn begin_stop(
+        &mut self,
+    ) -> Option<(Option<Tasker>, Arc<super::run_completion::RunCompletion>)> {
+        self.stop_in_progress = true;
+        self.stop_started_at = Some(Instant::now());
+        for status in self.task_run_state.statuses.values_mut() {
+            if status == "pending" || status == "running" {
+                *status = "failed".to_string();
+            }
+        }
+        self.begin_completion(false)
+    }
+
     /// Record the terminal result even when no Tasker callback can arrive (an
     /// empty/rejected submission or cancellation before the first task starts).
     pub fn begin_completion(
@@ -641,6 +714,7 @@ impl InstanceRuntime {
     pub fn is_running(&self) -> bool {
         self.tasker.as_ref().is_some_and(|tasker| tasker.running())
             || self.run_completion.is_pending()
+            || self.has_unfinished_queue()
     }
 }
 

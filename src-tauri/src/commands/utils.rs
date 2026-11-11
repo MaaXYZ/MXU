@@ -93,11 +93,6 @@ pub fn handle_task_callback(
     let entry = detail_json
         .as_ref()
         .and_then(|v| v.get("entry").and_then(|e| e.as_str()));
-    if !is_started && entry == Some(POST_STOP_ENTRY) {
-        handle_post_stop_callback(maa_state, app, instance_id, lifetime);
-        return;
-    }
-
     let mut completion = None;
     {
         let mut instances = match maa_state.instances.lock() {
@@ -113,6 +108,17 @@ pub fn handle_task_callback(
         }
         // Old/duplicate events from a removed queue must not mutate a new run.
         if !instance.task_run_state.pending_task_ids.contains(&task_id) {
+            // The synthetic stop task was posted by the framework, not by MXU.
+            if !is_started
+                && entry == Some("MaaTaskerPostStop")
+                && instance.queue_result().is_none()
+            {
+                if let Some((tasker, completion)) = instance.begin_framework_stop() {
+                    drop(instances);
+                    emit_state_changed(app, instance_id, "task-progress");
+                    schedule_run_completion(maa_state, app, instance_id, tasker, completion);
+                }
+            }
             return;
         }
         if !is_started {
@@ -142,6 +148,10 @@ pub fn handle_task_callback(
             let all_completed = result.is_some() || instance.stop_in_progress;
             if all_completed {
                 completion = instance.begin_completion(result == Some(true));
+            } else {
+                // A disconnected controller can reject the synthetic stop task.
+                // This normal terminal event then owns cleanup of the discarded queue.
+                completion = instance.begin_framework_stop();
             }
         }
     }; // 锁在此处释放
@@ -159,51 +169,90 @@ pub fn handle_task_callback(
     }
 }
 
-/// MaaFramework `Tasker::post_stop` 补发的停止任务 entry
-const POST_STOP_ENTRY: &str = "MaaTaskerPostStop";
-
-/// `Tasker::post_stop` 会清空排队任务且不为其发送回调，只补发一个停止任务。
-/// Agent 内部调用 PostStop 时，这是本轮唯一必定到达的终态回调：若仍有任务没有结果，
-/// 按失败收尾以回收本轮 Agent；队列已全部有结果时由原路径收尾，这里不覆盖其状态。
-fn handle_post_stop_callback(
+/// Reconcile an abandoned native queue before a new run can reset its state.
+/// The observer may not have been scheduled yet when Start arrives after idle.
+pub(super) fn acquire_task_start(
     maa_state: &Arc<MaaState>,
     app: &AppHandle,
     instance_id: &str,
-    lifetime: &super::callback_lifecycle::CallbackGuard,
+    completion: &Arc<super::run_completion::RunCompletion>,
+    reset_state: bool,
+) -> Result<super::run_completion::StartPermit, String> {
+    loop {
+        let permit = completion.acquire_start();
+        let abandoned = {
+            let mut instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
+            let instance = instances.get_mut(instance_id).ok_or("INSTANCE_REPLACED")?;
+            if !Arc::ptr_eq(&instance.run_completion, completion) {
+                return Err("INSTANCE_REPLACED".into());
+            }
+            match instance.prepare_submission(reset_state) {
+                Err(error) if error == "TASK_QUEUE_ABANDONED" => instance.begin_stop(),
+                Err(error) => return Err(error),
+                Ok(fresh) => {
+                    if fresh {
+                        super::focus::begin_run(instance_id);
+                    }
+                    None
+                }
+            }
+        };
+        if let Some((tasker, finishing)) = abandoned {
+            drop(permit);
+            schedule_run_completion(maa_state, app, instance_id, tasker, finishing);
+        } else {
+            return Ok(permit);
+        }
+    }
+}
+
+/// Agent PostStop can happen after the last ordinary callback, and disconnect
+/// can reject its synthetic stop task. Observe idle without blocking appends.
+pub(super) fn schedule_idle_observer(
+    maa_state: &Arc<MaaState>,
+    app: &AppHandle,
+    instance_id: &str,
+    completion: Arc<super::run_completion::RunCompletion>,
+    generation: u64,
 ) {
-    let completion = {
-        let mut instances = match maa_state.instances.lock() {
-            Ok(g) => g,
-            Err(_) => return,
+    let maa_state = Arc::clone(maa_state);
+    let app = app.clone();
+    let instance_id = instance_id.to_string();
+    std::thread::spawn(move || loop {
+        let abandoned = {
+            let Ok(mut instances) = maa_state.instances.lock() else {
+                return;
+            };
+            let Some(instance) = instances.get_mut(&instance_id) else {
+                return;
+            };
+            if !Arc::ptr_eq(&instance.run_completion, &completion)
+                || completion.generation() != generation
+                || !instance.has_unfinished_queue()
+            {
+                return;
+            }
+            if instance.has_abandoned_queue() {
+                // A startup/append can be awaiting Agent registration. Never
+                // claim its Agents or invalidate its queue while it owns a permit.
+                completion.try_acquire_generation(generation).map(|permit| {
+                    let finishing = instance.begin_stop();
+                    (permit, finishing)
+                })
+            } else {
+                None
+            }
         };
-        let instance = match instances.get_mut(instance_id) {
-            Some(i) => i,
-            None => return,
-        };
-        if !instance.callback_lifetime.is_current(lifetime)
-            // MXU 自己发起的停止已由 stop_task_impl 收尾
-            || instance.stop_in_progress
-            || instance.task_run_state.pending_task_ids.is_empty()
-            || instance.queue_result().is_some()
-        {
+        if let Some((permit, finishing)) = abandoned {
+            drop(permit);
+            if let Some((tasker, finishing)) = finishing {
+                emit_state_changed(&app, &instance_id, "task-progress");
+                schedule_run_completion(&maa_state, &app, &instance_id, tasker, finishing);
+            }
             return;
         }
-        // 与 stop_task_impl 对齐：阻止已准入的追加提交，被清掉的任务标记为失败
-        instance.run_completion.cancel_submission();
-        instance.stop_in_progress = true;
-        instance.stop_started_at = Some(std::time::Instant::now());
-        for status in instance.task_run_state.statuses.values_mut() {
-            if status == "pending" || status == "running" {
-                *status = "failed".to_string();
-            }
-        }
-        instance.begin_completion(false)
-    };
-
-    if let Some((tasker, completion)) = completion {
-        emit_state_changed(app, instance_id, "task-progress");
-        schedule_run_completion(maa_state, app, instance_id, tasker, completion);
-    }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    });
 }
 
 /// Every terminal path shares the same idle/cleanup/notification barrier. Called
@@ -240,6 +289,12 @@ pub(super) fn schedule_run_completion(
                 let agents = maa_state.instances.lock().ok().and_then(|mut instances| {
                     instances.get_mut(&instance_id).and_then(|instance| {
                         Arc::ptr_eq(&instance.run_completion, &completion).then(|| {
+                            // An already admitted append can extend a queue after
+                            // its old terminal callback scheduled this worker.
+                            // Reconcile any tail discarded without another callback.
+                            if instance.has_unfinished_queue() {
+                                instance.begin_stop();
+                            }
                             (
                                 std::mem::take(&mut instance.agent_clients),
                                 std::mem::take(&mut instance.agent_children),

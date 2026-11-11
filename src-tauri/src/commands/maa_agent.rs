@@ -579,10 +579,20 @@ pub async fn start_tasks_impl(
         )
     };
     let start_completion = Arc::clone(&completion);
-    let _start_permit =
-        tauri::async_runtime::spawn_blocking(move || start_completion.acquire_start())
-            .await
-            .map_err(|e| e.to_string())?;
+    let start_state = Arc::clone(maa_state);
+    let start_app = app.clone();
+    let start_instance_id = instance_id.clone();
+    let _start_permit = tauri::async_runtime::spawn_blocking(move || {
+        super::utils::acquire_task_start(
+            &start_state,
+            &start_app,
+            &start_instance_id,
+            &start_completion,
+            reset_state,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())??;
 
     info!("instance_id: {}", instance_id);
     info!("task count: {}", tasks.len());
@@ -599,9 +609,6 @@ pub async fn start_tasks_impl(
         let instance = instances.get_mut(&instance_id).ok_or("INSTANCE_REPLACED")?;
         if !Arc::ptr_eq(&instance.run_completion, &completion) {
             return Err("INSTANCE_REPLACED".to_string());
-        }
-        if instance.prepare_submission(reset_state)? {
-            super::focus::begin_run(&instance_id);
         }
         debug!("[start_tasks] Instance found: {}", instance_id);
 
@@ -823,6 +830,7 @@ pub async fn start_tasks_impl(
     let mut telemetry_posting = super::telemetry::begin_posting(&instance_id);
     let task_ids_ret;
     let completion_to_schedule;
+    let idle_observer;
     {
         // 初始化/追加后端 TaskRunState（单一真相来源）并缓存 task_ids
         debug!(
@@ -838,6 +846,24 @@ pub async fn start_tasks_impl(
         // even when the previous tasks have already become idle.
         if instance.stop_in_progress || completion.submission_cancelled() {
             return Err("TASKER_STOPPING".to_string());
+        }
+        // The old queue can lose its final callback while this append awaits
+        // Agent registration. Do not resurrect it by posting into an idle Tasker.
+        if instance.has_abandoned_queue() {
+            completion.cancel_submission();
+            let finishing = instance.begin_stop();
+            drop(instances);
+            drop(telemetry_posting);
+            if let Some((tasker, finishing)) = finishing {
+                super::utils::schedule_run_completion(
+                    maa_state,
+                    &app,
+                    &instance_id,
+                    tasker,
+                    finishing,
+                );
+            }
+            return Err("TASKER_STOPPING".into());
         }
         if reset_state {
             // 首批：重置任务运行状态
@@ -857,20 +883,20 @@ pub async fn start_tasks_impl(
                 task.entry,
                 task.pipeline_override.len()
             );
-            match tasker.post_task(&task.entry, &task.pipeline_override) {
-                Ok(job) => {
-                    info!("[start_tasks] post_task returned task_id: {}", job.id);
-                    task_id_pairs.push((job.id, task.selected_task_id.clone()));
+            match super::maa_core::post_task_id(&tasker, &task.entry, &task.pipeline_override) {
+                Ok(task_id) => {
+                    info!("[start_tasks] post_task returned task_id: {}", task_id);
+                    task_id_pairs.push((task_id, task.selected_task_id.clone()));
                     // 立即登记，保证回调不会先于状态
                     let state = &mut instance.task_run_state;
-                    state.pending_task_ids.push(job.id);
+                    state.pending_task_ids.push(task_id);
                     if let Some(sel_id) = &task.selected_task_id {
-                        state.mappings.insert(job.id, sel_id.clone());
+                        state.mappings.insert(task_id, sel_id.clone());
                         state.statuses.insert(sel_id.clone(), "pending".to_string());
                     }
                     if let Some(posting) = telemetry_posting.as_mut() {
                         posting.register(
-                            job.id,
+                            task_id,
                             super::telemetry::TaskMeta {
                                 // 缺少 interface 任务名时退回 entry，保证 Span 有可读的名字
                                 name: task.task_name.clone().unwrap_or_else(|| task.entry.clone()),
@@ -880,7 +906,7 @@ pub async fn start_tasks_impl(
                     }
                     debug!(
                         "[start_tasks] Task {} submitted successfully, task_id: {}",
-                        idx, job.id
+                        idx, task_id
                     );
                 }
                 Err(error) => {
@@ -914,6 +940,7 @@ pub async fn start_tasks_impl(
         completion_to_schedule = instance
             .queue_result()
             .and_then(|succeeded| instance.begin_completion(succeeded));
+        idle_observer = completion.begin_idle_observer();
         debug!("[start_tasks] TaskRunState updated");
     }
     // 提交完成，释放遥测状态锁（后续有 await，不能继续持有）
@@ -923,6 +950,9 @@ pub async fn start_tasks_impl(
     super::utils::emit_state_changed(&app, &instance_id, "task-started");
     if let Some((tasker, completion)) = completion_to_schedule {
         super::utils::schedule_run_completion(maa_state, &app, &instance_id, tasker, completion);
+    }
+    if let Some(generation) = idle_observer {
+        super::utils::schedule_idle_observer(maa_state, &app, &instance_id, completion, generation);
     }
 
     info!(
