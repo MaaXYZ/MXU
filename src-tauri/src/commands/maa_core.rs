@@ -811,6 +811,7 @@ pub fn destroy_instance_impl(state: &Arc<MaaState>, instance_id: &str) -> Result
         let mut instances = state.instances.lock().map_err(|e| e.to_string())?;
         let removed = instances.remove(instance_id);
         if let Some(instance) = &removed {
+            state.screenshot_service.remove_instance(instance_id);
             // Retire the old completion worker before this ID can be reused.
             instance.run_completion.retire();
             // Cancel before allowing the same ID to be created again. A callback snapshot
@@ -1859,8 +1860,7 @@ pub async fn maa_screenshot_subscribe(
         subscriber_id,
         interval_ms,
         handle,
-    );
-    Ok(())
+    )
 }
 
 /// 取消实例的实时截图订阅

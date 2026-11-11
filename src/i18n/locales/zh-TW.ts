@@ -464,6 +464,7 @@ export default {
 
   // 截圖預覽
   screenshot: {
+    streamFailed: '截圖連續失敗，已停止',
     title: '即時截圖',
     autoRefresh: '自動重新整理',
     noScreenshot: '暫無截圖',

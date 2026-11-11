@@ -1191,13 +1191,19 @@ async fn handle_screenshot_subscribe(
         .unwrap_or(1000);
 
     let handle = tokio::runtime::Handle::current();
-    state.maa_state.screenshot_service.subscribe(
+    if let Err(error) = state.maa_state.screenshot_service.subscribe(
         state.maa_state.clone(),
         instance_id,
         subscriber_id,
         interval_ms,
         handle,
-    );
+    ) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error })),
+        )
+            .into_response();
+    }
     Json(serde_json::json!({ "ok": true })).into_response()
 }
 

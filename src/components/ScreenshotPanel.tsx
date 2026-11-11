@@ -20,15 +20,19 @@ import { ContextMenu, useContextMenu, type MenuItem } from './ContextMenu';
 import { getFrameInterval } from './FrameRateSelector';
 import { loggers } from '@/utils/logger';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { useScreenshotStream } from '@/hooks/useScreenshotStream';
 
 const log = loggers.ui;
 
 // 超时
 const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout>;
   return Promise.race([
     promise,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
-  ]);
+    new Promise<T>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('timeout')), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
 };
 
 const MAX_CONSECUTIVE_FAILURES = 20;
@@ -53,23 +57,17 @@ export function ScreenshotPanel() {
   const isPanelVisible = isMobile || sidePanelExpanded;
 
   const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [captureFailed, setCaptureFailed] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const { state: menuState, show: showMenu, hide: hideMenu } = useContextMenu();
   const fullscreenImgRef = useRef<HTMLImageElement>(null);
 
-  // 用于控制截图流的引用
-  const streamingRef = useRef(false);
-  const lastFrameTimeRef = useRef(0);
-  const frameIntervalRef = useRef(getFrameInterval(screenshotFrameRate));
-
-  // 帧率配置变化时更新帧间隔
-  useEffect(() => {
-    frameIntervalRef.current = getFrameInterval(screenshotFrameRate);
-  }, [screenshotFrameRate]);
-
+  const connectionVersion = useRef(0);
   const instanceId = activeInstanceId || '';
+
+  const connectionStatus = instanceConnectionStatus[instanceId];
+  const connected = connectionStatus === 'Connected';
 
   // 从 store 获取当前实例的截图流状态
   const isStreaming = instanceId ? (instanceScreenshotStreaming[instanceId] ?? false) : false;
@@ -86,43 +84,23 @@ export function ScreenshotPanel() {
 
   // 获取最新缓存截图（后端截图循环负责更新缓存，前端无需主动触发 postScreencap）
   const captureFrame = useCallback(async (): Promise<string | null> => {
-    if (!instanceId) return null;
-
+    if (!instanceId || !connected) return null;
+    const version = connectionVersion.current;
     try {
       const imageData = await withTimeout(maaService.getCachedImage(instanceId), API_TIMEOUT);
-      return imageData || null;
+      return version === connectionVersion.current ? imageData || null : null;
     } catch (err) {
+      if (version !== connectionVersion.current) return null;
       log.warn('获取截图失败:', err);
       throw err;
     }
-  }, [instanceId]);
+  }, [instanceId, connected]);
 
   // 全屏模式切换
   const toggleFullscreen = (e?: React.MouseEvent) => {
     e?.stopPropagation();
     setIsFullscreen(!isFullscreen);
   };
-
-  // 组件卸载时停止截图流
-  useEffect(() => {
-    return () => {
-      streamingRef.current = false;
-    };
-  }, []);
-
-  // 订阅/退订后端截图循环（确保全局只有一份 post_screencap 在运行）
-  useEffect(() => {
-    if (!instanceId || !isStreaming) return;
-
-    const intervalMs = getFrameInterval(screenshotFrameRate);
-    maaService
-      .screenshotSubscribe(instanceId, `panel-${instanceId}`, intervalMs)
-      .catch((e) => log.warn('截图订阅失败:', e));
-
-    return () => {
-      maaService.screenshotUnsubscribe(instanceId, `panel-${instanceId}`).catch(() => {});
-    };
-  }, [instanceId, isStreaming, screenshotFrameRate]);
 
   // ESC 键退出全屏
   useEffect(() => {
@@ -141,138 +119,60 @@ export function ScreenshotPanel() {
     };
   }, [isFullscreen]);
 
-  const loopRunningRef = useRef(false);
+  const displayFrame = useCallback((frame: string) => {
+    setScreenshotUrl(frame);
+    setCaptureFailed(false);
+  }, []);
 
-  const streamLoop = useCallback(async () => {
-    if (loopRunningRef.current) return;
-    loopRunningRef.current = true;
-
-    const loopInstanceId = instanceId;
-    let nextFrameTime = Date.now();
-    let consecutiveFailures = 0;
-
-    try {
-      while (streamingRef.current) {
-        // 检查当前实例是否仍是活动实例，避免非活动 tab 刷新截图
-        const currentActiveId = useAppStore.getState().activeInstanceId;
-        if (loopInstanceId !== currentActiveId) {
-          break;
-        }
-
-        // 检查连接状态
-        const connStatus = useAppStore.getState().instanceConnectionStatus[loopInstanceId];
-        if (connStatus !== 'Connected') {
-          setError('连接已断开');
-          break;
-        }
-
-        // 等待下一帧时间
-        const now = Date.now();
-        const sleepTime = nextFrameTime - now;
-        if (sleepTime > 0) {
-          await new Promise((resolve) => setTimeout(resolve, sleepTime));
-        }
-
-        // 计算下一帧时间
-        const frameInterval = frameIntervalRef.current;
-        if (frameInterval > 0) {
-          nextFrameTime += frameInterval;
-          if (nextFrameTime < Date.now()) {
-            nextFrameTime = Date.now() + frameInterval;
-          }
-        } else {
-          nextFrameTime = Date.now();
-        }
-
-        lastFrameTimeRef.current = Date.now();
-
-        try {
-          // 后端截图循环已统一驱动 post_screencap，前端只需读取最新缓存
-          const imageData = await captureFrame();
-
-          // 再次检查是否仍是活动实例，避免更新非活动 tab 的截图
-          if (
-            imageData &&
-            streamingRef.current &&
-            loopInstanceId === useAppStore.getState().activeInstanceId
-          ) {
-            setScreenshotUrl(imageData);
-            setError(null);
-            consecutiveFailures = 0;
-          }
-        } catch (err) {
-          consecutiveFailures++;
-          log.warn(`截图失败 (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}):`, err);
-
-          if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-            setError('截图连续失败，已停止');
-            break;
-          }
-        }
+  const handleFrameError = useCallback(
+    (error: unknown, failures: number) => {
+      log.warn(`截图失败 (${failures}/${MAX_CONSECUTIVE_FAILURES}):`, error);
+      if (failures >= MAX_CONSECUTIVE_FAILURES) {
+        setCaptureFailed(true);
+        setIsStreaming(false);
       }
+    },
+    [setIsStreaming],
+  );
 
-      // 循环结束
-      streamingRef.current = false;
-      setIsStreaming(false);
-    } finally {
-      loopRunningRef.current = false;
-    }
-  }, [instanceId, captureFrame, setIsStreaming]);
+  useScreenshotStream(
+    instanceId,
+    connected && isStreaming && screenshotPanelExpanded && isPanelVisible,
+    getFrameInterval(screenshotFrameRate),
+    captureFrame,
+    displayFrame,
+    handleFrameError,
+  );
 
-  // 开始/停止截图流
   const toggleStreaming = useCallback(
     (e?: React.MouseEvent) => {
       e?.stopPropagation();
-
-      if (!instanceId) return;
-
-      if (isStreaming) {
-        // 停止流
-        streamingRef.current = false;
-        setIsStreaming(false);
-      } else {
-        // 开始流时，如果面板是折叠状态则自动展开
-        if (!screenshotPanelExpanded) {
-          setScreenshotPanelExpanded(true);
-        }
-        streamingRef.current = true;
-        setIsStreaming(true);
-        setError(null);
-        streamLoop();
+      if (!instanceId || !connected) return;
+      if (!isStreaming) {
+        if (!screenshotPanelExpanded) setScreenshotPanelExpanded(true);
+        setCaptureFailed(false);
       }
+      setIsStreaming(!isStreaming);
     },
     [
       instanceId,
+      connected,
       isStreaming,
-      setIsStreaming,
-      streamLoop,
       screenshotPanelExpanded,
       setScreenshotPanelExpanded,
+      setIsStreaming,
     ],
   );
 
-  // 实例切换时重置截图和错误，但保留截图流状态
   useEffect(() => {
-    // 清除截图，等待新实例的截图
     setScreenshotUrl(null);
-    setError(null);
+    setCaptureFailed(false);
+    return () => {
+      connectionVersion.current++;
+    };
+  }, [instanceId, connected]);
 
-    // 同步 streamingRef 与新实例的截图流状态
-    const newInstanceStreaming = instanceId
-      ? (instanceScreenshotStreaming[instanceId] ?? false)
-      : false;
-    streamingRef.current = newInstanceStreaming;
-
-    // 如果新实例的截图流是开启的，启动流循环
-    if (newInstanceStreaming && instanceId) {
-      streamLoop();
-    }
-  }, [instanceId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // 连接成功后自动开始实时截图（仅当面板可见且未开启时）
-  const connectionStatus = instanceId ? instanceConnectionStatus[instanceId] : undefined;
-  const isResourceLoaded = instanceId ? instanceResourceLoaded[instanceId] : false;
-
+  const isResourceLoaded = instanceResourceLoaded[instanceId];
   // 当设备已连接且资源已加载时自动折叠（与连接设置面板行为一致）
   useEffect(() => {
     if (connectionStatus === 'Connected' && isResourceLoaded) {
@@ -280,50 +180,18 @@ export function ScreenshotPanel() {
     }
   }, [connectionStatus, isResourceLoaded, setScreenshotPanelExpanded]);
 
-  // 面板折叠时暂停截图，展开时自动开始（如果已连接）
+  // Opening the panel or reconnecting resumes it; switching tabs preserves
+  // an explicit pause on the destination instance.
+  const previousInstance = useRef(instanceId);
   useEffect(() => {
-    if (!screenshotPanelExpanded || !isPanelVisible) {
-      // 折叠时暂停截图流，同步更新状态和图标
-      streamingRef.current = false;
-      setIsStreaming(false);
-    } else if (connectionStatus === 'Connected' && instanceId) {
-      // 展开且已连接时，自动开始截图
-      streamingRef.current = true;
-      setIsStreaming(true);
-      setError(null);
-      streamLoop();
-    }
-  }, [screenshotPanelExpanded, isPanelVisible]); // eslint-disable-line react-hooks/exhaustive-deps
-  const prevConnectionStatusRef = useRef<typeof connectionStatus>(undefined);
-  const hasAutoStartedRef = useRef(false);
-
-  // 组件挂载或状态恢复后，如果已连接且面板可见，自动启动截图流
-  useEffect(() => {
-    // 避免重复启动（仅在首次检测到已连接时启动）
-    if (hasAutoStartedRef.current) return;
-
-    const isConnected = connectionStatus === 'Connected';
-    if (isConnected && !isStreaming && screenshotPanelExpanded && isPanelVisible && instanceId) {
-      hasAutoStartedRef.current = true;
-      streamingRef.current = true;
-      setIsStreaming(true);
-      setError(null);
-      streamLoop();
-    }
-  }, [
-    connectionStatus,
-    instanceId,
-    screenshotPanelExpanded,
-    isPanelVisible,
-    isStreaming,
-    setIsStreaming,
-    streamLoop,
-  ]);
-
-  // 实例切换时重置自动启动标记
-  useEffect(() => {
-    hasAutoStartedRef.current = false;
-  }, [instanceId]);
+    const switched = previousInstance.current !== instanceId;
+    previousInstance.current = instanceId;
+    const saved = useAppStore.getState().instanceScreenshotStreaming[instanceId];
+    const resume =
+      connected && screenshotPanelExpanded && isPanelVisible && (!switched || saved !== false);
+    setIsStreaming(resume);
+    if (resume) setCaptureFailed(false);
+  }, [instanceId, connected, screenshotPanelExpanded, isPanelVisible, setIsStreaming]);
 
   // 保存截图
   const saveScreenshot = useCallback(async () => {
@@ -363,7 +231,7 @@ export function ScreenshotPanel() {
       const imageData = await captureFrame();
       if (imageData) {
         setScreenshotUrl(imageData);
-        setError(null);
+        setCaptureFailed(false);
       }
     } catch (err) {
       log.warn('强制刷新失败:', err);
@@ -379,7 +247,6 @@ export function ScreenshotPanel() {
       useAppStore.getState().setInstanceConnectionStatus(instanceId, 'Disconnected');
       useAppStore.getState().setInstanceResourceLoaded(instanceId, false);
       setScreenshotUrl(null);
-      streamingRef.current = false;
       setIsStreaming(false);
     } catch (err) {
       log.warn('断开连接失败:', err);
@@ -488,42 +355,6 @@ export function ScreenshotPanel() {
     ],
   );
 
-  useEffect(() => {
-    // 检测连接状态从非 Connected 变为 Connected
-    const wasConnected = prevConnectionStatusRef.current === 'Connected';
-    const isConnected = connectionStatus === 'Connected';
-    prevConnectionStatusRef.current = connectionStatus;
-
-    // 连接断开时清空截图（如切换控制器、断开连接等场景）
-    if (wasConnected && !isConnected) {
-      setScreenshotUrl(null);
-      streamingRef.current = false;
-      setIsStreaming(false);
-    }
-
-    if (
-      isConnected &&
-      !wasConnected &&
-      !isStreaming &&
-      screenshotPanelExpanded &&
-      isPanelVisible &&
-      instanceId
-    ) {
-      streamingRef.current = true;
-      setIsStreaming(true);
-      setError(null);
-      streamLoop();
-    }
-  }, [
-    connectionStatus,
-    instanceId,
-    screenshotPanelExpanded,
-    isPanelVisible,
-    isStreaming,
-    setIsStreaming,
-    streamLoop,
-  ]);
-
   return (
     <div className="bg-bg-secondary rounded-lg ring-1 ring-inset ring-border overflow-hidden">
       {/* 标题栏（可点击折叠） */}
@@ -556,10 +387,10 @@ export function ScreenshotPanel() {
               e.stopPropagation();
               toggleStreaming();
             }}
-            disabled={!instanceId}
+            disabled={!instanceId || !connected}
             className={clsx(
               'p-1 rounded-md transition-colors',
-              !instanceId
+              !instanceId || !connected
                 ? 'text-text-muted cursor-not-allowed'
                 : isStreaming
                   ? 'text-success hover:bg-bg-tertiary'
@@ -628,8 +459,8 @@ export function ScreenshotPanel() {
               ) : (
                 <div className="flex flex-col items-center gap-2 text-text-muted">
                   <Monitor className="w-10 h-10 opacity-30" />
-                  {error ? (
-                    <span className="text-xs text-error">{error}</span>
+                  {captureFailed ? (
+                    <span className="text-xs text-error">{t('screenshot.streamFailed')}</span>
                   ) : (
                     <>
                       <span className="text-xs">{t('screenshot.noScreenshot')}</span>

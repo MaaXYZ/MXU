@@ -64,7 +64,12 @@ impl ScreenshotService {
         subscriber_id: String,
         interval_ms: u64,
         handle: tokio::runtime::Handle,
-    ) {
+    ) -> Result<(), String> {
+        // Serialize registration with destroy/recreate of the same instance ID.
+        let instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
+        if !instances.contains_key(&instance_id) {
+            return Err("Instance not found".into());
+        }
         let stream = {
             let mut streams = self.streams.lock().unwrap();
             streams
@@ -89,6 +94,7 @@ impl ScreenshotService {
             );
         }
 
+        drop(instances);
         // CAS 保证只有一个 tokio task 负责该实例的截图循环
         if stream
             .capture_running
@@ -96,6 +102,14 @@ impl ScreenshotService {
             .is_ok()
         {
             handle.spawn(capture_loop(stream, maa_state, instance_id));
+        }
+        Ok(())
+    }
+
+    /// Called while holding the instances lock, before a replacement can subscribe.
+    pub fn remove_instance(&self, instance_id: &str) {
+        if let Some(stream) = self.streams.lock().unwrap().remove(instance_id) {
+            stream.subscribers.lock().unwrap().clear();
         }
     }
 
@@ -125,102 +139,169 @@ impl ScreenshotService {
 // 截图循环（每实例至多一个 tokio task）
 // ============================================================================
 
-/// 每个实例只允许同时运行一个截图循环。
-///
-/// 使用显式 `impl Future + Send + 'static` 返回类型声明，确保编译器能正确推断
-/// Future 的 Send 性，避免 E0283 歧义。循环体内不在 `.await` 处持有任何非 Send 类型。
-fn capture_loop(
+async fn capture_loop(
     stream: Arc<InstanceScreenshotStream>,
     maa_state: Arc<MaaState>,
     instance_id: String,
-) -> impl std::future::Future<Output = ()> + Send + 'static {
-    async move {
-        log::debug!("[screenshot] capture_loop started: {}", instance_id);
+) {
+    log::debug!("[screenshot] capture_loop started: {}", instance_id);
 
-        loop {
-            // 1. 清理超时订阅者，计算当前最小间隔
-            //    MutexGuard 在块末尾 drop，不跨越 .await
-            let min_interval_ms: u64 = {
-                let mut subs = stream.subscribers.lock().unwrap();
-                let now = Instant::now();
-                subs.retain(|_, sub| {
-                    now.duration_since(sub.last_active).as_secs() < SUBSCRIBER_TIMEOUT_SECS
-                });
-                if subs.is_empty() {
-                    break;
-                }
-                subs.values()
-                    .map(|s| s.interval_ms)
-                    .min()
-                    .unwrap_or(1000)
-                    .max(MIN_INTERVAL_MS)
-            };
-
-            // 2. 检查实例状态，获取截图决策（仅用 bool 传递，不持有 Controller）
-            //    MutexGuard 在块末尾 drop，不跨越 .await
-            let (should_exit, should_screencap): (bool, bool) = {
-                match maa_state.instances.lock() {
-                    Err(_) => (true, false),
-                    Ok(instances) => match instances.get(&instance_id) {
-                        None => {
-                            log::debug!(
-                                "[screenshot] instance {} destroyed, stopping",
-                                instance_id
-                            );
-                            (true, false)
-                        }
-                        Some(inst) => {
-                            if inst.controller.is_none() {
-                                log::debug!(
-                                    "[screenshot] controller not connected for {}, stopping",
-                                    instance_id
-                                );
-                                (true, false)
-                            } else {
-                                let is_running = inst.tasker.as_ref().is_some_and(|t| t.running());
-                                // 任务运行中，管线自动更新缓存，跳过主动截图
-                                (false, !is_running)
-                            }
-                        }
-                    },
-                }
-            };
-
-            if should_exit {
+    loop {
+        let interval = {
+            // Coordinate the frame with destroy/recreate before checking this stream.
+            let instances = maa_state.instances.lock().ok();
+            let mut subs = stream.subscribers.lock().unwrap();
+            subs.retain(|_, sub| sub.last_active.elapsed().as_secs() < SUBSCRIBER_TIMEOUT_SECS);
+            let Some(interval) = subs.values().map(|s| s.interval_ms).min() else {
+                // A concurrent subscriber sees either a live loop or this idle flag.
+                stream.capture_running.store(false, Ordering::SeqCst);
                 break;
-            }
+            };
+            drop(subs);
 
-            // 3. 需要截图时，重新加锁获取 Controller 引用并调用 post_screencap
-            //    MutexGuard 及 Controller 引用均在块末尾 drop，不跨越 .await
-            if should_screencap {
-                if let Ok(instances) = maa_state.instances.lock() {
-                    if let Some(inst) = instances.get(&instance_id) {
-                        if let Some(ctrl) = inst.controller.as_ref() {
-                            let _ = ctrl.post_screencap();
-                        }
+            if let Some(inst) = instances.as_ref().and_then(|map| map.get(&instance_id)) {
+                // While running, the pipeline updates the cached frame itself.
+                if !inst.tasker.as_ref().is_some_and(|t| t.running()) {
+                    if let Some(ctrl) = inst.controller.as_ref().filter(|ctrl| ctrl.connected()) {
+                        let _ = ctrl.post_screencap();
                     }
                 }
             }
+            interval
+        };
+        // A temporarily missing controller waits for the next frame, like a connected one.
+        tokio::time::sleep(tokio::time::Duration::from_millis(interval)).await;
+    }
 
-            // 4. 等待下一帧（此处 Future 状态机仅持有 Arc<...> 和 String，均为 Send）
-            tokio::time::sleep(tokio::time::Duration::from_millis(min_interval_ms)).await;
-        }
+    log::debug!("[screenshot] capture_loop ended: {}", instance_id);
+}
 
-        // 标记循环已结束
-        stream.capture_running.store(false, Ordering::SeqCst);
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands::{maa_core::destroy_instance_impl, types::InstanceRuntime};
+    use std::{future::Future, task::Poll, time::Duration};
 
-        // 竞态处理：若在「判断退出」与「写入 false」之间有新订阅者加入，
-        // 重新检查并在必要时重启循环，防止订阅者存在但无循环运行的窗口期。
-        let still_has_subs = !stream.subscribers.lock().unwrap().is_empty();
-        if still_has_subs
-            && stream
-                .capture_running
-                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-                .is_ok()
-        {
-            tokio::spawn(capture_loop(stream, maa_state, instance_id.clone()));
-        }
+    fn runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap()
+    }
 
-        log::debug!("[screenshot] capture_loop ended: {}", instance_id);
+    fn state_with_instance() -> Arc<MaaState> {
+        let state = Arc::new(MaaState::default());
+        state
+            .instances
+            .lock()
+            .unwrap()
+            .insert("fixture".into(), InstanceRuntime::default());
+        state
+    }
+
+    fn stream(last_active: Instant) -> Arc<InstanceScreenshotStream> {
+        Arc::new(InstanceScreenshotStream {
+            subscribers: Mutex::new(HashMap::from([(
+                "view".into(),
+                ScreenshotSubscriber {
+                    interval_ms: MIN_INTERVAL_MS,
+                    last_active,
+                },
+            )])),
+            capture_running: AtomicBool::new(true),
+        })
+    }
+
+    #[test]
+    fn missing_instance_cannot_leave_a_capture_stream() {
+        let runtime = runtime();
+        let state = Arc::new(MaaState::default());
+        let result = state.screenshot_service.subscribe(
+            state.clone(),
+            "missing".into(),
+            "view".into(),
+            100,
+            runtime.handle().clone(),
+        );
+        assert!(result.is_err());
+        assert!(state.screenshot_service.streams.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn absent_controller_waits_in_the_same_capture_loop() {
+        runtime().block_on(async {
+            let state = state_with_instance();
+            let stream = stream(Instant::now());
+            let capture = capture_loop(stream.clone(), state, "fixture".into());
+            tokio::pin!(capture);
+
+            // The old implementation returned here and spawned a replacement in
+            // a tight loop. A controllerless stream must instead await its timer.
+            std::future::poll_fn(|cx| {
+                assert!(capture.as_mut().poll(cx).is_pending());
+                Poll::Ready(())
+            })
+            .await;
+            assert!(stream.capture_running.load(Ordering::SeqCst));
+        });
+    }
+
+    #[test]
+    fn expired_subscription_releases_the_running_flag() {
+        runtime().block_on(async {
+            let stream = stream(Instant::now() - Duration::from_secs(SUBSCRIBER_TIMEOUT_SECS + 1));
+            tokio::time::timeout(
+                Duration::from_secs(1),
+                capture_loop(stream.clone(), state_with_instance(), "fixture".into()),
+            )
+            .await
+            .expect("expired stream must stop");
+            assert!(stream.subscribers.lock().unwrap().is_empty());
+            assert!(!stream.capture_running.load(Ordering::SeqCst));
+        });
+    }
+
+    #[test]
+    fn recreated_instance_does_not_inherit_the_old_stream() {
+        runtime().block_on(async {
+            let state = state_with_instance();
+            let subscribe = |id: &str| {
+                state
+                    .screenshot_service
+                    .subscribe(
+                        state.clone(),
+                        "fixture".into(),
+                        id.into(),
+                        MIN_INTERVAL_MS,
+                        tokio::runtime::Handle::current(),
+                    )
+                    .unwrap();
+            };
+            subscribe("old-view");
+            let old = state.screenshot_service.streams.lock().unwrap()["fixture"].clone();
+            destroy_instance_impl(&state, "fixture").unwrap();
+            assert!(old.subscribers.lock().unwrap().is_empty());
+            assert!(state.screenshot_service.streams.lock().unwrap().is_empty());
+
+            state
+                .instances
+                .lock()
+                .unwrap()
+                .insert("fixture".into(), InstanceRuntime::default());
+            subscribe("new-view");
+            let new = state.screenshot_service.streams.lock().unwrap()["fixture"].clone();
+            assert!(!Arc::ptr_eq(&old, &new));
+            state.screenshot_service.unsubscribe("fixture", "old-view");
+            assert!(new.subscribers.lock().unwrap().contains_key("new-view"));
+
+            tokio::time::timeout(Duration::from_secs(1), async {
+                while old.capture_running.load(Ordering::SeqCst) {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("retired stream must stop even after its instance ID is reused");
+            assert!(new.capture_running.load(Ordering::SeqCst));
+        });
     }
 }

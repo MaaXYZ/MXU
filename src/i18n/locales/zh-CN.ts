@@ -468,6 +468,7 @@ export default {
 
   // 截图预览
   screenshot: {
+    streamFailed: '截图连续失败，已停止',
     title: '实时截图',
     autoRefresh: '自动刷新',
     noScreenshot: '暂无截图',
