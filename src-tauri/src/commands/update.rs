@@ -201,6 +201,16 @@ fn extract_tar_gz(tar_path: &str, dest_dir: &str) -> Result<(), ExtractError> {
         }
     })?;
 
+    // tar 在结束块处停止；读完 gzip 才会校验尾部的 CRC 和解压长度。
+    std::io::copy(&mut archive.into_inner(), &mut std::io::sink()).map_err(|e| {
+        let message = format!("校验 tar.gz 失败: {}", e);
+        if is_corrupt_data_error(&e) {
+            ExtractError::corrupt(message)
+        } else {
+            ExtractError::other(message)
+        }
+    })?;
+
     info!("extract_tar_gz success");
     Ok(())
 }
@@ -874,6 +884,106 @@ pub fn current_exe_exists() -> bool {
         }
         // 无法获取路径时不阻止重启，交给原有流程处理
         Err(_) => true,
+    }
+}
+
+#[cfg(test)]
+mod gzip_tests {
+    use super::*;
+    use std::io::Write;
+
+    struct Fixture(PathBuf);
+
+    impl Fixture {
+        fn new() -> Self {
+            let root = std::env::temp_dir().join(format!(
+                "mxu-gzip-test-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&root).unwrap();
+            Self(root)
+        }
+
+        fn extract(&self, bytes: &[u8]) -> Result<(), ExtractError> {
+            let package = self.0.join("package.tgz");
+            std::fs::write(&package, bytes).unwrap();
+            extract_zip(
+                package.to_string_lossy().into_owned(),
+                self.0.join("extracted").to_string_lossy().into_owned(),
+            )
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn package() -> Vec<u8> {
+        let mut tar = tar::Builder::new(Vec::new());
+        let mut header = tar::Header::new_gnu();
+        let content = b"resource content";
+        header.set_size(content.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        tar.append_data(&mut header, "resource.txt", &content[..])
+            .unwrap();
+        let mut bytes = tar.into_inner().unwrap();
+        // Real writers can pad tar beyond its end-of-archive blocks.
+        // Ensure unpack stops before the gzip decoder reaches the footer.
+        bytes.resize(bytes.len() + 32 * 1024, 0);
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        gz.write_all(&bytes).unwrap();
+        gz.finish().unwrap()
+    }
+
+    #[test]
+    fn valid_padded_gzip_extracts_resource() {
+        let fixture = Fixture::new();
+        fixture.extract(&package()).unwrap();
+        assert_eq!(
+            std::fs::read(fixture.0.join("extracted/resource.txt")).unwrap(),
+            b"resource content"
+        );
+    }
+
+    #[test]
+    fn corrupted_gzip_footer_rejects_an_otherwise_complete_tar() {
+        // CRC-32 and ISIZE occupy the last eight bytes of a gzip member.
+        for offset in [8, 4] {
+            let fixture = Fixture::new();
+            let mut bytes = package();
+            let index = bytes.len() - offset;
+            bytes[index] ^= 1;
+            let error = fixture.extract(&bytes).unwrap_err();
+            assert!(error.corrupt, "{}", error.message);
+            // Entries can be written before footer validation fails. The command
+            // must still reject the package so the caller cannot apply this tree.
+            assert_eq!(
+                std::fs::read(fixture.0.join("extracted/resource.txt")).unwrap(),
+                b"resource content"
+            );
+        }
+    }
+
+    #[test]
+    fn missing_gzip_footer_is_corrupt() {
+        let fixture = Fixture::new();
+        let mut bytes = package();
+        bytes.truncate(bytes.len() - 8);
+        assert!(fixture.extract(&bytes).unwrap_err().corrupt);
+    }
+
+    #[test]
+    fn extraction_destination_failure_remains_an_io_error() {
+        let fixture = Fixture::new();
+        std::fs::write(fixture.0.join("extracted"), b"existing file").unwrap();
+        assert!(!fixture.extract(&package()).unwrap_err().corrupt);
     }
 }
 
