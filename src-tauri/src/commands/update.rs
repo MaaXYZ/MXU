@@ -62,6 +62,9 @@ pub struct ExtractError {
     message: String,
     /// 是否为更新包本身损坏（截断、校验失败等），损坏的包需要重新下载
     corrupt: bool,
+    /// 可由前端本地化的错误标识；message 保留原始诊断。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    code: Option<&'static str>,
 }
 
 impl ExtractError {
@@ -69,6 +72,7 @@ impl ExtractError {
         Self {
             message,
             corrupt: true,
+            code: None,
         }
     }
 
@@ -76,6 +80,7 @@ impl ExtractError {
         Self {
             message,
             corrupt: false,
+            code: None,
         }
     }
 }
@@ -203,11 +208,11 @@ fn extract_tar_gz(tar_path: &str, dest_dir: &str) -> Result<(), ExtractError> {
 
     // tar 在结束块处停止；读完 gzip 才会校验尾部的 CRC 和解压长度。
     std::io::copy(&mut archive.into_inner(), &mut std::io::sink()).map_err(|e| {
-        let message = format!("校验 tar.gz 失败: {}", e);
-        if is_corrupt_data_error(&e) {
-            ExtractError::corrupt(message)
-        } else {
-            ExtractError::other(message)
+        warn!("gzip footer validation failed: {}", e);
+        ExtractError {
+            message: e.to_string(),
+            corrupt: is_corrupt_data_error(&e),
+            code: Some("gzipValidationFailed"),
         }
     })?;
 
@@ -962,6 +967,9 @@ mod gzip_tests {
             bytes[index] ^= 1;
             let error = fixture.extract(&bytes).unwrap_err();
             assert!(error.corrupt, "{}", error.message);
+            let payload = serde_json::to_value(&error).unwrap();
+            assert_eq!(payload["code"], "gzipValidationFailed");
+            assert!(payload["message"].as_str().is_some_and(|s| !s.is_empty()));
             // Entries can be written before footer validation fails. The command
             // must still reject the package so the caller cannot apply this tree.
             assert_eq!(
@@ -976,14 +984,18 @@ mod gzip_tests {
         let fixture = Fixture::new();
         let mut bytes = package();
         bytes.truncate(bytes.len() - 8);
-        assert!(fixture.extract(&bytes).unwrap_err().corrupt);
+        let error = fixture.extract(&bytes).unwrap_err();
+        assert!(error.corrupt);
+        assert_eq!(error.code, Some("gzipValidationFailed"));
     }
 
     #[test]
     fn extraction_destination_failure_remains_an_io_error() {
         let fixture = Fixture::new();
         std::fs::write(fixture.0.join("extracted"), b"existing file").unwrap();
-        assert!(!fixture.extract(&package()).unwrap_err().corrupt);
+        let error = fixture.extract(&package()).unwrap_err();
+        assert!(!error.corrupt);
+        assert!(serde_json::to_value(error).unwrap().get("code").is_none());
     }
 }
 

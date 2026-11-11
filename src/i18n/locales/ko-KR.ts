@@ -759,6 +759,7 @@ export default {
     installComplete: '설치 완료',
     installFailed: '설치 실패',
     installErrors: {
+      gzipValidationFailed: 'gzip 압축 파일 검증에 실패했습니다',
       packageMissing: '업데이트 패키지를 찾을 수 없습니다. 다시 다운로드해 주세요',
       packageCorrupt: '업데이트 패키지가 손상되었습니다. 다시 다운로드해 주세요 ({{detail}})',
       extractFailed:

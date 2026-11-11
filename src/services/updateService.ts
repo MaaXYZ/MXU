@@ -986,6 +986,7 @@ export function isExecutableInstaller(filePath: string): boolean {
 // Rust 端 extract_zip 失败时返回的错误
 interface ExtractErrorPayload {
   message: string;
+  code?: string;
   /** 更新包本身损坏（截断、校验失败等） */
   corrupt: boolean;
 }
@@ -1021,12 +1022,14 @@ export type UpdateInstallErrorCode =
 export class UpdateInstallError extends Error {
   public readonly code: UpdateInstallErrorCode;
   public readonly detail: string;
+  public readonly detailCode?: 'gzipValidationFailed';
 
-  constructor(code: UpdateInstallErrorCode, detail = '') {
+  constructor(code: UpdateInstallErrorCode, detail = '', detailCode?: 'gzipValidationFailed') {
     super(detail ? `${code}: ${detail}` : code);
     this.name = 'UpdateInstallError';
     this.code = code;
     this.detail = detail;
+    this.detailCode = detailCode;
   }
 }
 
@@ -1125,13 +1128,15 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
       log.error('解压更新包失败:', error);
       await invoke('cleanup_extract_dir', { extractDir }).catch(() => {});
 
+      const detailCode =
+        isExtractError(error) && error.code === 'gzipValidationFailed' ? error.code : undefined;
       if (isExtractError(error) && error.corrupt) {
         // 包已损坏，移走并放弃，避免每次都拿同一个坏包重试
         await moveToOldFolder(zipPath);
         discardPendingPackage();
-        throw new UpdateInstallError('packageCorrupt', error.message);
+        throw new UpdateInstallError('packageCorrupt', error.message, detailCode);
       }
-      throw new UpdateInstallError('extractFailed', getErrorMessage(error));
+      throw new UpdateInstallError('extractFailed', getErrorMessage(error), detailCode);
     }
 
     // 解压成功后再备份配置，避免每次失败的尝试都轮换掉旧备份

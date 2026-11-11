@@ -777,6 +777,7 @@ export default {
     installComplete: 'Installation Complete',
     installFailed: 'Installation Failed',
     installErrors: {
+      gzipValidationFailed: 'Failed to validate the gzip archive',
       packageMissing: 'Update package not found. Please download it again.',
       packageCorrupt: 'The update package is corrupted. Please download it again. ({{detail}})',
       extractFailed:

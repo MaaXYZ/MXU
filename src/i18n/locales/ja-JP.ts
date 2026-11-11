@@ -773,6 +773,7 @@ export default {
     installComplete: 'インストール完了',
     installFailed: 'インストールに失敗しました',
     installErrors: {
+      gzipValidationFailed: 'gzip アーカイブの検証に失敗しました',
       packageMissing: '更新パッケージが見つかりません。再度ダウンロードしてください',
       packageCorrupt: '更新パッケージが破損しています。再度ダウンロードしてください（{{detail}}）',
       extractFailed:
