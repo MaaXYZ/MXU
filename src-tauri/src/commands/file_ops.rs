@@ -178,6 +178,26 @@ fn normalize_archive_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
+/// 按原生路径组件保留层级，避免 Unix 的字面反斜杠与真实子目录重名。
+/// 转义符自身也编码，非 UTF-8 名称按原始编码字节保留，避免有损转换漏图。
+fn encode_image_archive_path(path: &Path) -> Option<String> {
+    let mut components = Vec::new();
+    for component in path.components() {
+        let std::path::Component::Normal(name) = component else {
+            return None;
+        };
+        let encoded = match name.to_str() {
+            Some(name) => name
+                .replace('%', "%25")
+                .replace('\\', "%5C")
+                .replace(':', "%3A"),
+            None => urlencoding::encode_binary(name.as_encoded_bytes()).into_owned(),
+        };
+        components.push(encoded);
+    }
+    (!components.is_empty()).then(|| components.join("/"))
+}
+
 fn collect_files_recursively(dir: &Path, archive_prefix: &str) -> Result<Vec<ExportEntry>, String> {
     if !std::fs::symlink_metadata(dir).is_ok_and(|metadata| metadata.is_dir()) {
         return Ok(Vec::new());
@@ -613,14 +633,9 @@ fn collect_debug_images(dir: &Path, archive_prefix: &str, recursive: bool) -> Ve
             let Ok(relative_path) = path.strip_prefix(dir) else {
                 continue;
             };
-            let relative_name = normalize_archive_path(relative_path);
-            // Unix 文件名可能含反斜杠，规范化后也不能形成 zip 路径穿越。
-            if relative_name
-                .split('/')
-                .any(|component| matches!(component, "" | "." | ".."))
-            {
+            let Some(relative_name) = encode_image_archive_path(relative_path) else {
                 continue;
-            }
+            };
             let modified = entry
                 .metadata()
                 .and_then(|metadata| metadata.modified())
@@ -1228,7 +1243,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn screenshot_export_skips_links_special_files_and_unsafe_archive_paths() {
+    fn screenshot_export_skips_links_and_special_files_and_encodes_unsafe_names() {
         use std::os::unix::fs::symlink;
         use std::os::unix::net::UnixListener;
 
@@ -1252,12 +1267,74 @@ mod tests {
         let _socket = UnixListener::bind(screencap.join("socket.png")).unwrap();
 
         assert_eq!(
-            read_export(&root.export()),
-            vec![("screencap/ok.png".into(), b"ok".to_vec())]
+            read_export(&root.export())
+                .into_iter()
+                .collect::<std::collections::BTreeMap<_, _>>(),
+            std::collections::BTreeMap::from([
+                ("screencap/ok.png".into(), b"ok".to_vec()),
+                (
+                    "screencap/..%5C..%5Cescape.png".into(),
+                    b"unsafe archive path".to_vec(),
+                ),
+            ])
         );
         let linked_root = root.0.join("debug/linked-root");
         symlink(&outside.0, &linked_root).unwrap();
         assert!(collect_debug_images(&linked_root, "screencap", true).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn screenshot_archive_names_preserve_distinct_native_paths_without_collisions() {
+        use std::collections::BTreeMap;
+        use std::os::unix::ffi::OsStringExt;
+
+        let root = TestDir::new();
+        root.write("debug/screencap/a\\b.png", b"literal backslash");
+        root.write("debug/screencap/a/b.png", b"nested image");
+        root.write("debug/screencap/a%5Cb.png", b"literal percent");
+        root.write("debug/screencap/C:frame.png", b"literal colon");
+        let invalid_name = std::ffi::OsString::from_vec(b"bad\xff.png".to_vec());
+        std::fs::write(
+            root.0.join("debug/screencap").join(invalid_name),
+            b"non-UTF-8",
+        )
+        .unwrap();
+
+        let entries = read_export(&root.export());
+        assert_eq!(entries.len(), 5);
+        assert_eq!(
+            entries.into_iter().collect::<BTreeMap<_, _>>(),
+            BTreeMap::from([
+                ("screencap/a%5Cb.png".into(), b"literal backslash".to_vec()),
+                ("screencap/a/b.png".into(), b"nested image".to_vec()),
+                ("screencap/a%255Cb.png".into(), b"literal percent".to_vec()),
+                ("screencap/C%3Aframe.png".into(), b"literal colon".to_vec()),
+                ("screencap/bad%FF.png".into(), b"non-UTF-8".to_vec()),
+            ])
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_screenshot_subdirectory_reports_existing_export_error() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = TestDir::new();
+        root.write("debug/maafw.log", b"log");
+        root.write("debug/screencap/visible.png", b"visible image");
+        root.write("debug/screencap/blocked/hidden.png", b"blocked image");
+        let blocked = root.0.join("debug/screencap/blocked");
+        std::fs::set_permissions(&blocked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let denied = std::fs::read_dir(&blocked).is_err();
+        let result = export_logs_from_dir(&root.0, None, None);
+        std::fs::set_permissions(&blocked, std::fs::Permissions::from_mode(0o700)).unwrap();
+        if denied {
+            // 常规 log/json/dmp 收集先遍历所有调试子目录，这是已有的错误边界。
+            assert!(result.unwrap_err().contains("读取目录失败"));
+        } else {
+            assert!(result.is_ok());
+        }
     }
 
     #[cfg(unix)]
