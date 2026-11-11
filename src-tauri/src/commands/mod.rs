@@ -27,6 +27,7 @@ pub mod log_secrets;
 pub mod maa_agent;
 pub mod maa_core;
 pub mod notification;
+mod pre_action_stops;
 mod run_completion;
 pub mod state;
 pub mod system;
