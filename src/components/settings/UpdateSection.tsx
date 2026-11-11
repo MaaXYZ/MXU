@@ -22,6 +22,7 @@ import {
   checkAndPrepareDownload,
   openMirrorChyanWebsite,
   downloadUpdate,
+  completeUpdateDownload,
   getUpdateSavePath,
   cancelDownload,
   MIRRORCHYAN_ERROR_CODES,
@@ -157,8 +158,7 @@ export function UpdateSection() {
 
         if (result.success) {
           // 使用实际保存路径（可能与请求路径不同，如果从 302 重定向检测到正确文件名）
-          setDownloadSavePath(result.actualSavePath);
-          setDownloadStatus('completed');
+          completeUpdateDownload(info, result.actualSavePath);
         } else {
           setDownloadStatus('failed');
         }

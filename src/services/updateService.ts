@@ -895,6 +895,12 @@ export async function checkAndPrepareDownload(
 
   // 始终使用 Mirror酱 检查更新
   const updateInfo = await checkUpdate({ ...checkOptions, cdk, channel });
+  if (updateInfo) {
+    updateInfo.origin = {
+      resourceId: checkOptions.resourceId,
+      baseVersion: checkOptions.currentVersion,
+    };
+  }
 
   if (!updateInfo || !updateInfo.hasUpdate) {
     return updateInfo;
@@ -1292,6 +1298,7 @@ export interface UpdateCompleteInfo {
  * 待安装的更新信息（下载完成后保存，用于下次启动时自动安装）
  */
 export interface PendingUpdateInfo {
+  origin?: UpdateInfo['origin'];
   versionName: string;
   releaseNote: string;
   channel?: string;
@@ -1361,18 +1368,49 @@ export function savePendingUpdateInfo(info: PendingUpdateInfo): void {
   }
 }
 
+/** 保存下载来源和实际包路径后，再发布可安装状态。 */
+export function completeUpdateDownload(info: UpdateInfo, downloadSavePath: string): void {
+  savePendingUpdateInfo({
+    origin: info.origin,
+    versionName: info.versionName,
+    releaseNote: info.releaseNote,
+    channel: info.channel,
+    downloadSavePath,
+    fileSize: info.fileSize,
+    updateType: info.updateType,
+    downloadSource: info.downloadSource,
+    timestamp: Date.now(),
+  });
+  const state = useAppStore.getState();
+  state.setDownloadSavePath(downloadSavePath);
+  state.setDownloadStatus('completed');
+}
+
 /**
  * 读取待安装更新信息；仍有效的记录由安装流程清除
- * 如果更新包文件丢失，或待安装版本不高于当前安装版本，则自动清除记录
+ * 来源或基线不匹配、更新包丢失、目标版本过期时，清除记录后重新检查更新。
  */
 export async function getPendingUpdateInfo(
   installedVersion: string | undefined,
+  resourceId: string | undefined,
 ): Promise<PendingUpdateInfo | null> {
   try {
     const data = localStorage.getItem(PENDING_UPDATE_STORAGE_KEY);
     if (!data) return null;
 
     const info = JSON.parse(data) as PendingUpdateInfo;
+
+    // 历史记录没有来源时也重新检查，避免猜测旧增量包适用的安装基线。
+    if (
+      !resourceId ||
+      !installedVersion ||
+      info.origin?.resourceId !== resourceId ||
+      info.origin.baseVersion !== installedVersion
+    ) {
+      log.info('待安装更新来源或基线不匹配，清除记录并重新检查更新');
+      localStorage.removeItem(PENDING_UPDATE_STORAGE_KEY);
+      return null;
+    }
 
     // 外部安装器可能已升级程序，旧增量更新不能再覆盖当前安装。
     if (isPendingUpdateObsolete(info.versionName, installedVersion)) {

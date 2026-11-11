@@ -53,6 +53,8 @@ export interface ScheduleExecutionInfo {
 
 // 更新信息类型
 export interface UpdateInfo {
+  /** 检查更新时的项目和基线，用于下次启动校验待安装包。 */
+  origin?: { resourceId: string; baseVersion: string };
   hasUpdate: boolean;
   versionName: string;
   releaseNote: string;

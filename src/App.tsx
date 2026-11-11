@@ -51,7 +51,7 @@ import {
   downloadUpdate,
   getUpdateSavePath,
   consumeUpdateCompleteInfo,
-  savePendingUpdateInfo,
+  completeUpdateDownload,
   getPendingUpdateInfo,
   hasInstallFailedInSession,
   clearPendingUpdateInfo,
@@ -525,21 +525,8 @@ function App() {
 
         if (result.success) {
           // 使用实际保存路径（可能与请求路径不同，如果从 302 重定向检测到正确文件名）
-          setDownloadSavePath(result.actualSavePath);
-          setDownloadStatus('completed');
+          completeUpdateDownload(updateResult, result.actualSavePath);
           log.info('更新下载完成');
-
-          // 保存待安装更新信息，以便下次启动时自动安装
-          savePendingUpdateInfo({
-            versionName: updateResult.versionName,
-            releaseNote: updateResult.releaseNote,
-            channel: updateResult.channel,
-            downloadSavePath: result.actualSavePath,
-            fileSize: updateResult.fileSize,
-            updateType: updateResult.updateType,
-            downloadSource: updateResult.downloadSource,
-            timestamp: Date.now(),
-          });
 
           // 尝试自动安装更新
           tryAutoInstallUpdate();
@@ -1165,12 +1152,16 @@ function App() {
       // 检查是否有待安装的更新（上次下载完成但未安装）
       // 调试版本跳过待安装更新检测
       if (!isDebugVersion(result.interface.version)) {
-        const pendingUpdate = await getPendingUpdateInfo(result.interface.version);
+        const pendingUpdate = await getPendingUpdateInfo(
+          result.interface.version,
+          result.interface.mirrorchyan_rid,
+        );
         if (pendingUpdate) {
           log.info('检测到待安装更新:', pendingUpdate.versionName);
           // 恢复更新状态
           setUpdateInfo({
             hasUpdate: true,
+            origin: pendingUpdate.origin,
             versionName: pendingUpdate.versionName,
             releaseNote: pendingUpdate.releaseNote,
             channel: pendingUpdate.channel,

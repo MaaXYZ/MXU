@@ -15,7 +15,7 @@ import {
   downloadUpdate,
   getUpdateSavePath,
   MIRRORCHYAN_ERROR_CODES,
-  savePendingUpdateInfo,
+  completeUpdateDownload,
 } from '@/services/updateService';
 import { proxySettingsForUpdateDownload } from '@/services/proxyService';
 import { DownloadProgressBar, useOpenUpdateSettings } from './UpdateInfoCard';
@@ -79,19 +79,7 @@ export function UpdatePanel({ onClose, anchorRef }: UpdatePanelProps) {
 
       if (result.success) {
         // 使用实际保存路径（可能与请求路径不同，如果从 302 重定向检测到正确文件名）
-        setDownloadSavePath(result.actualSavePath);
-        setDownloadStatus('completed');
-        // 保存待安装更新信息，以便下次启动时自动安装
-        savePendingUpdateInfo({
-          versionName: updateInfo.versionName,
-          releaseNote: updateInfo.releaseNote,
-          channel: updateInfo.channel,
-          downloadSavePath: result.actualSavePath,
-          fileSize: updateInfo.fileSize,
-          updateType: updateInfo.updateType,
-          downloadSource: updateInfo.downloadSource,
-          timestamp: Date.now(),
-        });
+        completeUpdateDownload(updateInfo, result.actualSavePath);
       } else {
         setDownloadStatus('failed');
       }
