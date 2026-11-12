@@ -5,6 +5,8 @@ import { useAppStore } from '@/stores/appStore';
 import type { BuiltinSkinId } from '@/skins/types';
 import deepseekArt from '@/assets/skins/deepseek.png';
 import deepseekCalm from '@/assets/skins/deepseek-calm.png';
+import deepseekError from '@/assets/skins/deepseek-error.png';
+import deepseekClip from '@/assets/skins/deepseek-eat.mp4';
 import naiwaCalm from '@/assets/skins/naiwa-calm.png';
 import naiwaStill from '@/assets/skins/naiwa-still.webp';
 import naiwaClip from '@/assets/skins/naiwa-laugh.mp4';
@@ -86,11 +88,9 @@ function SkinScene({
   const interactionAllowed = taskState === 'idle' || taskState === 'running';
   const hasInteraction = interacting && interactionAllowed;
   const laughing = skinId === 'naiwa' && (hasInteraction || taskState === 'success');
-  const performing = laughing && !reduced && pageVisible && !videoFailed;
-  const animated =
-    !reduced &&
-    pageVisible &&
-    (hasInteraction || taskState === 'running' || taskState === 'success');
+  const eating =
+    skinId === 'deepseek' && (hasInteraction || taskState === 'running' || taskState === 'success');
+  const performing = (laughing || eating) && !reduced && pageVisible && !videoFailed;
   wantsPlayback.current = performing;
 
   // Instance changes and terminal results retire the old interaction without changing any task.
@@ -152,9 +152,7 @@ function SkinScene({
     }, INTERACTION_MS);
   }
 
-  const message = hasInteraction ? 'interaction' : taskState;
-  const deepseekPose =
-    taskState === 'error' || (!animated && !hasInteraction) ? deepseekCalm : deepseekArt;
+  const deepseekPose = taskState === 'error' ? deepseekError : eating ? deepseekArt : deepseekCalm;
 
   return (
     <section
@@ -164,29 +162,23 @@ function SkinScene({
       data-task-state={taskState}
       data-reduced-motion={reduced}
     >
-      <div
-        className={`builtin-skin__art${skinId === 'naiwa' ? ' builtin-skin__art--naiwa' : ''}`}
-        aria-hidden="true"
-      >
+      <div className={`builtin-skin__art builtin-skin__art--${skinId}`} aria-hidden="true">
         <img
-          className={skinId === 'deepseek' && animated ? 'builtin-skin__munch' : undefined}
           src={skinId === 'deepseek' ? deepseekPose : laughing ? naiwaStill : naiwaCalm}
           alt=""
           draggable={false}
         />
-        {skinId === 'naiwa' && (
-          <video
-            ref={videoRef}
-            src={naiwaClip}
-            poster={naiwaStill}
-            className={performing ? 'builtin-skin__video is-playing' : 'builtin-skin__video'}
-            muted
-            loop
-            playsInline
-            preload="metadata"
-            onError={() => setVideoFailed(true)}
-          />
-        )}
+        <video
+          ref={videoRef}
+          src={skinId === 'naiwa' ? naiwaClip : deepseekClip}
+          poster={skinId === 'naiwa' ? naiwaStill : deepseekPose}
+          className={performing ? 'builtin-skin__video is-playing' : 'builtin-skin__video'}
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          onError={() => setVideoFailed(true)}
+        />
       </div>
       <div className="builtin-skin__copy">
         <div className="builtin-skin__heading">
@@ -197,7 +189,6 @@ function SkinScene({
             {t(`skin.state.${taskState}`)}
           </span>
         </div>
-        <p>{t(`skin.${skinId}.${message}`)}</p>
         {reduced && <small>{t('skin.reducedMotion')}</small>}
       </div>
       <button

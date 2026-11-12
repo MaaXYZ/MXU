@@ -81,13 +81,35 @@ try {
   await page.locator('[data-builtin-skin="deepseek"]').waitFor();
   assert(await page.locator('html').evaluate((element) => element.classList.contains('dark')));
   checks.push('startup restores skin and theme even when the saved configuration has no instances');
+  assert.equal(
+    await page.locator('[data-builtin-skin] p').count(),
+    0,
+    'companions do not invent dialogue',
+  );
+  await page.getByRole('button', { name: '投喂白饭', exact: true }).click();
+  await page.waitForFunction(
+    () => document.querySelector('[data-builtin-skin="deepseek"] video')?.currentTime > 0.2,
+  );
+  assert(
+    await page
+      .locator('[data-builtin-skin="deepseek"] video')
+      .evaluate((element) => element.muted && !element.paused),
+  );
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.waitForFunction(
+    () => document.querySelector('[data-builtin-skin="deepseek"] video').paused,
+  );
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  checks.push(
+    'community rice-eating footage plays silently and respects reduced motion without character dialogue',
+  );
   await page.getByTitle('设置', { exact: true }).click();
   await page.getByRole('button', { name: '奶蛙', exact: true }).click();
   assert.equal(
     await page.getByRole('button', { name: '奶蛙', exact: true }).getAttribute('aria-pressed'),
     'true',
   );
-  await page.getByRole('button', { name: '戳一下，笑一个', exact: true }).click();
+  await page.getByRole('button', { name: '播放大笑', exact: true }).click();
   const video = page.locator('[data-builtin-skin] video');
   await page.waitForFunction(
     () => document.querySelector('[data-builtin-skin] video')?.currentTime > 0.2,

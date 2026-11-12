@@ -61,7 +61,7 @@ function flattenStrings(value: Record<string, unknown>, prefix = ''): Record<str
   );
 }
 
-test('skin choices, accessible labels and every companion state have translations in all five languages', () => {
+test('skin controls and factual task labels are translated without invented character dialogue in all five languages', () => {
   const resources = { enUS, zhCN, zhTW, jaJP, koKR };
   const expected = flattenStrings(enUS.skin);
   const settingKeys = Object.keys(enUS.settings)
@@ -70,6 +70,8 @@ test('skin choices, accessible labels and every companion state have translation
   for (const [language, translation] of Object.entries(resources)) {
     const messages = flattenStrings(translation.skin);
     assert.deepEqual(Object.keys(messages).sort(), Object.keys(expected).sort(), language);
+    assert.equal(Object.hasOwn(translation.skin, 'deepseek'), false, language);
+    assert.equal(Object.hasOwn(translation.skin, 'naiwa'), false, language);
     const settings = Object.fromEntries(
       Object.entries(translation.settings).filter(([key]) => key.startsWith('skin')),
     );
@@ -77,11 +79,6 @@ test('skin choices, accessible labels and every companion state have translation
     flattenStrings(settings);
     for (const state of ['idle', 'running', 'success', 'error']) {
       assert.ok(messages[`state.${state}`], `${language} needs an accessible ${state} label`);
-      for (const character of ['deepseek', 'naiwa'])
-        assert.ok(
-          messages[`${character}.${state}`],
-          `${language} needs ${character} ${state} text`,
-        );
     }
     for (const key of ['feed', 'poke', 'regionLabel', 'reducedMotion'])
       assert.ok(messages[key], `${language} needs ${key}`);

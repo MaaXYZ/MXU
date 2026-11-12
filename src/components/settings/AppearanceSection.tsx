@@ -19,6 +19,7 @@ import { isTauri } from '@/utils/windowUtils';
 import { BuiltinSkinCompanion } from '@/components/skins/BuiltinSkinCompanion';
 import deepseekThumbnail from '@/assets/skins/deepseek.png';
 import naiwaThumbnail from '@/assets/skins/naiwa-calm.png';
+import deepseekLicense from '@/assets/skins/LICENSE.deepseek.txt?raw';
 
 interface AppearanceSectionProps {
   onOpenCreateAccentModal: () => void;
@@ -181,7 +182,10 @@ export function AppearanceSection({
                   <img
                     src={id === 'deepseek' ? deepseekThumbnail : naiwaThumbnail}
                     alt=""
-                    className="pointer-events-none h-full max-w-full object-contain"
+                    className={clsx(
+                      'pointer-events-none h-full max-w-full',
+                      id === 'deepseek' ? 'w-20 object-cover' : 'object-contain',
+                    )}
                   />
                 )}
               </span>
@@ -197,6 +201,14 @@ export function AppearanceSection({
             </button>
           ))}
         </div>
+        {skinId === 'deepseek' && (
+          <details className="text-xs text-text-secondary">
+            <summary className="cursor-pointer">{t('settings.skinAssetLicense')}</summary>
+            <pre className="mt-2 whitespace-pre-wrap break-all rounded-lg bg-bg-tertiary p-3 font-sans">
+              {deepseekLicense}
+            </pre>
+          </details>
+        )}
         <div className="border-t border-border pt-3">
           <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary">
             <input

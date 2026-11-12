@@ -27,6 +27,9 @@
   position: relative;
   flex: 0 0 auto;
   pointer-events: none;
+  background: #fff;
+  border-radius: 10px;
+  overflow: hidden;
 }
 .builtin-skin__art--naiwa {
   background: #fff;
@@ -39,6 +42,10 @@
   height: 100%;
   display: block;
   object-fit: contain;
+}
+.builtin-skin__art--deepseek img,
+.builtin-skin__art--deepseek video {
+  object-fit: cover;
 }
 .builtin-skin__art video {
   position: absolute;
@@ -64,12 +71,6 @@
 .builtin-skin__heading span {
   color: var(--color-text-secondary);
   font-size: 12px;
-}
-.builtin-skin__copy p {
-  margin: 6px 0 0;
-  font-size: 12px;
-  line-height: 1.6;
-  overflow-wrap: anywhere;
 }
 .builtin-skin__copy small {
   display: block;
@@ -98,18 +99,6 @@
 .builtin-skin__interact:disabled {
   opacity: 0.55;
   cursor: default;
-}
-.builtin-skin__munch {
-  animation: builtin-skin-munch 0.9s ease-in-out infinite;
-}
-@keyframes builtin-skin-munch {
-  0%,
-  100% {
-    transform: rotate(-1deg) translateY(0);
-  }
-  50% {
-    transform: rotate(1deg) translateY(-3px);
-  }
 }
 .builtin-skin[data-reduced-motion='true'] * {
   animation: none;

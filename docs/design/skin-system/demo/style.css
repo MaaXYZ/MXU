@@ -2998,17 +2998,38 @@ footer > span:last-child {
   height: 100%;
   object-fit: contain;
 }
-.meme-portrait .deepseek-actor .meme-calm-art {
+.meme-portrait .deepseek-actor img,
+.meme-portrait .deepseek-actor video {
+  object-fit: cover;
+}
+.meme-portrait .deepseek-actor {
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.meme-portrait .deepseek-actor .meme-calm-art,
+.meme-portrait .deepseek-actor .meme-error-art,
+.meme-portrait .deepseek-actor video {
   display: none;
 }
-.stage:is([data-run-state='paused'], [data-run-state='error'], [data-run-state='cancelled'])
+.stage:is([data-run-state='paused'], [data-run-state='cancelled'])
   .deepseek-actor
   .meme-active-art {
   display: none;
 }
-.stage:is([data-run-state='paused'], [data-run-state='error'], [data-run-state='cancelled'])
-  .deepseek-actor
-  .meme-calm-art {
+.stage:is([data-run-state='paused'], [data-run-state='cancelled']) .deepseek-actor .meme-calm-art {
+  display: block;
+}
+.stage[data-run-state='error'] .deepseek-actor .meme-active-art {
+  display: none;
+}
+.stage[data-run-state='error'] .deepseek-actor .meme-error-art {
+  display: block;
+}
+.deepseek-performing .deepseek-actor .meme-active-art {
+  display: none;
+}
+.deepseek-performing .meme-portrait .deepseek-actor video {
   display: block;
 }
 .naiwa-actor video,
@@ -3082,16 +3103,10 @@ footer > span:last-child {
   font-size: 11px;
   font-weight: 600;
 }
-.meme-copy p {
-  margin: 10px 0;
-  font-size: 13px;
-  line-height: 1.7;
-  min-height: 44px;
-  text-wrap: balance;
-}
 .meme-meter {
   width: 90%;
   text-align: center;
+  margin-top: 12px;
 }
 .meme-meter-track {
   height: 6px;
@@ -3102,12 +3117,9 @@ footer > span:last-child {
 #rice-fill {
   height: 100%;
   background: var(--app-accent);
-  transform: scaleX(var(--rice-left, 1));
+  transform: scaleX(var(--task-progress, 0));
   transform-origin: left;
   transition: transform 0.3s;
-}
-.theme-naiwa #rice-fill {
-  transform: scaleX(calc(1 - var(--rice-left, 1)));
 }
 #meme-progress-text {
   display: block;
@@ -3115,33 +3127,6 @@ footer > span:last-child {
   color: var(--app-sub);
   margin-top: 8px;
   line-height: 1.6;
-}
-.laugh-caption {
-  position: absolute;
-  top: 2%;
-  left: 0;
-  right: 0;
-  z-index: 6;
-  color: #56681c;
-  font-size: 23px;
-  font-weight: 850;
-  letter-spacing: 8px;
-  text-align: center;
-  transform: rotate(-10deg);
-  display: none;
-}
-.theme-naiwa:is(.laughing, .complete) .laugh-caption {
-  display: block;
-}
-.laugh-caption span {
-  display: inline-block;
-  transform: translateY(7px);
-}
-.theme-deepseek:is(.feeding, .running, .complete) .deepseek-actor {
-  animation: rice-munch 0.8s ease-in-out infinite;
-}
-.theme-deepseek.complete .deepseek-actor {
-  animation-duration: 1.6s;
 }
 .meme-downloads {
   flex-basis: 100%;
@@ -3152,18 +3137,6 @@ footer > span:last-child {
   margin-left: 12px;
   text-decoration: underline;
   text-underline-offset: 3px;
-}
-@keyframes rice-munch {
-  0%,
-  100% {
-    transform: translateY(0) rotate(-1deg);
-  }
-  50% {
-    transform: translateY(calc(-4px * var(--meme-intensity, 1))) rotate(1deg);
-  }
-}
-.stage.reduce-motion .deepseek-actor {
-  animation: none;
 }
 @media (max-width: 1190px) and (min-width: 981px) {
   .stage:is(.theme-deepseek, .theme-naiwa) .app-wrap {
@@ -3225,10 +3198,6 @@ footer > span:last-child {
   .meme-copy {
     grid-column: 2;
   }
-  .meme-copy p {
-    font-size: 12px;
-    min-height: 0;
-  }
   .meme-state {
     font-size: 10px;
   }
@@ -3238,10 +3207,6 @@ footer > span:last-child {
   }
   #meme-progress-text {
     font-size: 9px;
-  }
-  .laugh-caption {
-    font-size: 16px;
-    letter-spacing: 4px;
   }
   .meme-confetti.c1 {
     font-size: 18px;
