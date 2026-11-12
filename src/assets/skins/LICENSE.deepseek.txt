@@ -22,7 +22,7 @@ DeepSeek 女仆鲸鱼娘设计：ZipZipPipe
   解码 VP9 alpha、合成白底、移除音轨并转为 H.264，保留约 10.04 秒原动作。
 - deepseek.png：从同一吃白饭视频的 4 秒处导出透明 PNG 静态帧。
 - deepseek-calm.png：从同一提交 dsh-pet/assets/webm/待机呼吸休闲.webm
-  的 0 秒处导出透明 PNG 静态帧。
+  的 1 秒处导出透明 PNG 静态帧。
 - deepseek-error.png：从同一提交 dsh-pet/assets/webm/工作状态-垂头叹气冒汗.webm
   的 4 秒处导出透明 PNG 静态帧。
 

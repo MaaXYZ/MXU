@@ -55,7 +55,7 @@
 | --- | --- | --- |
 | `deepseek-eat.mp4` | [吃白饭.webm](https://github.com/PC2005-cloud/dsh-pet/blob/33938a355f422525886c3facd883d7179c58ebf4/dsh-pet/assets/webm/%E5%90%83%E7%99%BD%E9%A5%AD.webm) | libvpx 解码 VP9 alpha、合成白底、移除音轨并转为 H.264，保留约 10.04 秒原动作 |
 | `deepseek.png` | 同上 | 4 秒处抽帧为透明 PNG |
-| `deepseek-calm.png` | [待机呼吸休闲.webm](https://github.com/PC2005-cloud/dsh-pet/blob/33938a355f422525886c3facd883d7179c58ebf4/dsh-pet/assets/webm/%E5%BE%85%E6%9C%BA%E5%91%BC%E5%90%B8%E4%BC%91%E9%97%B2.webm) | 0 秒处抽帧为透明 PNG |
+| `deepseek-calm.png` | [待机呼吸休闲.webm](https://github.com/PC2005-cloud/dsh-pet/blob/33938a355f422525886c3facd883d7179c58ebf4/dsh-pet/assets/webm/%E5%BE%85%E6%9C%BA%E5%91%BC%E5%90%B8%E4%BC%91%E9%97%B2.webm) | 1 秒处抽帧为透明 PNG |
 | `deepseek-error.png` | [工作状态-垂头叹气冒汗.webm](https://github.com/PC2005-cloud/dsh-pet/blob/33938a355f422525886c3facd883d7179c58ebf4/dsh-pet/assets/webm/%E5%B7%A5%E4%BD%9C%E7%8A%B6%E6%80%81-%E5%9E%82%E5%A4%B4%E5%8F%B9%E6%B0%94%E5%86%92%E6%B1%97.webm) | 4 秒处抽帧为透明 PNG |
 
 动画素材署名 **PC2005-cloud**；原型「溟月」署名 **上善无形**；DeepSeek 女仆鲸鱼娘设计署名 **ZipZipPipe**。来源 [README 的许可说明](https://github.com/PC2005-cloud/dsh-pet/blob/33938a355f422525886c3facd883d7179c58ebf4/README.md#许可)将代码 MIT 与素材授权区分，素材按角色的 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh-hans) 保留署名、非商业与相同方式共享条件；形象许可可核对 [ZipZipPipe 的原声明](https://www.bilibili.com/opus/1247156596114456581)。这些媒体不适用代码许可证。随附 [来源与处理说明](../../../src/assets/skins/README.md) 及 [许可摘要](../../../src/assets/skins/LICENSE.deepseek.txt)保留上述记录。
