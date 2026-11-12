@@ -48,10 +48,24 @@
       <section id="playground" class="playground" aria-label="交互皮肤实验场">
         <div class="section-heading">
           <h2><span>01 /</span> 先玩一下</h2>
-          <p>同一组功能，六种性格。以下均为概念模拟。</p>
+          <p>同一组功能，八种性格。新朋友：大肥鱼和奶蛙。</p>
           <button id="reset" class="text-button">↻ 重置实验</button>
         </div>
         <div class="skin-tabs" role="group" aria-label="选择皮肤">
+          <button id="deepseek" data-skin="deepseek" aria-pressed="false">
+            <span class="skin-symbol ocean">◒</span
+            ><span
+              ><b>蓝色大肥鱼 <em>NEW</em></b
+              ><small>吃白饭 × 认真干活</small></span
+            ><span class="tab-index">07</span>
+          </button>
+          <button id="naiwa" data-skin="naiwa" aria-pressed="false">
+            <span class="skin-symbol butter">◉</span
+            ><span
+              ><b>奶蛙 <em>NEW</em></b
+              ><small>捧腹笑 × 抽象陪伴</small></span
+            ><span class="tab-index">08</span>
+          </button>
           <button data-skin="mascot" aria-pressed="true">
             <span class="skin-symbol mint">◕</span
             ><span><b>捣蛋团子</b><small>角色 × 布局</small></span
@@ -219,6 +233,42 @@
                   aria-atomic="true"
                 ></p>
               </section>
+              <aside class="meme-companion" aria-label="皮肤角色反馈">
+                <div class="meme-badge"><span class="meme-spark">✳</span> OFF DUTY? NEVER.</div>
+                <div class="meme-portrait" aria-hidden="true">
+                  <div class="meme-orbit"></div>
+                  <span class="meme-confetti c1">✦</span><span class="meme-confetti c2">✦</span>
+                  <span class="laugh-caption">哈<span>哈</span>哈<span>哈</span></span>
+                  <div class="actor deepseek-actor">
+                    <img class="meme-active-art" src="assets/deepseek.png" alt="" />
+                    <img class="meme-calm-art" src="assets/deepseek-calm.png" alt="" />
+                  </div>
+                  <div class="actor naiwa-actor">
+                    <video
+                      id="naiwa-motion"
+                      muted
+                      loop
+                      playsinline
+                      preload="metadata"
+                      poster="assets/naiwa-still.webp"
+                      aria-hidden="true"
+                    >
+                      <source src="assets/naiwa-laugh.mp4" type="video/mp4" />
+                    </video>
+                    <img class="meme-laugh-still" src="assets/naiwa-still.webp" alt="" />
+                    <img class="meme-calm-art" src="assets/naiwa-calm.png" alt="" />
+                  </div>
+                  <span class="meme-alert">!</span>
+                </div>
+                <div class="meme-copy">
+                  <span id="meme-state" class="meme-state">端碗待机</span>
+                  <p id="meme-dialogue" aria-live="off">先吃一口，再认真干活。</p>
+                </div>
+                <div class="meme-meter" aria-hidden="true">
+                  <div class="meme-meter-track"><div id="rice-fill"></div></div>
+                  <span id="meme-progress-text">白饭还剩 100%</span>
+                </div>
+              </aside>
               <div class="actor mascot-actor" aria-hidden="true">
                 <div class="speech-bubble" id="speech-bubble">给我腾个位置嘛！</div>
                 <img src="assets/mascot.svg" alt="" />
@@ -303,6 +353,12 @@
           </div>
           <p id="import-result" role="status">
             此处仅验证演示预设；完整 .mxuskin 包的安装与隔离见协议。
+          </p>
+          <p class="meme-downloads">
+            新朋友的预设：
+            <a href="examples/deepseek.demo.json" download>大肥鱼 ↓</a>
+            <a href="examples/naiwa.demo.json" download>奶蛙 ↓</a>
+            <a href="../meme-skins.md">形象与玩法说明 ↗</a>
           </p>
         </div>
       </section>

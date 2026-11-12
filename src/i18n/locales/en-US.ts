@@ -56,6 +56,33 @@ export default {
   },
 
   // Settings
+  skin: {
+    regionLabel: 'Skin companion',
+    state: {
+      idle: 'Idle',
+      running: 'Running',
+      success: 'Completed',
+      error: 'Failed',
+    },
+    deepseek: {
+      idle: 'This whale is ready, and so is the rice.',
+      running: 'Let me think deeply… after a bite of rice.',
+      success: 'Belly full, tasks done!',
+      error: 'Rice can wait. Let’s see what went wrong.',
+      interaction: 'This rice is delicious! One more bite.',
+    },
+    naiwa: {
+      idle: 'I’m not laughing. My belly just wobbles.',
+      running: 'Hold it in. Laugh when the tasks are done.',
+      success: 'All done! Hahahahaha!',
+      error: 'No more laughing. Let’s see what went wrong.',
+      interaction: 'Hahahaha… my belly hurts from laughing!',
+    },
+    feed: 'Feed a bite of rice',
+    poke: 'Poke for a laugh',
+    reducedMotion: 'Motion reduced',
+  },
+
   settings: {
     title: 'Settings',
     appearance: 'Appearance',
@@ -76,6 +103,15 @@ export default {
     themeDark: 'Dark',
     accentColor: 'Accent Color',
     themeSystem: 'System',
+    skin: 'Built-in Skins',
+    skinHint: 'Choose a companion to keep you company during tasks. Select Default to hide it.',
+    skinDefault: 'Default',
+    skinDeepseek: 'Blue Fat Fish',
+    skinNaiwa: 'Naiwa',
+    skinReducedMotion: 'Reduce skin motion',
+    skinReducedMotionHint:
+      'Reduce continuous animation. Your system’s reduced motion preference also applies.',
+    skinPreview: 'Skin preview',
     showOptionPreview: 'Show Option Preview',
     showOptionPreviewHint: 'Display quick preview of options in the task list',
     openLogDir: 'Open Log Directory',

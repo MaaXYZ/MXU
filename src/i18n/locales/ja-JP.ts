@@ -51,6 +51,33 @@ export default {
   },
 
   // 設定
+  skin: {
+    regionLabel: 'スキンの仲間',
+    state: {
+      idle: '待機中',
+      running: '実行中',
+      success: '完了',
+      error: '実行失敗',
+    },
+    deepseek: {
+      idle: 'クジラも白ごはんも、準備できたよ。',
+      running: 'じっくり考えよう……まずはごはんをひと口。',
+      success: 'おなかいっぱい、タスクも完了！',
+      error: 'ごはんは後で。どこで問題が起きたか見てみよう。',
+      interaction: '白ごはん、おいしい！もうひと口。',
+    },
+    naiwa: {
+      idle: '笑ってないよ。おなかが揺れてるだけ。',
+      running: '今は我慢。タスクが終わったら笑おう。',
+      success: '終わった！あはははは！',
+      error: '笑うのはやめて、何が起きたか見てみよう。',
+      interaction: 'あははは……笑いすぎておなかが痛い！',
+    },
+    feed: '白ごはんをひと口あげる',
+    poke: 'つついて笑わせる',
+    reducedMotion: '動きを減らしています',
+  },
+
   settings: {
     title: '設定',
     appearance: '外観',
@@ -71,6 +98,14 @@ export default {
     themeDark: 'ダーク',
     accentColor: 'アクセントカラー',
     themeSystem: 'システムに従う',
+    skin: '内蔵スキン',
+    skinHint: 'タスクのお供を選べます。「デフォルト」を選ぶと非表示になります。',
+    skinDefault: 'デフォルト',
+    skinDeepseek: '青い太っちょクジラ',
+    skinNaiwa: 'ナイワ',
+    skinReducedMotion: 'スキンの動きを減らす',
+    skinReducedMotionHint: '連続する動きを減らします。システムの視覚効果を減らす設定にも従います。',
+    skinPreview: 'スキンのプレビュー',
     showOptionPreview: 'オプションプレビューを表示',
     showOptionPreviewHint: 'タスクリストにオプションのクイックプレビューを表示します',
     openLogDir: 'ログフォルダを開く',

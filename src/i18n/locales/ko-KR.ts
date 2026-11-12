@@ -51,6 +51,33 @@ export default {
   },
 
   // 설정
+  skin: {
+    regionLabel: '스킨 친구',
+    state: {
+      idle: '대기 중',
+      running: '실행 중',
+      success: '완료',
+      error: '실행 실패',
+    },
+    deepseek: {
+      idle: '고래도 준비됐고, 흰밥도 준비됐어요.',
+      running: '깊이 생각해 볼게요… 일단 밥 한 입부터.',
+      success: '배도 부르고, 작업도 끝났어요!',
+      error: '밥은 잠깐 내려놓고, 어디가 잘못됐는지 볼게요.',
+      interaction: '흰밥이 정말 맛있어요! 한 입 더.',
+    },
+    naiwa: {
+      idle: '웃는 게 아니에요. 배가 조금 떨릴 뿐이에요.',
+      running: '일단 참아요. 작업이 끝나면 웃어요.',
+      success: '끝났어요! 하하하하하!',
+      error: '이제 안 웃을게요. 어디가 잘못됐는지 봐요.',
+      interaction: '하하하하… 너무 웃어서 배가 아파요!',
+    },
+    feed: '흰밥 한 입 주기',
+    poke: '콕 찔러서 웃기기',
+    reducedMotion: '움직임을 줄였습니다',
+  },
+
   settings: {
     title: '설정',
     appearance: '외관',
@@ -71,6 +98,14 @@ export default {
     themeDark: '다크',
     accentColor: '강조 색상',
     themeSystem: '시스템 설정',
+    skin: '기본 제공 스킨',
+    skinHint: '작업을 함께할 친구를 골라 보세요. 기본값을 선택하면 친구가 표시되지 않습니다.',
+    skinDefault: '기본값',
+    skinDeepseek: '파란 뚱보 고래',
+    skinNaiwa: '나이와',
+    skinReducedMotion: '스킨 움직임 줄이기',
+    skinReducedMotionHint: '반복되는 움직임을 줄입니다. 시스템의 동작 줄이기 설정도 적용됩니다.',
+    skinPreview: '스킨 미리보기',
     showOptionPreview: '옵션 미리보기 표시',
     showOptionPreviewHint: '작업 목록에 옵션의 빠른 미리보기를 표시합니다',
     openLogDir: '로그 폴더 열기',

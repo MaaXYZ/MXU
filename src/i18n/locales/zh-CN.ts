@@ -50,6 +50,33 @@ export default {
     close: '关闭',
   },
 
+  skin: {
+    regionLabel: '皮肤伙伴',
+    state: {
+      idle: '待机中',
+      running: '执行中',
+      success: '已完成',
+      error: '执行失败',
+    },
+    deepseek: {
+      idle: '本鲸准备好了，白饭也准备好了。',
+      running: '让我深度思考一下……先扒口饭。',
+      success: '吃饱了，任务也办完了！',
+      error: '饭先放下，看看哪里出问题。',
+      interaction: '白饭真香！再来一口。',
+    },
+    naiwa: {
+      idle: '我没笑，我只是肚子有点抖。',
+      running: '先憋住，等任务完成再笑。',
+      success: '完成啦！哈哈哈哈哈哈！',
+      error: '不笑了，先看看哪里出问题。',
+      interaction: '哈哈哈哈……肚子要笑疼了！',
+    },
+    feed: '投喂一口白饭',
+    poke: '戳一下，笑一个',
+    reducedMotion: '已减少动态效果',
+  },
+
   // 设置
   settings: {
     title: '设置',
@@ -70,6 +97,14 @@ export default {
     themeLight: '浅色',
     themeDark: '深色',
     themeSystem: '系统',
+    skin: '内置皮肤',
+    skinHint: '让伙伴陪你运行任务。选择默认可隐藏伙伴。',
+    skinDefault: '默认',
+    skinDeepseek: '蓝色大肥鱼',
+    skinNaiwa: '奶蛙',
+    skinReducedMotion: '减少皮肤动效',
+    skinReducedMotionHint: '减少连续动作，同时遵循系统的减少动态效果设置。',
+    skinPreview: '皮肤预览',
     accentColor: '强调色',
     showOptionPreview: '显示选项预览',
     showOptionPreviewHint: '在任务列表中显示选项的快捷预览信息',

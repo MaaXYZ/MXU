@@ -127,7 +127,7 @@ function checkLink(source, href) {
   }
   checkedLinks++;
 }
-for (const relative of ['README.md', 'protocol.md', 'ideas.md']) {
+for (const relative of ['README.md', 'protocol.md', 'ideas.md', 'meme-skins.md', 'review-notes.md']) {
   const source = path.join(root, relative);
   marked.walkTokens(marked.lexer(read(relative)), (token) => {
     if (token.type === 'link' || token.type === 'image') checkLink(source, token.href);
@@ -135,8 +135,8 @@ for (const relative of ['README.md', 'protocol.md', 'ideas.md']) {
 }
 for (const relative of ['demo/index.html', 'demo/protocol.html']) {
   const source = path.join(root, relative);
-  for (const element of htmlDocument(source).querySelectorAll('[href], [src]')) {
-    for (const attribute of ['href', 'src']) {
+  for (const element of htmlDocument(source).querySelectorAll('[href], [src], [poster]')) {
+    for (const attribute of ['href', 'src', 'poster']) {
       if (element.hasAttribute(attribute)) checkLink(source, element.getAttribute(attribute));
     }
   }
@@ -158,6 +158,31 @@ const dom = new JSDOM(read('demo/index.html'), {
 });
 const w = dom.window;
 const d = w.document;
+const visibility = { hidden: false };
+Object.defineProperty(d, 'hidden', { configurable: true, get: () => visibility.hidden });
+const playback = { plays: 0, pauses: 0, mode: 'resolve', pending: [] };
+const pausedMedia = new WeakMap();
+Object.defineProperty(w.HTMLMediaElement.prototype, 'paused', {
+  configurable: true,
+  get() { return pausedMedia.get(this) ?? true; },
+});
+w.HTMLMediaElement.prototype.play = function () {
+  playback.plays++;
+  if (playback.mode === 'throw') throw new Error('Playback is unavailable');
+  if (playback.mode === 'reject') return Promise.reject(new Error('Playback was denied'));
+  if (playback.mode === 'pending') {
+    return new Promise((resolve) => playback.pending.push(() => {
+      pausedMedia.set(this, false);
+      resolve();
+    }));
+  }
+  pausedMedia.set(this, false);
+  return Promise.resolve();
+};
+w.HTMLMediaElement.prototype.pause = function () {
+  playback.pauses++;
+  pausedMedia.set(this, true);
+};
 const $ = (id) => {
   const element = d.getElementById(id);
   assert(element, `missing demo element #${id}`);
@@ -167,6 +192,7 @@ const style = d.createElement('style');
 style.textContent = css;
 d.head.append(style);
 const timers = new Map();
+const timeouts = new Map();
 let timerSequence = 0;
 w.setInterval = (callback, delay) => {
   const id = ++timerSequence;
@@ -174,6 +200,12 @@ w.setInterval = (callback, delay) => {
   return id;
 };
 w.clearInterval = (id) => timers.delete(id);
+w.setTimeout = (callback, delay) => {
+  const id = ++timerSequence;
+  timeouts.set(id, { callback, delay });
+  return id;
+};
+w.clearTimeout = (id) => timeouts.delete(id);
 const media = {
   matches: false,
   listener: null,
@@ -187,6 +219,11 @@ const tick = (count = 1) => {
   for (let i = 0; i < count; i++) {
     for (const timer of [...timers.values()]) timer.callback();
   }
+};
+const expireInteractions = () => {
+  const pending = [...timeouts.values()];
+  timeouts.clear();
+  for (const timer of pending) timer.callback();
 };
 const change = (id, checked) => {
   const element = $(id);
@@ -203,6 +240,7 @@ w.eval(read('demo/app.js'));
 assert.deepEqual(plain(w.MXU_IDEAS), ideas);
 assert.equal(d.querySelectorAll('.idea-card').length, 24);
 assert.equal(timers.size, 0);
+assert.equal(timeouts.size, 0);
 pass('demo mounts without timers and renders the canonical 24 ideas');
 
 const configurations = {
@@ -212,7 +250,11 @@ const configurations = {
   vinyl: [50, 'audition'],
   paper: [5, 'stamped'],
   sonar: [50, 'pinging'],
+  deepseek: [100, 'feeding'],
+  naiwa: [100, 'laughing'],
 };
+assert.equal(d.querySelectorAll('[data-skin]').length, 8);
+const memeScenes = ['deepseek', 'naiwa'];
 const tasks = [...d.querySelectorAll('[data-task]')];
 for (const [name, [intensity, effect]] of Object.entries(configurations)) {
   skin(name);
@@ -224,6 +266,12 @@ for (const [name, [intensity, effect]] of Object.entries(configurations)) {
   assert($('stage').classList.contains(effect));
   assert.equal($('scene-trigger').getAttribute('aria-pressed'), 'true');
   $('scene-trigger').click();
+  if (memeScenes.includes(name)) {
+    assert($('stage').classList.contains(effect));
+    assert.equal(timeouts.size, 1, 'repeated interaction replaces its timeout');
+    assert.equal([...timeouts.values()][0].delay, 2400);
+    expireInteractions();
+  }
   assert(!$('stage').classList.contains(effect));
   const preset = w.MXUSkinDemo.makePreset();
   assert.equal(preset.scene, name);
@@ -241,6 +289,7 @@ for (const [name, [intensity, effect]] of Object.entries(configurations)) {
   $('run-button').click();
   state('paused', '已暂停');
   assert.equal(timers.size, 0);
+  assert.equal(timeouts.size, 0);
   assert.equal($('run-label').textContent, '继续任务');
   tick();
   assert.equal($('progress-value').textContent, '15%');
@@ -289,6 +338,119 @@ for (const [name, [intensity, effect]] of Object.entries(configurations)) {
   );
 }
 
+for (const name of memeScenes) {
+  const effect = configurations[name][1];
+  skin(name);
+  assert.equal($('scene-trigger').dataset.hostHotspot, name);
+  assert.equal($('scene-trigger').getAttribute('aria-controls'), 'meme-state');
+  $('run-button').click();
+  tick(2);
+  const progress = $('progress-value').textContent;
+  const riceLeft = $('rice-fill').style.getPropertyValue('--rice-left');
+  $('scene-trigger').click();
+  const firstTimeout = [...timeouts.keys()][0];
+  const firstCallback = timeouts.get(firstTimeout).callback;
+  assert.equal(timeouts.size, 1);
+  $('scene-trigger').click();
+  assert.equal(timeouts.size, 1);
+  assert(!timeouts.has(firstTimeout), 'repeated activation cancels its previous timeout');
+  firstCallback();
+  assert($('stage').classList.contains(effect), 'a stale timeout cannot clear a newer interaction');
+  assert.equal(timeouts.size, 1);
+  assert.equal($('progress-value').textContent, progress, 'interaction never advances a task');
+  assert.equal($('rice-fill').style.getPropertyValue('--rice-left'), riceLeft);
+  expireInteractions();
+  state('running', '执行中');
+  assert.equal(timers.size, 1, 'interaction expiry preserves the task clock');
+  assert.equal($('progress-value').textContent, progress);
+  assert(!$('stage').classList.contains(effect));
+  assert.equal($('scene-trigger').getAttribute('aria-pressed'), 'false');
+  assert($('meme-state').textContent.trim());
+
+  $('scene-trigger').click();
+  $('run-button').click();
+  state('paused', '已暂停');
+  assert.equal(timeouts.size, 0);
+  assert.equal(timers.size, 0);
+  assert(!$('stage').classList.contains(effect));
+  assert(!$('stage').classList.contains('running'));
+  assert($('scene-trigger').disabled);
+  tick(2);
+  expireInteractions();
+  assert.equal($('progress-value').textContent, progress);
+  assert.match($('meme-state').textContent, /暂停|继续/);
+  $('run-button').click();
+  $('scene-trigger').click();
+  $('stop-button').click();
+  state('cancelled', '已取消');
+  assert.equal(timeouts.size, 0);
+  assert(!$('stage').classList.contains(effect));
+  assert.match($('meme-state').textContent, /取消/);
+  assert($('scene-trigger').disabled);
+  expireInteractions();
+  state('cancelled', '已取消');
+
+  $('run-button').click();
+  tick(2);
+  $('scene-trigger').click();
+  $('fail-button').click();
+  state('error', '执行失败');
+  assert.equal(timeouts.size, 0);
+  assert(!$('stage').classList.contains(effect));
+  assert.match($('meme-state').textContent, /失败/);
+  assert($('scene-trigger').disabled);
+  expireInteractions();
+  state('error', '执行失败');
+
+  $('run-button').click();
+  tick(19);
+  $('scene-trigger').click();
+  tick();
+  state('success', '已完成');
+  assert.equal(timeouts.size, 0);
+  assert.equal(timers.size, 0);
+  assert(!$('stage').classList.contains(effect));
+  assert.match($('meme-state').textContent, /完成/);
+  assert($('scene-trigger').disabled);
+  expireInteractions();
+  state('success', '已完成');
+  pass(`${name}: repeated interaction and expiry preserve task progress; pause and terminal states take priority`);
+
+  $('reset').click();
+  $('scene-trigger').click();
+  assert.equal(timeouts.size, 1);
+  $('reset').click();
+  assert.equal(timeouts.size, 0);
+  assert(!$('stage').classList.contains(effect));
+  $('scene-trigger').click();
+  const previousSceneCallback = [...timeouts.values()][0].callback;
+  skin(name === 'deepseek' ? 'naiwa' : 'deepseek');
+  assert.equal(timeouts.size, 0);
+  assert(!$('stage').classList.contains(effect));
+  assert.equal($('progress-value').textContent, '0%');
+  $('scene-trigger').click();
+  previousSceneCallback();
+  assert.equal(timeouts.size, 1, 'an unloaded scene cannot clear the new scene interaction');
+  assert($('stage').classList.contains(configurations[name === 'deepseek' ? 'naiwa' : 'deepseek'][1]));
+  skin(name);
+  $('run-button').click();
+  tick(2);
+  $('scene-trigger').click();
+  w.dispatchEvent(new w.Event('pagehide'));
+  state('paused', '已暂停');
+  assert.equal(timeouts.size, 0);
+  assert.equal(timers.size, 0);
+  assert(!$('stage').classList.contains(effect));
+  assert.equal($('progress-value').textContent, '10%');
+  $('reset').click();
+  $('scene-trigger').click();
+  w.dispatchEvent(new w.Event('pagehide'));
+  state('idle', '待机中');
+  assert.equal(timeouts.size, 0);
+  assert.equal($('scene-trigger').getAttribute('aria-pressed'), 'false');
+  pass(`${name}: reset, scene change and pagehide cancel interactions without stale task feedback`);
+}
+
 tasks.forEach((input) => {
   input.checked = false;
   input.dispatchEvent(new w.Event('change'));
@@ -325,6 +487,20 @@ media.listener();
 assert($('reduce-motion').disabled);
 assert($('stage').classList.contains('reduce-motion'));
 pass('reset, persistent debug/motion controls and enforced system motion reduction');
+for (const name of memeScenes) {
+  skin(name);
+  assert($('stage').classList.contains('reduce-motion'));
+  assert($('reduce-motion').disabled);
+  $('run-button').click();
+  tick(20);
+  state('success', '已完成');
+  assert.match($('meme-state').textContent, /完成/);
+  assert($('meme-dialogue').textContent.trim());
+  assert.equal($('task-progress').getAttribute('aria-valuenow'), '100');
+  assert.equal($('meme-dialogue').getAttribute('aria-live'), 'off');
+  assert.equal(timeouts.size, 0);
+}
+pass('both meme scenes retain readable task results with system motion reduction enforced');
 
 const valid = {
   format: 'mxu-skin-demo/0.1',
@@ -397,6 +573,17 @@ await importFile('{broken');
 assert($('import-result').textContent.includes('JSON 格式有误'));
 assert.deepEqual(plain(w.MXUSkinDemo.makePreset()), importedPreset);
 pass('import handler applies data as text and preserves the current preset on invalid files');
+for (const name of memeScenes) {
+  const example = JSON.parse(read(`demo/examples/${name}.demo.json`));
+  assert.equal(example.scene, name);
+  assert.doesNotThrow(() => w.MXUSkinDemo.validatePreset(example));
+  await importFile(example);
+  assert.deepEqual(plain(w.MXUSkinDemo.makePreset()), example);
+  assert($('stage').classList.contains(`theme-${name}`));
+  for (const intensity of [name === 'deepseek' ? 59 : 49, name === 'deepseek' ? 141 : 151])
+    assert.throws(() => w.MXUSkinDemo.validatePreset({ ...example, intensity }));
+}
+pass('downloadable meme presets import and export unchanged and enforce scene-specific ranges');
 
 $('run-button').click();
 assert.equal(timers.size, 1);
@@ -409,6 +596,42 @@ tick();
 assert.equal($('progress-value').textContent, '5%');
 $('stop-button').click();
 pass('pagehide clears the interval and leaves a resumable paused task');
+
+skin('deepseek');
+$('run-button').click();
+tick(2);
+$('scene-trigger').click();
+for (const anchor of ['playground', 'ideas', 'architecture']) {
+  w.history.replaceState(null, '', `#${anchor}`);
+  w.dispatchEvent(new w.HashChangeEvent('hashchange'));
+  assert($('stage').classList.contains('theme-deepseek'));
+  state('running', '执行中');
+  assert.equal($('progress-value').textContent, '10%');
+  assert.equal(timers.size, 1);
+  assert.equal(timeouts.size, 1);
+}
+for (const anchor of ['unknown', '__proto__']) {
+  w.history.replaceState(null, '', `#${anchor}`);
+  w.dispatchEvent(new w.HashChangeEvent('hashchange'));
+  assert($('stage').classList.contains('theme-mascot'));
+  state('idle', '待机中');
+  assert.equal(timers.size, 0);
+  assert.equal(timeouts.size, 0);
+}
+pass('page section hashes preserve ongoing tasks; unknown scene hashes fall back and clean up');
+for (const name of memeScenes) {
+  const direct = new JSDOM(read('demo/index.html'), {
+    runScripts: 'outside-only',
+    url: `https://test.invalid/#${name}`,
+  });
+  direct.window.matchMedia = () => ({ matches: false, addEventListener() {} });
+  direct.window.eval(read('demo/ideas.js'));
+  direct.window.eval(read('demo/app.js'));
+  assert(direct.window.document.getElementById('stage').classList.contains(`theme-${name}`));
+  assert.equal(direct.window.MXUSkinDemo.makePreset().scene, name);
+  direct.window.close();
+}
+pass('direct links mount each meme scene without an intermediate scene selection');
 
 for (const name of ['vinyl', 'sonar', 'paper']) {
   skin(name);
@@ -465,14 +688,144 @@ pass(
   'host hotspot remains focusable; actor reservation, progress semantics and status placement are preserved',
 );
 
+// Browser media methods are mocked here; decoding, frame output and geometry need a real browser.
+const flushPlayback = () => new Promise((resolve) => setImmediate(resolve));
+await flushPlayback();
+media.matches = false;
+media.listener();
+change('reduce-motion', false);
+w.dispatchEvent(new w.Event('pageshow'));
+skin('naiwa');
+const video = $('naiwa-motion');
+assert(video.muted && video.defaultMuted && video.loop && video.playsInline);
+assert(video.hasAttribute('muted') && video.hasAttribute('loop') && video.hasAttribute('playsinline'));
+assert(!video.hasAttribute('autoplay'));
+assert.equal(video.querySelector('source').getAttribute('type'), 'video/mp4');
+assert.equal(video.paused, true);
+const initialPlays = playback.plays;
+$('scene-trigger').click();
+assert.equal(playback.plays, initialPlays + 1);
+assert.equal(video.paused, false);
+assert($('stage').classList.contains('naiwa-performing'));
+video.currentTime = 1.25;
+assert.equal(video.playbackRate, 1, 'Naiwa starts at its original playback speed');
+for (const [intensity, rate] of [[50, 0.5], [150, 1.5]]) {
+  $('intensity').value = String(intensity);
+  $('intensity').dispatchEvent(new w.Event('input'));
+  assert.equal(video.playbackRate, rate);
+  assert.equal(playback.plays, initialPlays + 1, 'speed changes never restart a playing clip');
+  assert.equal(video.currentTime, 1.25, 'speed changes preserve the current playback position');
+}
+$('run-button').click();
+tick(3);
+assert.equal(playback.plays, initialPlays + 1, 'task progress never restarts a playing clip');
+assert.equal(video.currentTime, 1.25);
+$('scene-trigger').click();
+assert.equal(playback.plays, initialPlays + 1, 'repeated pokes keep a playing clip continuous');
+expireInteractions();
+assert.equal(video.paused, true);
+assert(!$('stage').classList.contains('naiwa-performing'));
+$('scene-trigger').click();
+const continuingPlays = playback.plays;
+tick(17);
+state('success', '已完成');
+assert.equal(video.paused, false);
+assert.equal(playback.plays, continuingPlays, 'success continues an already playing celebration');
+pass('Naiwa uses a muted inline clip only for interaction or success and never seeks on progress ticks');
+
+video.currentTime = 2.5;
+visibility.hidden = true;
+d.dispatchEvent(new w.Event('visibilitychange'));
+assert.equal(video.paused, true);
+assert.equal(video.currentTime, 2.5, 'background pause preserves the current frame');
+assert(!$('stage').classList.contains('naiwa-performing'));
+visibility.hidden = false;
+d.dispatchEvent(new w.Event('visibilitychange'));
+assert.equal(video.paused, false);
+assert.equal(video.currentTime, 2.5);
+change('reduce-motion', true);
+assert.equal(video.paused, true);
+assert(!$('stage').classList.contains('naiwa-performing'));
+change('reduce-motion', false);
+assert.equal(video.paused, false);
+media.matches = true;
+media.listener();
+assert.equal(video.paused, true);
+assert($('reduce-motion').disabled);
+media.matches = false;
+media.listener();
+change('reduce-motion', false);
+assert.equal(video.paused, false);
+w.dispatchEvent(new w.Event('pagehide'));
+assert.equal(video.paused, true);
+assert.equal(video.currentTime, 0);
+assert(!$('stage').classList.contains('naiwa-performing'));
+await flushPlayback();
+assert.equal(video.paused, true, 'success rendering cannot restart playback after pagehide');
+w.dispatchEvent(new w.Event('pageshow'));
+assert.equal(video.paused, false);
+state('success', '已完成');
+pass('Naiwa media follows visibility and both motion preferences; pagehide cannot restart success playback');
+
+for (const action of ['fail-button', 'stop-button', 'reset']) {
+  $('reset').click();
+  $('run-button').click();
+  $('scene-trigger').click();
+  assert.equal(video.paused, false);
+  video.currentTime = 1.5;
+  $(action).click();
+  assert.equal(video.paused, true);
+  assert.equal(video.currentTime, 0);
+  assert(!$('stage').classList.contains('naiwa-performing'));
+}
+$('scene-trigger').click();
+video.currentTime = 1.5;
+skin('deepseek');
+assert.equal(video.paused, true);
+assert.equal(video.currentTime, 0);
+pass('Naiwa failure, cancellation, reset and scene changes stop and rewind the clip');
+
+skin('naiwa');
+await flushPlayback();
+playback.mode = 'reject';
+$('scene-trigger').click();
+await flushPlayback();
+assert.equal(video.paused, true);
+assert(!$('stage').classList.contains('naiwa-performing'));
+assert($('meme-state').textContent.trim(), 'playback rejection retains readable static feedback');
+$('reset').click();
+playback.mode = 'throw';
+$('scene-trigger').click();
+assert.equal(video.paused, true);
+assert(!$('stage').classList.contains('naiwa-performing'));
+$('reset').click();
+playback.mode = 'pending';
+const beforePending = playback.plays;
+$('scene-trigger').click();
+$('run-button').click();
+tick(3);
+assert.equal(playback.plays, beforePending + 1, 'an unresolved play promise is not retried each tick');
+assert.equal(playback.pending.length, 1);
+w.dispatchEvent(new w.Event('pagehide'));
+playback.pending.shift()();
+await flushPlayback();
+assert.equal(video.paused, true, 'late playback completion is stopped after the page becomes inactive');
+assert(!$('stage').classList.contains('naiwa-performing'));
+assert.equal(timers.size, 0);
+assert.equal(timeouts.size, 0);
+playback.mode = 'resolve';
+w.dispatchEvent(new w.Event('pageshow'));
+pass('Naiwa media failures keep a static fallback; pending and stale playback promises cannot replay an inactive page');
+
 skin('vinyl');
 assert.equal(
   Number.parseFloat(d.querySelector('.record').style.animationDuration),
   60 / Number($('intensity').value),
 );
 assert.equal(timers.size, 0);
+assert.equal(timeouts.size, 0);
 assert.deepEqual(errors, []);
-pass('vinyl rpm matches the declared duration; no pending intervals or jsdom runtime errors');
+pass('vinyl rpm matches the declared duration; no pending timers or jsdom runtime errors');
 
 dom.window.close();
 console.log(

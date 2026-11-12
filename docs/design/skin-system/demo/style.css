@@ -238,7 +238,7 @@ main {
 }
 .skin-tabs {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
   margin-bottom: 12px;
 }
@@ -2870,6 +2870,385 @@ footer > span:last-child {
 }
 .stage .device-panel {
   padding-bottom: 18px;
+}
+/* Meme companions receive their own grid column; decoration never covers host controls. */
+.ocean {
+  background: #c6e8fb;
+  color: #225fbd;
+}
+.butter {
+  background: #f4e78a;
+  color: #667c28;
+}
+.skin-tabs b em {
+  margin-left: 5px;
+  font:
+    8px ui-monospace,
+    monospace;
+  color: #596b32;
+  background: #e4edc4;
+  border-radius: 3px;
+  padding: 2px 4px;
+  vertical-align: middle;
+}
+.meme-companion {
+  display: none;
+}
+.theme-deepseek {
+  --scene-bg: #dcecf5;
+  --app-bg: #fbfdff;
+  --app-text: #233e64;
+  --app-sub: #546d88;
+  --app-line: #dce7f2;
+  --app-accent: #225fbd;
+  --app-soft: #edf5fc;
+}
+.theme-naiwa {
+  --scene-bg: #eeefc8;
+  --app-bg: #fffff8;
+  --app-text: #3c4729;
+  --app-sub: #636c45;
+  --app-line: #e4e8cc;
+  --app-accent: #667c28;
+  --app-soft: #f5f6e5;
+}
+.stage:is(.theme-deepseek, .theme-naiwa) {
+  background-image: radial-gradient(ellipse at 100% 20%, #ffffffa0, transparent 65%);
+  min-height: 650px;
+}
+.stage:is(.theme-deepseek, .theme-naiwa) .app-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 210px;
+  gap: 16px;
+  margin: 30px 28px 35px;
+  align-items: center;
+}
+.stage:is(.theme-deepseek, .theme-naiwa) .app-shell {
+  border-color: #ffffff;
+  box-shadow: 0 18px 45px #263c5e12;
+  min-width: 0;
+}
+.stage:is(.theme-deepseek, .theme-naiwa) .device-panel {
+  display: none;
+}
+.stage:is(.theme-deepseek, .theme-naiwa) .shell-shadow {
+  display: none;
+}
+.stage:is(.theme-deepseek, .theme-naiwa) .meme-companion {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  align-self: stretch;
+  justify-content: center;
+  min-width: 0;
+  padding: 8px 0;
+  position: relative;
+  z-index: 2;
+}
+.theme-naiwa .meme-companion {
+  mix-blend-mode: multiply;
+}
+.meme-badge {
+  color: var(--app-accent);
+  font:
+    9px ui-monospace,
+    monospace;
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.meme-spark {
+  font-size: 20px;
+}
+.meme-portrait {
+  width: 100%;
+  height: 260px;
+  position: relative;
+  isolation: isolate;
+  margin: 13px 0 8px;
+  pointer-events: none;
+}
+.meme-orbit {
+  width: 190px;
+  height: 190px;
+  background: #ffffff65;
+  border: 1px solid #ffffffb0;
+  border-radius: 50%;
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 15px #ffffff20;
+  z-index: -1;
+}
+.meme-portrait .actor {
+  inset: 0 -8px;
+  width: calc(100% + 16px);
+  height: 100%;
+  transform-origin: 50% 90%;
+}
+.theme-deepseek .deepseek-actor,
+.theme-naiwa .naiwa-actor {
+  display: block;
+}
+.meme-portrait img,
+.meme-portrait video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.meme-portrait .deepseek-actor .meme-calm-art {
+  display: none;
+}
+.stage:is([data-run-state='paused'], [data-run-state='error'], [data-run-state='cancelled'])
+  .deepseek-actor
+  .meme-active-art {
+  display: none;
+}
+.stage:is([data-run-state='paused'], [data-run-state='error'], [data-run-state='cancelled'])
+  .deepseek-actor
+  .meme-calm-art {
+  display: block;
+}
+.naiwa-actor video,
+.naiwa-actor .meme-laugh-still {
+  display: none;
+}
+.naiwa-actor video,
+.naiwa-actor .meme-laugh-still {
+  mix-blend-mode: multiply;
+}
+.naiwa-performing .naiwa-actor video {
+  display: block;
+}
+.naiwa-performing .naiwa-actor .meme-calm-art {
+  display: none;
+}
+.theme-naiwa:is(.laughing, .complete):not(.naiwa-performing) .meme-laugh-still {
+  display: block;
+}
+.theme-naiwa:is(.laughing, .complete):not(.naiwa-performing) .meme-calm-art {
+  display: none;
+}
+.meme-confetti {
+  position: absolute;
+  z-index: 6;
+  color: var(--app-accent);
+  font-size: 24px;
+  opacity: 0;
+}
+.meme-confetti.c1 {
+  left: 0;
+  top: 20%;
+}
+.meme-confetti.c2 {
+  right: 0;
+  top: 55%;
+  font-size: 17px;
+}
+.stage:is(.feeding, .complete) .meme-confetti {
+  opacity: 1;
+}
+.meme-alert {
+  display: none;
+  position: absolute;
+  z-index: 6;
+  top: 12px;
+  right: 10px;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  background: #fff3e8;
+  border: 1px solid #bb492b;
+  color: #aa3d23;
+  text-align: center;
+  font: 700 20px/28px system-ui;
+}
+.failed .meme-alert {
+  display: block;
+}
+.meme-copy {
+  text-align: center;
+  width: 100%;
+}
+.meme-state {
+  display: inline-block;
+  padding: 5px 9px;
+  border: 1px solid #ffffff;
+  border-radius: 20px;
+  background: #ffffff80;
+  color: var(--app-text);
+  font-size: 11px;
+  font-weight: 600;
+}
+.meme-copy p {
+  margin: 10px 0;
+  font-size: 13px;
+  line-height: 1.7;
+  min-height: 44px;
+  text-wrap: balance;
+}
+.meme-meter {
+  width: 90%;
+  text-align: center;
+}
+.meme-meter-track {
+  height: 6px;
+  background: #ffffff80;
+  border-radius: 10px;
+  overflow: hidden;
+}
+#rice-fill {
+  height: 100%;
+  background: var(--app-accent);
+  transform: scaleX(var(--rice-left, 1));
+  transform-origin: left;
+  transition: transform 0.3s;
+}
+.theme-naiwa #rice-fill {
+  transform: scaleX(calc(1 - var(--rice-left, 1)));
+}
+#meme-progress-text {
+  display: block;
+  font-size: 10px;
+  color: var(--app-sub);
+  margin-top: 8px;
+  line-height: 1.6;
+}
+.laugh-caption {
+  position: absolute;
+  top: 2%;
+  left: 0;
+  right: 0;
+  z-index: 6;
+  color: #56681c;
+  font-size: 23px;
+  font-weight: 850;
+  letter-spacing: 8px;
+  text-align: center;
+  transform: rotate(-10deg);
+  display: none;
+}
+.theme-naiwa:is(.laughing, .complete) .laugh-caption {
+  display: block;
+}
+.laugh-caption span {
+  display: inline-block;
+  transform: translateY(7px);
+}
+.theme-deepseek:is(.feeding, .running, .complete) .deepseek-actor {
+  animation: rice-munch 0.8s ease-in-out infinite;
+}
+.theme-deepseek.complete .deepseek-actor {
+  animation-duration: 1.6s;
+}
+.meme-downloads {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--muted);
+}
+.meme-downloads a {
+  margin-left: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@keyframes rice-munch {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-1deg);
+  }
+  50% {
+    transform: translateY(calc(-4px * var(--meme-intensity, 1))) rotate(1deg);
+  }
+}
+.stage.reduce-motion .deepseek-actor {
+  animation: none;
+}
+@media (max-width: 1190px) and (min-width: 981px) {
+  .stage:is(.theme-deepseek, .theme-naiwa) .app-wrap {
+    grid-template-columns: minmax(0, 1fr) 165px;
+    gap: 10px;
+    margin: 25px 16px 30px;
+  }
+  .meme-portrait {
+    height: 225px;
+  }
+  .meme-orbit {
+    width: 150px;
+    height: 150px;
+  }
+  .stage:is(.theme-deepseek, .theme-naiwa) .mini-sidebar {
+    display: none;
+  }
+}
+@media (max-width: 700px) {
+  .skin-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .skin-tabs button {
+    min-width: 0;
+  }
+  .skin-tabs small {
+    font-size: 10px;
+  }
+  .stage:is(.theme-deepseek, .theme-naiwa) .app-wrap {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 18px;
+    margin: 20px 15px 30px;
+  }
+  .stage:is(.theme-deepseek, .theme-naiwa) .meme-companion {
+    display: grid;
+    grid-template-columns: 135px minmax(0, 1fr);
+    column-gap: 12px;
+    width: 100%;
+    padding: 0 8px;
+  }
+  .meme-portrait {
+    grid-column: 1;
+    grid-row: 1 / 4;
+    height: 170px;
+    margin: 0;
+  }
+  .meme-orbit {
+    width: 120px;
+    height: 120px;
+    box-shadow: 0 0 0 7px #ffffff20;
+  }
+  .meme-badge {
+    grid-column: 2;
+    font-size: 7px;
+    letter-spacing: 0.5px;
+    justify-content: center;
+  }
+  .meme-copy {
+    grid-column: 2;
+  }
+  .meme-copy p {
+    font-size: 12px;
+    min-height: 0;
+  }
+  .meme-state {
+    font-size: 10px;
+  }
+  .meme-meter {
+    grid-column: 2;
+    width: 100%;
+  }
+  #meme-progress-text {
+    font-size: 9px;
+  }
+  .laugh-caption {
+    font-size: 16px;
+    letter-spacing: 4px;
+  }
+  .meme-confetti.c1 {
+    font-size: 18px;
+  }
+  .stage:is(.theme-deepseek, .theme-naiwa) .scene-bottom {
+    padding: 0 18px 20px;
+  }
 }
 @media (max-width: 600px) {
   .theme-mascot:not(.mischief) .mascot-actor {

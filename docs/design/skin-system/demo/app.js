@@ -107,6 +107,40 @@
       unit: '%',
       device: 'SIGNAL / 03',
     },
+    deepseek: {
+      name: '蓝色大肥鱼吃白饭',
+      code: 'SCENE 007 — RICE POWERED',
+      kicker: 'POWERED BY WHITE RICE.',
+      title: '先吃一口，再深度思考。',
+      heading: '本鲸，靠白饭发电。',
+      description:
+        '蓝发鲸鱼娘端着白饭碗，白饭余量条随任务进度缩短。可以随时投喂一口；这只是角色互动，不增加任务进度，也不改变任务结果。',
+      tags: ['task.progress', 'host hotspot', 'interaction.timeout'],
+      caption: '↳ 一碗白饭陪你跑完任务；暂停放筷，失败先检查。',
+      trigger: ['投喂一口白饭', '再投喂一口白饭'],
+      effect: 'feeding',
+      range: [60, 140, 100],
+      rangeLabel: '干饭动作幅度',
+      unit: '%',
+      device: 'RICE / 推理补给站',
+    },
+    naiwa: {
+      name: '奶蛙',
+      code: 'SCENE 008 — LAUGH TOGETHER',
+      kicker: 'A LITTLE ABSURD. A LOT OF JOY.',
+      title: '任务交给你，笑声交给蛙。',
+      heading: '忍住，完成了再笑。',
+      description:
+        '圆滑黄身、绿眼大肚的奶蛙在旁边憋笑。戳一下播放原梗里的捧腹动作，任务完成再大笑；失败或取消时会立即止笑。本演示不播放音频。',
+      tags: ['task.state', 'host hotspot', 'reduced-motion'],
+      caption: '↳ 捧腹大笑是完成奖励；失败和取消都有独立反馈。',
+      trigger: ['戳一下，笑一个', '再戳一下，接着笑'],
+      effect: 'laughing',
+      range: [50, 150, 100],
+      rangeLabel: '大笑播放速度',
+      unit: '%',
+      device: 'NAIWA / 快乐观察站',
+    },
   };
   const state = {
     skin: 'mascot',
@@ -115,6 +149,8 @@
     phase: 'idle',
     progress: 0,
     timer: null,
+    interactionTimer: null,
+    interactionRevision: 0,
     accent: null,
     presetName: null,
     announcementKey: '',
@@ -126,6 +162,63 @@
     $('event-log').textContent = message;
   };
   const selected = () => taskInputs.flatMap((input, index) => (input.checked ? [index] : []));
+  const isMemeScene = () => ['deepseek', 'naiwa'].includes(state.skin);
+  let pageActive = true;
+  let naiwaPlaybackPending = false;
+  let naiwaPlaybackRevision = 0;
+  function syncNaiwaVideo(reset = false) {
+    const video = $('naiwa-motion');
+    if (!video) return;
+    // Keep the original meme clip silent, including after a browser restores this page.
+    video.muted = true;
+    video.defaultMuted = true;
+    video.loop = true;
+    video.playsInline = true;
+    if (state.skin === 'naiwa') video.playbackRate = state.intensity / 100;
+    const performing =
+      state.skin === 'naiwa' &&
+      (state.effect || state.phase === 'success') &&
+      !media.matches &&
+      !$('reduce-motion').checked &&
+      !document.hidden &&
+      pageActive;
+    if (!performing) {
+      naiwaPlaybackRevision++;
+      naiwaPlaybackPending = false;
+      stage.classList.remove('naiwa-performing');
+      if (!video.paused) video.pause();
+      if (
+        reset ||
+        state.skin !== 'naiwa' ||
+        ['error', 'cancelled'].includes(state.phase) ||
+        (state.phase === 'idle' && !state.effect)
+      ) {
+        if (video.currentTime !== 0) video.currentTime = 0;
+      }
+      return;
+    }
+    stage.classList.add('naiwa-performing');
+    // Progress ticks only update the host UI; they must not restart a playing clip.
+    if (!video.paused || naiwaPlaybackPending) return;
+    naiwaPlaybackPending = true;
+    const revision = ++naiwaPlaybackRevision;
+    try {
+      Promise.resolve(video.play()).then(
+        () => {
+          if (revision === naiwaPlaybackRevision) naiwaPlaybackPending = false;
+          else syncNaiwaVideo();
+        },
+        () => {
+          if (revision !== naiwaPlaybackRevision) return;
+          naiwaPlaybackPending = false;
+          stage.classList.remove('naiwa-performing');
+        },
+      );
+    } catch {
+      naiwaPlaybackPending = false;
+      stage.classList.remove('naiwa-performing');
+    }
+  }
   function snippet() {
     const n = state.intensity;
     const snippets = {
@@ -135,6 +228,10 @@
       vinyl: 'task.runState\n  running → 唱针落下\n  paused  → 唱片停转',
       paper: 'task.runState = success\n  → setSceneState: stamped\n  → 静态模式保留印章',
       sonar: 'task.runState\n  running → 扫描\n  reducedMotion → 静态信号',
+      deepseek:
+        'task.progress → 白饭余量\ninteraction.feeding → 2400 ms\ntimeout 只复位互动，不改任务',
+      naiwa:
+        'task.state = success → 捧腹大笑\nerror / cancelled → 立即止笑\nreducedMotion → 静态姿态',
     };
     $('scene-snippet').textContent = snippets[state.skin];
   }
@@ -145,6 +242,7 @@
     $('intensity-value').textContent = `${state.intensity} ${def.unit}`;
     stage.style.setProperty('--reserve', `${state.intensity}px`);
     stage.style.setProperty('--art-scale', state.intensity / 100);
+    stage.style.setProperty('--meme-intensity', state.intensity / 100);
     stage.style.setProperty(
       '--growth',
       state.skin === 'garden' ? Math.min(1.1, state.intensity / 100 + state.progress / 300) : 0.75,
@@ -155,12 +253,69 @@
     document.querySelector('.paper-art').style.transform =
       state.skin === 'paper' ? `rotate(${state.intensity}deg)` : '';
     snippet();
+    renderMeme();
   }
   function stopClock() {
     if (state.timer !== null) {
       clearInterval(state.timer);
       state.timer = null;
     }
+  }
+  function stopInteraction() {
+    if (state.interactionTimer !== null) {
+      clearTimeout(state.interactionTimer);
+      state.interactionTimer = null;
+    }
+    state.interactionRevision++;
+    stage.classList.remove('feeding', 'laughing');
+    if (isMemeScene()) state.effect = false;
+  }
+  function renderMeme() {
+    syncNaiwaVideo();
+    if (!isMemeScene()) return;
+    const deepseek = state.skin === 'deepseek';
+    const poses = deepseek
+      ? {
+          idle: state.effect ? '认真干饭' : '端碗待机',
+          running: state.effect ? '加餐中 · 任务继续' : '深度思考 · 碳水驱动',
+          paused: '放下筷子，等你继续',
+          success: '吃饱交差 · 任务完成',
+          error: '收碗检查 · 执行失败',
+          cancelled: '抱碗收工 · 本次已取消',
+        }
+      : {
+          idle: state.effect ? '捧腹大笑中' : '努力憋笑中',
+          running: state.effect ? '捧腹中 · 任务继续' : '憋住，完成了再笑',
+          paused: '按住肚子，暂停一下',
+          success: '完成啦！捧腹大笑',
+          error: '立即止笑 · 执行失败',
+          cancelled: '站好收工 · 本次已取消',
+        };
+    const dialogues = deepseek
+      ? {
+          idle: state.effect ? '白饭真香！再来一口。' : '本鲸准备好了，白饭也准备好了。',
+          running: state.effect ? '这叫碳水驱动推理！' : '让我深度思考一下……先扒口饭。',
+          paused: '你暂停，我放筷。等你回来。',
+          success: '吃饱了，任务也办完了！',
+          error: '饭先放下，连接出问题了。',
+          cancelled: '收到，停工。剩下的饭打包带走。',
+        }
+      : {
+          idle: state.effect ? '哈哈哈哈……肚子要笑疼了！' : '我没笑，我只是肚子有点抖。',
+          running: state.effect ? '哈哈……你继续，我就笑一会儿。' : '先憋住，等任务完成再笑。',
+          paused: '好，先忍住。等你继续。',
+          success: '完成啦！哈哈哈哈哈哈！',
+          error: '不笑了。先看看哪里出问题。',
+          cancelled: '收到，今天先不笑了。',
+        };
+    if ($('meme-dialogue')) $('meme-dialogue').textContent = dialogues[state.phase];
+    if ($('meme-state')) $('meme-state').textContent = poses[state.phase];
+    if ($('rice-fill'))
+      $('rice-fill').style.setProperty('--rice-left', String(1 - state.progress / 100));
+    if ($('meme-progress-text'))
+      $('meme-progress-text').textContent = deepseek
+        ? `白饭余量 ${100 - state.progress}% · 随模拟任务进度变化`
+        : `笑意蓄能 ${state.progress}% · 随模拟任务进度变化`;
   }
   function syncMotion() {
     const reduced = media.matches || $('reduce-motion').checked;
@@ -171,8 +326,10 @@
     $('reduce-motion').title = media.matches ? '已遵循系统减少动态效果设置' : '';
     stage.classList.toggle('reduce-motion', reduced);
     $('motion-state').textContent = reduced ? 'MOTION REDUCED' : 'MOTION ON';
+    syncNaiwaVideo();
   }
   function renderTasks() {
+    if (isMemeScene() && ['success', 'error', 'cancelled'].includes(state.phase)) stopInteraction();
     const indexes = selected();
     const completed =
       state.progress === 100 ? indexes.length : Math.floor((state.progress / 100) * indexes.length);
@@ -186,7 +343,8 @@
       paused = state.phase === 'paused';
     const def = sceneDefs[state.skin];
     const taskOwnsPreview =
-      ['vinyl', 'sonar', 'paper'].includes(state.skin) && state.phase !== 'idle';
+      (['vinyl', 'sonar', 'paper'].includes(state.skin) && state.phase !== 'idle') ||
+      (isMemeScene() && ['paused', 'success', 'error', 'cancelled'].includes(state.phase));
     $('scene-trigger').disabled = taskOwnsPreview;
     $('scene-trigger').replaceChildren(
       document.createTextNode(
@@ -289,6 +447,7 @@
               : state.effect
                 ? '嘿嘿，这里归我啦！'
                 : '给我腾个位置嘛！';
+    renderMeme();
     // A phase change is announced once. Progress ticks update the progressbar, not the live region.
     const announcementKey = `${state.phase}:${indexes.length}`;
     if (state.announcementKey !== announcementKey) {
@@ -307,9 +466,10 @@
             }`;
     }
   }
-  function selectSkin(key) {
-    if (!sceneDefs[key]) return;
+  function selectSkin(key, updateHash = true) {
+    if (!Object.hasOwn(sceneDefs, key)) return;
     stopClock();
+    stopInteraction();
     state.skin = key;
     state.effect = false;
     state.phase = 'idle';
@@ -317,6 +477,8 @@
     state.accent = null;
     state.presetName = null;
     const def = sceneDefs[key];
+    if (updateHash && window.location.hash !== `#${key}`)
+      window.history.replaceState(null, '', `#${key}`);
     appWrap.append(mascot);
     stage.className = `stage theme-${key}`;
     stage.style.removeProperty('--app-accent');
@@ -350,6 +512,11 @@
       $('scene-trigger').setAttribute('aria-controls', 'reservation');
       $('hotspot-note').textContent =
         '宿主拥有的角色热点：Tab 聚焦，Enter / 空格激活。只改变场景，不启动任务；此 demo 未验证隔离渲染器的命中保护。';
+    } else if (isMemeScene()) {
+      $('scene-trigger').dataset.hostHotspot = key;
+      $('scene-trigger').setAttribute('aria-controls', 'meme-state');
+      $('hotspot-note').textContent =
+        '宿主按钮支持 Tab、Enter 和空格。互动持续 2.4 秒，重复触发只延长互动；不写任务进度。暂停、失败、取消和完成时由任务状态接管。';
     } else {
       delete $('scene-trigger').dataset.hostHotspot;
       $('scene-trigger').removeAttribute('aria-controls');
@@ -367,6 +534,22 @@
   }
   function toggleEffect() {
     const def = sceneDefs[state.skin];
+    if (isMemeScene()) {
+      if (!['idle', 'running'].includes(state.phase)) return;
+      stopInteraction();
+      state.effect = true;
+      stage.classList.add(def.effect);
+      const revision = state.interactionRevision;
+      state.interactionTimer = setTimeout(() => {
+        if (state.interactionRevision !== revision) return;
+        stopInteraction();
+        renderTasks();
+        log('interaction.timeout → rest · 任务状态和进度保持不变');
+      }, 2400);
+      renderTasks();
+      log(`interaction.${def.effect} → 2400 ms · 仅角色互动，不改变任务`);
+      return;
+    }
     state.effect = !state.effect;
     stage.classList.toggle(def.effect, state.effect);
     if (state.skin === 'mascot') (state.effect ? $('reservation') : appWrap).append(mascot);
@@ -405,6 +588,7 @@
     if (!selected().length) return;
     if (state.phase === 'running') {
       stopClock();
+      stopInteraction();
       state.phase = 'paused';
       renderTasks();
       log('task.status → paused · 动画跟随暂停');
@@ -429,6 +613,8 @@
   });
   taskInputs.forEach((input) =>
     input.addEventListener('change', () => {
+      stopClock();
+      stopInteraction();
       state.progress = 0;
       state.phase = 'idle';
       renderTasks();
@@ -480,7 +666,7 @@
     if (typeof data.name !== 'string' || !data.name.trim() || data.name.length > 40)
       throw new Error('预设名称必须是 1–40 个字符。');
     if (typeof data.scene !== 'string' || !Object.hasOwn(sceneDefs, data.scene))
-      throw new Error('场景必须是六个内置场景之一。');
+      throw new Error('场景必须是八个内置场景之一。');
     if (typeof data.accent !== 'string' || !/^#[0-9a-f]{6}$/i.test(data.accent))
       throw new Error('accent 需要 #RRGGBB 格式的颜色。');
     const [min, max] = sceneDefs[data.scene].range;
@@ -574,14 +760,35 @@
       button.addEventListener('click', () => renderIdeas(button.dataset.filter)),
     );
   window.addEventListener('pagehide', () => {
+    pageActive = false;
     stopClock();
+    stopInteraction();
+    syncNaiwaVideo(true);
     if (state.phase === 'running') {
       state.phase = 'paused';
-      renderTasks();
       log('task.status → paused · 离开页面时自动暂停');
     }
+    renderTasks();
   });
-  selectSkin('mascot');
+  window.addEventListener('pageshow', () => {
+    pageActive = true;
+    syncNaiwaVideo();
+  });
+  document.addEventListener('visibilitychange', () => syncNaiwaVideo());
+  const sectionAnchors = new Set(['playground', 'ideas', 'architecture']);
+  function selectHashScene() {
+    const key = window.location.hash.slice(1);
+    // Page navigation anchors must not reset an ongoing task simulation.
+    if (sectionAnchors.has(key)) return;
+    selectSkin(Object.hasOwn(sceneDefs, key) ? key : 'mascot', false);
+  }
+  window.addEventListener('hashchange', selectHashScene);
+  selectSkin(
+    Object.hasOwn(sceneDefs, window.location.hash.slice(1))
+      ? window.location.hash.slice(1)
+      : 'mascot',
+    false,
+  );
   renderIdeas();
   // An intentionally narrow, read-only entry point for static contract checks.
   window.MXUSkinDemo = { validatePreset, makePreset };
