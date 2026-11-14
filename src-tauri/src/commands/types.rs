@@ -908,6 +908,15 @@ pub struct DownloadProgressEvent {
     pub progress: f64,
 }
 
+/// 连接超时后的自动重试事件数据
+#[derive(Clone, Serialize)]
+pub struct DownloadRetryEvent {
+    pub session_id: u64,
+    pub attempt: u32,
+    pub max_retries: u32,
+    pub timeout_secs: u64,
+}
+
 /// 下载结果
 #[derive(Clone, Serialize)]
 pub struct DownloadResult {

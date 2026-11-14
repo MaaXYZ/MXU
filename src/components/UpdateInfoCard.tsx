@@ -218,6 +218,8 @@ export function DownloadProgressBar({
   onSlowDownloadHintClick,
 }: DownloadProgressBarProps) {
   const { t } = useTranslation();
+  const downloadRetryNotice = useAppStore((state) => state.downloadRetryNotice);
+  const downloadError = useAppStore((state) => state.downloadError);
 
   if (downloadStatus === 'idle') return null;
 
@@ -231,6 +233,20 @@ export function DownloadProgressBar({
         </span>
         {downloadProgress && <span>{downloadProgress.progress.toFixed(1)}%</span>}
       </div>
+
+      {/* 连接超时自动重试提示 */}
+      {downloadStatus === 'downloading' && downloadRetryNotice && (
+        <div className="flex items-center gap-1 text-xs text-warning">
+          <RefreshCw className="w-3 h-3 shrink-0 animate-spin" />
+          <span>
+            {t('mirrorChyan.retrying', {
+              attempt: downloadRetryNotice.attempt,
+              max: downloadRetryNotice.maxRetries,
+              seconds: downloadRetryNotice.timeoutSec,
+            })}
+          </span>
+        </div>
+      )}
 
       {/* 进度条 */}
       <div className={clsx('h-2 rounded-full overflow-hidden', progressBgClass)}>
@@ -285,6 +301,11 @@ export function DownloadProgressBar({
           </button>
         )}
       </div>
+
+      {/* 下载失败原因 */}
+      {downloadStatus === 'failed' && downloadError && (
+        <div className="text-xs text-error break-words">{downloadError}</div>
+      )}
 
       {/* 下载来源标识 */}
       {downloadSource && (

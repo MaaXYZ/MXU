@@ -171,6 +171,10 @@ export async function downloadWithProxy(
   options?: {
     totalSize?: number;
     proxyUrl?: string | null;
+    /** 连接超时时间（秒），超时后中断并重试 */
+    timeoutSec?: number;
+    /** 连接超时后的自动重试次数 */
+    retries?: number;
   },
 ): Promise<DownloadResult> {
   const hasProxy = options?.proxyUrl && options.proxyUrl.trim() !== '';
@@ -190,5 +194,7 @@ export async function downloadWithProxy(
     savePath,
     totalSize: options?.totalSize || null,
     proxyUrl: options?.proxyUrl || null,
+    connectTimeoutSecs: options?.timeoutSec ?? null,
+    retries: options?.retries ?? null,
   });
 }

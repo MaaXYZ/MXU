@@ -12,7 +12,7 @@ use tauri::Emitter;
 use super::types::GitHubRelease;
 use reqwest::header::{ACCEPT, AUTHORIZATION, USER_AGENT};
 
-use super::types::{DownloadProgressEvent, DownloadResult};
+use super::types::{DownloadProgressEvent, DownloadResult, DownloadRetryEvent};
 use super::update::move_to_old_folder;
 use super::utils::build_user_agent;
 
@@ -159,12 +159,22 @@ pub async fn download_file(
     save_path: String,
     total_size: Option<u64>,
     proxy_url: Option<String>,
+    connect_timeout_secs: Option<u64>,
+    retries: Option<u32>,
 ) -> Result<DownloadResult, String> {
     use futures_util::StreamExt;
     use std::io::Write;
     use tokio::time::{sleep, Duration};
 
     info!("download_file: {} -> {}", url, save_path);
+
+    // 连接超时时间与重试次数（前端设置项）：默认 10 秒、不重试，与未提供设置时的旧行为一致
+    let timeout_secs = connect_timeout_secs.unwrap_or(10).clamp(1, 600);
+    let max_retries = retries.unwrap_or(0).min(10);
+    info!(
+        "download_file 超时设置: {} 秒, 重试 {} 次",
+        timeout_secs, max_retries
+    );
 
     // 生成新的 session ID，使旧下载的进度事件无效
     let session_id = CURRENT_DOWNLOAD_SESSION.fetch_add(1, Ordering::SeqCst) + 1;
@@ -184,7 +194,7 @@ pub async fn download_file(
     let mut client_builder = reqwest::Client::builder()
         .user_agent(build_user_agent())
         .timeout(std::time::Duration::from_secs(1800)) // 30 分钟超时，足够下载大文件但防止无限挂起
-        .connect_timeout(std::time::Duration::from_secs(10));
+        .connect_timeout(std::time::Duration::from_secs(timeout_secs));
 
     // 配置代理（如果提供）
     if let Some(ref proxy) = proxy_url {
@@ -210,11 +220,50 @@ pub async fn download_file(
         .build()
         .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
 
-    let response = client
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| format!("请求失败: {}", e))?;
+    // 连接阶段：超过 timeout_secs 仍未拿到响应头则中断，并按设置自动重试
+    let mut attempt: u32 = 0;
+    let response = loop {
+        let send_fut =
+            tokio::time::timeout(Duration::from_secs(timeout_secs), client.get(&url).send()).await;
+
+        match send_fut {
+            Ok(Ok(resp)) => break resp,
+            Ok(Err(e)) => {
+                // 仅对连接/超时类错误重试，其它错误直接失败
+                let retriable = e.is_timeout() || e.is_connect();
+                if retriable && attempt < max_retries {
+                    attempt += 1;
+                    warn!(
+                        "连接失败，第 {}/{} 次重试（{} 秒）: {}",
+                        attempt, max_retries, timeout_secs, e
+                    );
+                    emit_retry(&app, session_id, attempt, max_retries, timeout_secs);
+                    sleep(Duration::from_secs(1)).await;
+                    continue;
+                }
+                return Err(format!("请求失败: {}", e));
+            }
+            Err(_) => {
+                if attempt < max_retries {
+                    attempt += 1;
+                    warn!(
+                        "连接超时（{} 秒），第 {}/{} 次重试",
+                        timeout_secs, attempt, max_retries
+                    );
+                    emit_retry(&app, session_id, attempt, max_retries, timeout_secs);
+                    continue;
+                }
+                error!(
+                    "连接超时（{} 秒），已重试 {} 次仍无法连接服务器",
+                    timeout_secs, max_retries
+                );
+                return Err(format!(
+                    "连接超时：超过 {} 秒未能连接到服务器（已重试 {} 次）",
+                    timeout_secs, max_retries
+                ));
+            }
+        }
+    };
 
     if !response.status().is_success() {
         return Err(format!("HTTP 错误: {}", response.status()));
@@ -458,6 +507,25 @@ pub async fn download_file(
         actual_save_path,
         detected_filename,
     })
+}
+
+/// 通知前端“连接超时，正在重试”，让用户能看到重试过程而不是静默等待
+fn emit_retry(
+    app: &tauri::AppHandle,
+    session_id: u64,
+    attempt: u32,
+    max_retries: u32,
+    timeout_secs: u64,
+) {
+    let _ = app.emit(
+        "download-retry",
+        DownloadRetryEvent {
+            session_id,
+            attempt,
+            max_retries,
+            timeout_secs,
+        },
+    );
 }
 
 /// 取消下载

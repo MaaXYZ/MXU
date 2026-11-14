@@ -790,16 +790,20 @@ export async function downloadUpdate(
   }
 
   const { url, savePath, totalSize, onProgress, proxySettings } = options;
+  const { updateTimeoutSec, updateRetries } = useAppStore.getState();
 
   log.info(`开始下载更新: ${url}`);
   log.info(`保存路径: ${savePath}`);
+  log.info(`下载设置: 超时 ${updateTimeoutSec} 秒, 重试 ${updateRetries} 次`);
 
   isDownloading = true;
   downloadCancelled = false;
   currentDownloadPath = savePath;
+  useAppStore.getState().setDownloadError(null);
 
   // 设置进度监听器
   let unlisten: (() => void) | null = null;
+  let unlistenRetry: (() => void) | null = null;
   // 当前下载的 session ID，用于过滤旧下载的进度事件
   let currentSessionId: number | null = null;
 
@@ -808,7 +812,35 @@ export async function downloadUpdate(
     const downloadPromise = downloadWithProxy(url, savePath, {
       totalSize,
       proxyUrl: proxySettings?.url,
+      timeoutSec: updateTimeoutSec,
+      retries: updateRetries,
     });
+
+    {
+      const { listen } = await import('@tauri-apps/api/event');
+      unlistenRetry = await listen<{
+        session_id: number;
+        attempt: number;
+        max_retries: number;
+        timeout_secs: number;
+      }>('download-retry', (event) => {
+        if (currentSessionId !== null && event.payload.session_id !== currentSessionId) {
+          return;
+        }
+        // 与进度事件一致：只在尚未确定 session 时记录，避免旧下载的重试事件覆盖当前 session
+        if (currentSessionId === null) {
+          currentSessionId = event.payload.session_id;
+        }
+        useAppStore.getState().setDownloadRetryNotice({
+          attempt: event.payload.attempt,
+          maxRetries: event.payload.max_retries,
+          timeoutSec: event.payload.timeout_secs,
+        });
+        log.warn(
+          `连接超时（${event.payload.timeout_secs} 秒），第 ${event.payload.attempt}/${event.payload.max_retries} 次重试`,
+        );
+      });
+    }
 
     // 监听 Rust 后端发送的下载进度事件
     if (onProgress) {
@@ -856,6 +888,7 @@ export async function downloadUpdate(
       log.info('下载已被用户取消');
     } else {
       log.error('下载失败:', error);
+      useAppStore.getState().setDownloadError(String(error));
     }
     return { success: false };
   } finally {
@@ -863,6 +896,10 @@ export async function downloadUpdate(
     if (unlisten) {
       unlisten();
     }
+    if (unlistenRetry) {
+      unlistenRetry();
+    }
+    useAppStore.getState().setDownloadRetryNotice(null);
     // 只有在未被取消时才重置状态（取消时 cancelDownload 已经重置了）
     if (!downloadCancelled) {
       isDownloading = false;

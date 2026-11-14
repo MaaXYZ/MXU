@@ -78,6 +78,16 @@ export interface DownloadProgress {
 // 下载状态类型
 export type DownloadStatus = 'idle' | 'downloading' | 'completed' | 'failed';
 
+// 连接超时自动重试提示
+export interface DownloadRetryNotice {
+  /** 当前是第几次重试 */
+  attempt: number;
+  /** 最大重试次数 */
+  maxRetries: number;
+  /** 本次使用的连接超时秒数 */
+  timeoutSec: number;
+}
+
 // 安装状态类型
 export type InstallStatus = 'idle' | 'installing' | 'completed' | 'failed';
 
@@ -384,6 +394,12 @@ export interface AppState {
   proxySettings: ProxySettings | undefined;
   setProxySettings: (settings: ProxySettings | undefined) => void;
 
+  // 更新下载超时与重试
+  updateTimeoutSec: number;
+  setUpdateTimeoutSec: (seconds: number) => void;
+  updateRetries: number;
+  setUpdateRetries: (retries: number) => void;
+
   // 快捷键设置
   hotkeys: HotkeySettings;
   setHotkeys: (hotkeys: HotkeySettings) => void;
@@ -479,9 +495,15 @@ export interface AppState {
   downloadSavePath: string | null;
   /** 下载速度持续低于阈值的起始时间戳，速度回升或下载结束时置为 null */
   slowDownloadSince: number | null;
+  /** 连接超时正在自动重试时的提示信息，收到进度或下载结束后置为 null */
+  downloadRetryNotice: DownloadRetryNotice | null;
+  /** 下载失败原因（来自后端错误信息） */
+  downloadError: string | null;
   setDownloadStatus: (status: DownloadStatus) => void;
   setDownloadProgress: (progress: DownloadProgress | null) => void;
   setDownloadSavePath: (path: string | null) => void;
+  setDownloadRetryNotice: (notice: DownloadRetryNotice | null) => void;
+  setDownloadError: (error: string | null) => void;
   resetDownloadState: () => void;
 
   // 安装状态
