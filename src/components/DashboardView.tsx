@@ -39,6 +39,7 @@ import { getLinuxDeviceName } from '@/utils/controller';
 import { getInterfaceLangKey } from '@/i18n';
 import { getMxuSpecialTask } from '@/types/specialTasks';
 import { isTaskCompatible } from '@/stores/helpers';
+import { useScreenshotStream } from '@/hooks/useScreenshotStream';
 import { isPretaskName, getPretaskItem, buildPretaskArgs, buildPretaskDef } from '@/types/pretasks';
 import { startGlobalCallbackListener } from '@/components/connection/callbackCache';
 import { stopInstanceTasks } from '@/services/taskStopService';
@@ -98,14 +99,7 @@ function InstanceCard({ instanceId, instanceName, isActive, onSelect }: Instance
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
-  const streamingRef = useRef(false);
-  const lastFrameTimeRef = useRef(0);
-  const frameIntervalRef = useRef(getFrameInterval(screenshotFrameRate));
-
-  // 帧率配置变化时更新帧间隔
-  useEffect(() => {
-    frameIntervalRef.current = getFrameInterval(screenshotFrameRate);
-  }, [screenshotFrameRate]);
+  const connectionVersion = useRef(0);
 
   const connectionStatus = instanceConnectionStatus[instanceId];
   const taskStatus = instanceTaskStatus[instanceId];
@@ -456,120 +450,32 @@ function InstanceCard({ instanceId, instanceName, isActive, onSelect }: Instance
 
   // 获取最新缓存截图（后端截图循环负责更新缓存，前端无需主动触发 postScreencap）
   const captureFrame = useCallback(async (): Promise<string | null> => {
-    if (!instanceId) return null;
-
+    if (!isConnected) return null;
+    const version = connectionVersion.current;
     try {
       const imageData = await maaService.getCachedImage(instanceId);
-      return imageData || null;
+      return version === connectionVersion.current ? imageData || null : null;
     } catch {
       return null;
     }
-  }, [instanceId]);
+  }, [instanceId, isConnected]);
 
-  const loopRunningRef = useRef(false);
-
-  const streamLoop = useCallback(async () => {
-    if (loopRunningRef.current) return;
-    loopRunningRef.current = true;
-
-    try {
-      let nextFrameTime = Date.now();
-
-      while (streamingRef.current) {
-        const now = Date.now();
-        const sleepTime = nextFrameTime - now;
-        if (sleepTime > 0) {
-          await new Promise((resolve) => setTimeout(resolve, sleepTime));
-        }
-
-        const frameInterval = frameIntervalRef.current;
-        if (frameInterval > 0) {
-          nextFrameTime += frameInterval;
-          if (nextFrameTime < Date.now()) {
-            nextFrameTime = Date.now() + frameInterval;
-          }
-        } else {
-          nextFrameTime = Date.now();
-        }
-
-        lastFrameTimeRef.current = Date.now();
-
-        try {
-          const imageData = await captureFrame();
-          if (imageData && streamingRef.current) {
-            setScreenshotUrl(imageData);
-          }
-        } catch {
-          // 静默处理
-        }
-      }
-    } finally {
-      loopRunningRef.current = false;
-    }
-  }, [instanceId, captureFrame]);
-
-  // 组件卸载时停止流
+  // A new connection starts live view. A pause lasts until the next connection.
   useEffect(() => {
+    setInstanceScreenshotStreaming(instanceId, isConnected);
+    if (!isConnected) setScreenshotUrl(null);
     return () => {
-      streamingRef.current = false;
+      connectionVersion.current++;
     };
-  }, []);
+  }, [instanceId, isConnected, setInstanceScreenshotStreaming]);
 
-  // 订阅/退订后端截图循环（确保全局只有一份 post_screencap 在运行）
-  useEffect(() => {
-    if (!instanceId || !isStreaming) return;
-
-    const intervalMs = getFrameInterval(screenshotFrameRate);
-    maaService
-      .screenshotSubscribe(instanceId, `dashboard-${instanceId}`, intervalMs)
-      .catch(() => {});
-
-    return () => {
-      maaService.screenshotUnsubscribe(instanceId, `dashboard-${instanceId}`).catch(() => {});
-    };
-  }, [instanceId, isStreaming, screenshotFrameRate]);
-
-  // 响应 store 中 isStreaming 状态变化
-  useEffect(() => {
-    // 同步 ref 与 store 状态
-    streamingRef.current = isStreaming;
-
-    // 如果状态变为开启且已连接，启动流
-    if (isStreaming && isConnected) {
-      streamLoop();
-    }
-  }, [isStreaming, isConnected, streamLoop]);
-
-  // 连接后自动开始截图流
-  const prevConnectedRef = useRef(false);
-  const hasAutoStartedRef = useRef(false);
-
-  // 组件挂载或状态恢复后，如果已连接，自动启动截图流
-  useEffect(() => {
-    // 避免重复启动
-    if (hasAutoStartedRef.current) return;
-
-    if (isConnected && !isStreaming) {
-      hasAutoStartedRef.current = true;
-      streamingRef.current = true;
-      setInstanceScreenshotStreaming(instanceId, true);
-      streamLoop();
-    }
-  }, [isConnected, isStreaming, instanceId, setInstanceScreenshotStreaming, streamLoop]);
-
-  // 连接状态变化时的处理（从未连接变为已连接时重新启动）
-  useEffect(() => {
-    const wasConnected = prevConnectedRef.current;
-    prevConnectedRef.current = isConnected;
-
-    // 从未连接变为已连接时，重置自动启动标记并启动
-    if (isConnected && !wasConnected && !isStreaming) {
-      hasAutoStartedRef.current = true;
-      streamingRef.current = true;
-      setInstanceScreenshotStreaming(instanceId, true);
-      streamLoop();
-    }
-  }, [isConnected, isStreaming, instanceId, setInstanceScreenshotStreaming, streamLoop]);
+  useScreenshotStream(
+    instanceId,
+    isConnected && isStreaming,
+    getFrameInterval(screenshotFrameRate),
+    captureFrame,
+    setScreenshotUrl,
+  );
 
   // 全屏模式切换
   const toggleFullscreen = useCallback(
@@ -631,12 +537,10 @@ function InstanceCard({ instanceId, instanceName, isActive, onSelect }: Instance
       setInstanceConnectionStatus(instanceId, 'Disconnected');
       useAppStore.getState().setInstanceResourceLoaded(instanceId, false);
       setScreenshotUrl(null);
-      streamingRef.current = false;
-      setInstanceScreenshotStreaming(instanceId, false);
     } catch {
       // 静默处理
     }
-  }, [instanceId, setInstanceConnectionStatus, setInstanceScreenshotStreaming]);
+  }, [instanceId, setInstanceConnectionStatus]);
 
   // 强制刷新
   const forceRefresh = useCallback(async () => {
@@ -660,14 +564,7 @@ function InstanceCard({ instanceId, instanceName, isActive, onSelect }: Instance
           disabled: !isConnected,
           onClick: () => {
             if (!instanceId || !isConnected) return;
-            if (isStreaming) {
-              streamingRef.current = false;
-              setInstanceScreenshotStreaming(instanceId, false);
-            } else {
-              streamingRef.current = true;
-              setInstanceScreenshotStreaming(instanceId, true);
-              streamLoop();
-            }
+            setInstanceScreenshotStreaming(instanceId, !isStreaming);
           },
         },
         {
@@ -720,7 +617,6 @@ function InstanceCard({ instanceId, instanceName, isActive, onSelect }: Instance
       isStreaming,
       screenshotUrl,
       setInstanceScreenshotStreaming,
-      streamLoop,
       forceRefresh,
       saveScreenshot,
       copyScreenshot,
@@ -761,7 +657,7 @@ function InstanceCard({ instanceId, instanceName, isActive, onSelect }: Instance
         )}
 
         {/* 任务控制按钮 */}
-        {isConnected && (
+        {(isConnected || isRunning) && (
           <button
             onClick={handleStartStop}
             disabled={isStarting || isStopping || (!canRun && !isRunning)}

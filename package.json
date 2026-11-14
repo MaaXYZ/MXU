@@ -11,6 +11,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,css,json}\" \"tests/**/*.ts\" \"*.{json,md}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,css,json}\" \"tests/**/*.ts\" \"*.{json,md}\"",
     "test": "node tests/run.mjs",
+    "test:screenshots": "node tests/screenshots/run.mjs",
     "format:rust": "cd src-tauri && cargo fmt",
     "format:all": "pnpm format && pnpm format:rust",
     "prepare": "husky"

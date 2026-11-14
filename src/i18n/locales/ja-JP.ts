@@ -488,6 +488,7 @@ export default {
 
   // スクリーンショットプレビュー
   screenshot: {
+    streamFailed: 'スクリーンショットの取得に繰り返し失敗したため、ライブ表示を停止しました。',
     title: 'リアルタイムスクリーンショット',
     autoRefresh: '自動更新',
     noScreenshot: 'スクリーンショットがありません',

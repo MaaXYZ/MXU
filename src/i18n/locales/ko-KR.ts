@@ -478,6 +478,7 @@ export default {
 
   // 스크린샷 미리보기
   screenshot: {
+    streamFailed: '스크린샷을 연속으로 가져오지 못해 실시간 표시를 중지했습니다.',
     title: '실시간 스크린샷',
     autoRefresh: '자동 새로고침',
     noScreenshot: '스크린샷이 없습니다',

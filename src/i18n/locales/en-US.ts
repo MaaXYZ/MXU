@@ -494,6 +494,7 @@ export default {
 
   // Screenshot preview
   screenshot: {
+    streamFailed: 'Live screenshots stopped after repeated capture failures.',
     title: 'Live Screenshot',
     autoRefresh: 'Auto Refresh',
     noScreenshot: 'No screenshot',
