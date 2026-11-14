@@ -766,6 +766,13 @@ export default {
     downloading: 'ダウンロード中',
     downloadComplete: 'ダウンロード完了',
     downloadFailed: 'ダウンロードに失敗しました',
+    downloadErrorCancelled: 'ダウンロードはキャンセルされました',
+    downloadErrorTimeout:
+      'サーバーへの接続がタイムアウトしました。ネットワーク接続を確認して再試行してください',
+    downloadErrorConnectFailed:
+      'サーバーに接続できませんでした。ネットワーク接続を確認して再試行してください',
+    downloadErrorHttpStatus: 'ダウンロードサーバーがエラーを返しました（HTTP {{code}}）',
+    downloadErrorIncomplete: 'ダウンロードが不完全です。再試行してください',
     viewDetails: '詳細を表示',
     noDownloadUrl:
       'ダウンロード URL がありません。CDK を入力するか、ネットワーク環境を確認してください',

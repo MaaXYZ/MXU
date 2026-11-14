@@ -901,6 +901,8 @@ pub struct ChangesJson {
 /// 下载进度事件数据
 #[derive(Clone, Serialize)]
 pub struct DownloadProgressEvent {
+    /// 发起本次下载时前端生成的请求 ID，用于过滤旧下载残留的事件
+    pub request_id: String,
     pub session_id: u64,
     pub downloaded_size: u64,
     pub total_size: u64,
@@ -911,6 +913,8 @@ pub struct DownloadProgressEvent {
 /// 连接超时后的自动重试事件数据
 #[derive(Clone, Serialize)]
 pub struct DownloadRetryEvent {
+    /// 发起本次下载时前端生成的请求 ID，用于过滤旧下载残留的事件
+    pub request_id: String,
     pub session_id: u64,
     pub attempt: u32,
     pub max_retries: u32,

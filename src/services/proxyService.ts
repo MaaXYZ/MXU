@@ -175,6 +175,8 @@ export async function downloadWithProxy(
     timeoutSec?: number;
     /** 连接超时后的自动重试次数 */
     retries?: number;
+    /** 本次下载的请求 ID，会随进度/重试事件回传，用于过滤旧下载残留的事件 */
+    requestId?: string;
   },
 ): Promise<DownloadResult> {
   const hasProxy = options?.proxyUrl && options.proxyUrl.trim() !== '';
@@ -196,5 +198,6 @@ export async function downloadWithProxy(
     proxyUrl: options?.proxyUrl || null,
     connectTimeoutSecs: options?.timeoutSec ?? null,
     retries: options?.retries ?? null,
+    requestId: options?.requestId ?? null,
   });
 }

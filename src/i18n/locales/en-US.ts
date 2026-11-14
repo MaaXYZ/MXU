@@ -771,6 +771,12 @@ export default {
     downloading: 'Downloading',
     downloadComplete: 'Download Complete',
     downloadFailed: 'Download Failed',
+    downloadErrorCancelled: 'Download cancelled',
+    downloadErrorTimeout: 'Connection timed out. Please check your network and try again',
+    downloadErrorConnectFailed:
+      'Unable to connect to the server. Please check your network and try again',
+    downloadErrorHttpStatus: 'The download server returned an error (HTTP {{code}})',
+    downloadErrorIncomplete: 'The download was incomplete. Please try again',
     viewDetails: 'View Details',
     noDownloadUrl: 'No download URL available. Please fill in CDK or check network environment',
     openFolder: 'Open Folder',

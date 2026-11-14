@@ -73,6 +73,7 @@ export function UpdateSection() {
     setDownloadStatus,
     setDownloadProgress,
     setDownloadSavePath,
+    setDownloadError,
     resetDownloadState,
     installStatus,
     setInstallStatus,
@@ -169,12 +170,18 @@ export function UpdateSection() {
   }, [retriesInput, updateRetries, setUpdateRetries]);
 
   // 开始下载
+  // 下载代际：快速重试/取消后重新下载时，旧调用的结果不应覆盖新下载的状态
+  const downloadAttemptRef = useRef(0);
   const startDownload = useCallback(
     async (targetUpdateInfo?: typeof updateInfo) => {
       const info = targetUpdateInfo || updateInfo;
       if (!info?.downloadUrl) return;
 
+      const attempt = ++downloadAttemptRef.current;
+      const isCurrent = () => attempt === downloadAttemptRef.current;
+
       setDownloadStatus('downloading');
+      setDownloadError(null);
       setDownloadProgress({
         downloadedSize: 0,
         totalSize: info.fileSize || 0,
@@ -184,6 +191,7 @@ export function UpdateSection() {
 
       try {
         const savePath = await getUpdateSavePath(info.filename);
+        if (!isCurrent()) return;
         setDownloadSavePath(savePath);
 
         const proxyForDownload = proxySettingsForUpdateDownload(
@@ -198,9 +206,12 @@ export function UpdateSection() {
           totalSize: info.fileSize,
           proxySettings: proxyForDownload,
           onProgress: (progress) => {
+            if (!isCurrent()) return;
             setDownloadProgress(progress);
           },
         });
+
+        if (!isCurrent()) return;
 
         if (result.success) {
           // 使用实际保存路径（可能与请求路径不同，如果从 302 重定向检测到正确文件名）
@@ -210,7 +221,9 @@ export function UpdateSection() {
           setDownloadStatus('failed');
         }
       } catch (error) {
+        if (!isCurrent()) return;
         loggers.ui.error('下载失败:', error);
+        setDownloadError(String(error));
         setDownloadStatus('failed');
       }
     },
@@ -220,6 +233,7 @@ export function UpdateSection() {
       setDownloadStatus,
       setDownloadProgress,
       setDownloadSavePath,
+      setDownloadError,
       proxySettings,
       mirrorChyanSettings.cdk,
     ],

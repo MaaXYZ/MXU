@@ -24,6 +24,8 @@ const log = loggers.app;
 let isDownloading = false;
 // 下载是否被用户主动取消
 let downloadCancelled = false;
+// 下载代际：每次发起下载自增。旧调用收尾时据此跳过状态写入，避免覆盖新下载的状态
+let downloadGeneration = 0;
 // 安装互斥锁，防止并发 installUpdate 导致目录竞争
 let isInstalling = false;
 // 本次运行中是否有安装失败过：失败后不再自动重试，手动安装和下次启动不受影响
@@ -747,11 +749,52 @@ let currentDownloadPath: string | null = null;
 // 进度事件数据。Rust 侧 DownloadProgressEvent 走 serde 默认命名，
 // 字段是 snake_case，不能直接套用前端 camelCase 的 DownloadProgress
 interface DownloadProgressEventPayload {
+  request_id: string;
   session_id: number;
   downloaded_size: number;
   total_size: number;
   speed: number;
   progress: number;
+}
+
+interface DownloadRetryEventPayload {
+  request_id: string;
+  session_id: number;
+  attempt: number;
+  max_retries: number;
+  timeout_secs: number;
+}
+
+/** 生成一次下载的请求 ID，用于把后端事件与本次调用绑定 */
+function createDownloadRequestId(): string {
+  return (
+    globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
+}
+
+/**
+ * 把后端返回的下载错误码转换为当前语言的提示文案。
+ * 后端只返回稳定标识（download_timeout 等），本地化交给前端，切换语言后能立即刷新。
+ */
+export function localizeDownloadError(message: string): string {
+  switch (message) {
+    case 'download_cancelled':
+      return i18n.t('mirrorChyan.downloadErrorCancelled');
+    case 'download_timeout':
+      return i18n.t('mirrorChyan.downloadErrorTimeout');
+    case 'download_connect_failed':
+      return i18n.t('mirrorChyan.downloadErrorConnectFailed');
+    case 'download_incomplete':
+      return i18n.t('mirrorChyan.downloadErrorIncomplete');
+    default:
+      if (message.startsWith('download_http_status:')) {
+        return i18n.t('mirrorChyan.downloadErrorHttpStatus', {
+          code: message.slice('download_http_status:'.length),
+        });
+      }
+      // 其余为少见的具体错误（如磁盘写入失败），保留原文以便排查
+      return message || i18n.t('mirrorChyan.downloadFailed');
+  }
 }
 
 /**
@@ -801,73 +844,60 @@ export async function downloadUpdate(
   currentDownloadPath = savePath;
   useAppStore.getState().setDownloadError(null);
 
+  // 本次调用的代际与请求 ID：后端事件带回 request_id，旧下载残留的事件和状态写入都不会影响新下载
+  const generation = ++downloadGeneration;
+  const requestId = createDownloadRequestId();
+  const isCurrent = () => generation === downloadGeneration;
+
   // 设置进度监听器
   let unlisten: (() => void) | null = null;
   let unlistenRetry: (() => void) | null = null;
-  // 当前下载的 session ID，用于过滤旧下载的进度事件
-  let currentSessionId: number | null = null;
+  // 是否正在显示重试提示（收到进度事件后说明连接已成功，需要撤掉提示）
+  let retryNoticeShown = false;
 
   try {
+    // 必须先注册监听器再发起下载，否则连接阶段的重试事件会丢失
+    const { listen } = await import('@tauri-apps/api/event');
+    unlistenRetry = await listen<DownloadRetryEventPayload>('download-retry', (event) => {
+      if (!isCurrent() || event.payload.request_id !== requestId) return;
+      retryNoticeShown = true;
+      useAppStore.getState().setDownloadRetryNotice({
+        attempt: event.payload.attempt,
+        maxRetries: event.payload.max_retries,
+        timeoutSec: event.payload.timeout_secs,
+      });
+      log.warn(
+        `连接超时（${event.payload.timeout_secs} 秒），第 ${event.payload.attempt}/${event.payload.max_retries} 次重试`,
+      );
+    });
+
+    // 监听 Rust 后端发送的下载进度事件
+    // 收到进度说明连接已成功，此时撤掉重试提示
+    unlisten = await listen<DownloadProgressEventPayload>('download-progress', (event) => {
+      // 只处理本次请求的事件，忽略旧下载残留的事件
+      if (!isCurrent() || event.payload.request_id !== requestId) return;
+      if (retryNoticeShown) {
+        retryNoticeShown = false;
+        useAppStore.getState().setDownloadRetryNotice(null);
+      }
+      // 如果已被取消，忽略进度更新
+      if (downloadCancelled) return;
+      onProgress?.({
+        downloadedSize: event.payload.downloaded_size,
+        totalSize: event.payload.total_size,
+        speed: event.payload.speed,
+        progress: event.payload.progress,
+      });
+    });
+
     // 使用统一的代理下载接口（内部已包含日志记录）
-    const downloadPromise = downloadWithProxy(url, savePath, {
+    const result = await downloadWithProxy(url, savePath, {
       totalSize,
       proxyUrl: proxySettings?.url,
       timeoutSec: updateTimeoutSec,
       retries: updateRetries,
+      requestId,
     });
-
-    {
-      const { listen } = await import('@tauri-apps/api/event');
-      unlistenRetry = await listen<{
-        session_id: number;
-        attempt: number;
-        max_retries: number;
-        timeout_secs: number;
-      }>('download-retry', (event) => {
-        if (currentSessionId !== null && event.payload.session_id !== currentSessionId) {
-          return;
-        }
-        // 与进度事件一致：只在尚未确定 session 时记录，避免旧下载的重试事件覆盖当前 session
-        if (currentSessionId === null) {
-          currentSessionId = event.payload.session_id;
-        }
-        useAppStore.getState().setDownloadRetryNotice({
-          attempt: event.payload.attempt,
-          maxRetries: event.payload.max_retries,
-          timeoutSec: event.payload.timeout_secs,
-        });
-        log.warn(
-          `连接超时（${event.payload.timeout_secs} 秒），第 ${event.payload.attempt}/${event.payload.max_retries} 次重试`,
-        );
-      });
-    }
-
-    // 监听 Rust 后端发送的下载进度事件
-    if (onProgress) {
-      const { listen } = await import('@tauri-apps/api/event');
-      unlisten = await listen<DownloadProgressEventPayload>('download-progress', (event) => {
-        // 只处理当前 session 的进度事件，忽略旧下载的事件
-        if (currentSessionId !== null && event.payload.session_id !== currentSessionId) {
-          return;
-        }
-        // 记录第一个收到的 session_id
-        if (currentSessionId === null) {
-          currentSessionId = event.payload.session_id;
-        }
-        // 如果已被取消，忽略进度更新
-        if (downloadCancelled) return;
-        onProgress({
-          downloadedSize: event.payload.downloaded_size,
-          totalSize: event.payload.total_size,
-          speed: event.payload.speed,
-          progress: event.payload.progress,
-        });
-      });
-    }
-
-    // 等待下载完成，返回下载结果
-    const result = await downloadPromise;
-    currentSessionId = result.session_id;
 
     log.info(`下载完成 (session ${result.session_id})`);
     // 新的更新包下载完成，允许再次自动安装
@@ -883,6 +913,11 @@ export async function downloadUpdate(
       detectedFilename: result.detected_filename ?? undefined,
     };
   } catch (error) {
+    if (!isCurrent()) {
+      // 已有新的下载接手，旧调用的失败不应覆盖新下载的状态
+      log.info('旧下载调用结束，忽略其错误状态');
+      return { success: false };
+    }
     // 如果是用户主动取消，不记录为错误
     if (downloadCancelled) {
       log.info('下载已被用户取消');
@@ -899,11 +934,13 @@ export async function downloadUpdate(
     if (unlistenRetry) {
       unlistenRetry();
     }
-    useAppStore.getState().setDownloadRetryNotice(null);
-    // 只有在未被取消时才重置状态（取消时 cancelDownload 已经重置了）
-    if (!downloadCancelled) {
-      isDownloading = false;
-      currentDownloadPath = null;
+    if (isCurrent()) {
+      useAppStore.getState().setDownloadRetryNotice(null);
+      // 只有在未被取消时才重置状态（取消时 cancelDownload 已经重置了）
+      if (!downloadCancelled) {
+        isDownloading = false;
+        currentDownloadPath = null;
+      }
     }
   }
 }

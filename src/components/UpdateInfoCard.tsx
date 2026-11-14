@@ -8,6 +8,7 @@ import {
   type DownloadStatus,
 } from '@/stores/appStore';
 import { simpleMarkdownToHtml } from '@/services/contentResolver';
+import { localizeDownloadError } from '@/services/updateService';
 import clsx from 'clsx';
 
 // 格式化文件大小
@@ -304,7 +305,7 @@ export function DownloadProgressBar({
 
       {/* 下载失败原因 */}
       {downloadStatus === 'failed' && downloadError && (
-        <div className="text-xs text-error break-words">{downloadError}</div>
+        <div className="text-xs text-error break-words">{localizeDownloadError(downloadError)}</div>
       )}
 
       {/* 下载来源标识 */}

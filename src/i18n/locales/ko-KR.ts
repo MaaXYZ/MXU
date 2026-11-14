@@ -753,6 +753,13 @@ export default {
     downloading: '다운로드 중',
     downloadComplete: '다운로드 완료',
     downloadFailed: '다운로드 실패',
+    downloadErrorCancelled: '다운로드가 취소되었습니다',
+    downloadErrorTimeout:
+      '서버 연결 시간이 초과되었습니다. 네트워크 연결을 확인한 후 다시 시도하세요',
+    downloadErrorConnectFailed:
+      '서버에 연결할 수 없습니다. 네트워크 연결을 확인한 후 다시 시도하세요',
+    downloadErrorHttpStatus: '다운로드 서버가 오류를 반환했습니다(HTTP {{code}})',
+    downloadErrorIncomplete: '다운로드가 완료되지 않았습니다. 다시 시도하세요',
     viewDetails: '상세 보기',
     noDownloadUrl: '다운로드 URL이 없습니다. CDK를 입력하거나 네트워크 환경을 확인하세요',
     openFolder: '폴더 열기',
