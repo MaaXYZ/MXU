@@ -733,6 +733,7 @@ export default {
     installComplete: '安裝完成',
     installFailed: '安裝失敗',
     installErrors: {
+      gzipValidationFailed: 'gzip 壓縮檔驗證失敗',
       packageMissing: '更新包不存在，請重新下載',
       packageCorrupt: '更新包已損毀，請重新下載（{{detail}}）',
       extractFailed: '解壓縮更新包失敗，可能遭安全軟體攔截（{{detail}}）',

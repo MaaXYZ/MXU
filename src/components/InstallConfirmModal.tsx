@@ -26,7 +26,10 @@ import { loggers } from '@/utils/logger';
 // 将安装/重启错误转换为界面显示的文案（兜底更新的提示直接使用其 message）
 function formatInstallError(error: unknown, t: TFunction): string {
   if (error instanceof UpdateInstallError) {
-    return t(`mirrorChyan.installErrors.${error.code}`, { detail: error.detail });
+    const detail = error.detailCode
+      ? t(`mirrorChyan.installErrors.${error.detailCode}`)
+      : error.detail;
+    return t(`mirrorChyan.installErrors.${error.code}`, { detail });
   }
   return error instanceof Error ? error.message : String(error);
 }

@@ -737,6 +737,7 @@ export default {
     installComplete: '安装完成',
     installFailed: '安装失败',
     installErrors: {
+      gzipValidationFailed: 'gzip 压缩包校验失败',
       packageMissing: '更新包不存在，请重新下载',
       packageCorrupt: '更新包已损坏，请重新下载（{{detail}}）',
       extractFailed: '解压更新包失败，可能被安全软件拦截（{{detail}}）',
