@@ -86,6 +86,8 @@ export function buildDesktopWindowControllerConfig(
     return {
       type: 'Win32',
       handle,
+      class_regex: controller.win32?.class_regex,
+      window_regex: controller.win32?.window_regex,
       screencap_method: parseWin32ScreencapMethod(controller.win32?.screencap || ''),
       mouse_method: parseWin32InputMethod(controller.win32?.mouse || ''),
       keyboard_method: parseWin32InputMethod(controller.win32?.keyboard || ''),

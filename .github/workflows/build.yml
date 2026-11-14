@@ -10,6 +10,8 @@ on:
       - ".github/workflows/build.yml"
       - "src/**"
       - "src-tauri/**"
+      - "tests/windowSelection.test.ts"
+      - "scripts/test-window-target.ps1"
       - "package.json"
       - "pnpm-lock.yaml"
       - "vite.config.ts"
@@ -21,6 +23,8 @@ on:
       - ".github/workflows/build.yml"
       - "src/**"
       - "src-tauri/**"
+      - "tests/windowSelection.test.ts"
+      - "scripts/test-window-target.ps1"
       - "package.json"
       - "pnpm-lock.yaml"
       - "vite.config.ts"
@@ -101,6 +105,13 @@ jobs:
 
       - name: Build Tauri app
         run: pnpm tauri build --no-bundle --target ${{ matrix.arch == 'x86_64' && 'x86_64-pc-windows-msvc' || 'aarch64-pc-windows-msvc' }}
+
+      - name: Test window discovery and validation
+        if: matrix.arch == 'x86_64'
+        run: |
+          pnpm test
+          if ($LASTEXITCODE -ne 0) { throw 'Frontend tests failed' }
+          ./scripts/test-window-target.ps1
 
       - name: Prepare artifacts
         shell: bash

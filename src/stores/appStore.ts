@@ -400,10 +400,13 @@ export const useAppStore = create<AppState>()(
     activeInstanceId: null,
     nextInstanceNumber: 1,
 
-    createInstance: (name, exactName) => {
+    createInstance: (name, exactName, defaults) => {
       const id = generateId();
       const instanceNumber = get().nextInstanceNumber;
       const pi = get().projectInterface;
+
+      const defaultControllerNameValue = defaults?.controllerName ?? pi?.controller[0]?.name;
+      const defaultResourceNameValue = defaults?.resourceName ?? pi?.resource[0]?.name;
 
       // 只添加 default_check 为 true 的任务
       const defaultTasks: SelectedTask[] = [];
@@ -415,15 +418,15 @@ export const useAppStore = create<AppState>()(
             expanded: false, // pretask 选项通常一次性配置，新建配置时默认收起
             enabled: isTaskCompatible(
               buildPretaskDef(item),
-              pi.controller[0]?.name,
-              pi.resource[0]?.name,
+              defaultControllerNameValue,
+              defaultResourceNameValue,
             ),
             optionValues:
               item.option && pi.option ? initializeAllOptionValues(item.option, pi.option) : {},
           });
         }
         // 获取默认控制器名称，用于检查任务兼容性
-        const defaultControllerName = pi.controller[0]?.name;
+        const defaultControllerName = defaultControllerNameValue;
 
         pi.task.forEach((task) => {
           if (!task.default_check) return;
@@ -446,10 +449,6 @@ export const useAppStore = create<AppState>()(
         });
       }
 
-      // 默认控制器和资源名称
-      const defaultControllerNameValue = pi?.controller[0]?.name;
-      const defaultResourceNameValue = pi?.resource[0]?.name;
-
       const newInstance: Instance = {
         id,
         name:
@@ -460,6 +459,7 @@ export const useAppStore = create<AppState>()(
               : `Config ${instanceNumber}`,
         controllerName: defaultControllerNameValue,
         resourceName: defaultResourceNameValue,
+        savedDevice: defaults?.savedDevice,
         selectedTasks: defaultTasks,
         isRunning: false,
       };
@@ -1655,6 +1655,24 @@ export const useAppStore = create<AppState>()(
 
     // 实例运行时状态
     instanceConnectionStatus: {},
+    instanceStartErrors: {},
+    setInstanceStartError: (instanceId, error) =>
+      set((state) => {
+        const errors = { ...state.instanceStartErrors };
+        if (error) errors[instanceId] = error;
+        else delete errors[instanceId];
+        return { instanceStartErrors: errors };
+      }),
+    deviceSearchRequest: null,
+    requestDeviceSearch: (instanceId) =>
+      set((state) => ({
+        activeInstanceId: instanceId,
+        connectionPanelExpanded: true,
+        deviceSearchRequest: {
+          instanceId,
+          sequence: (state.deviceSearchRequest?.sequence ?? 0) + 1,
+        },
+      })),
     instanceResourceLoaded: {},
     instanceCurrentTaskId: {},
     instanceTaskStatus: {},
@@ -2347,6 +2365,9 @@ export const useAppStore = create<AppState>()(
           ctrlIdToType: nextCtrlIdToType,
           instanceCtrlIds: restInstanceCtrlIds,
           instanceConnectionStatus: restConnectionStatus,
+          instanceStartErrors: Object.fromEntries(
+            Object.entries(state.instanceStartErrors).filter(([id]) => id !== instanceId),
+          ),
           instanceResourceLoaded: restResourceLoaded,
           instanceCurrentTaskId: restCurrentTaskId,
           instanceTaskStatus: restTaskStatus,

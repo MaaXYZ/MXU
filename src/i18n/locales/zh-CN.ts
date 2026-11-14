@@ -1,4 +1,13 @@
 export default {
+  windowTarget: {
+    invalidFilter: '窗口匹配规则无效，请检查项目配置中的正则表达式。',
+    notFound: '未找到游戏窗口，请启动游戏后重新搜索。',
+    mismatch: '所选窗口不符合当前项目的游戏窗口规则，请重新搜索并选择游戏窗口。',
+    changed: '游戏窗口或连接已改变，请重新搜索后再开始任务。',
+    multiple: '找到多个符合规则的窗口，请选择要操作的游戏窗口。',
+    search: '重新搜索',
+    corrected: '已将历史窗口修正为：{{name}}',
+  },
   pi: {
     PI_DISPLAY_OPTIONS_INVALID: '请只配置一种截图缩放模式，并使用正整数尺寸。',
     PI_DISPLAY_OPTIONS_UNSUPPORTED: '当前 MaaFramework 不支持此截图模式，请更新资源包。',

@@ -38,6 +38,7 @@ import {
   isDesktopWindowControllerType,
 } from '@/utils/controller';
 import { getInterfaceLangKey } from '@/i18n';
+import { selectWindow, WindowSearchGuard } from '@/utils/windowSelection';
 import {
   startGlobalCallbackListener,
   waitForCtrlResult,
@@ -77,6 +78,8 @@ export function ConnectionPanel() {
     registerResIdName,
     registerResBatch,
     addLog,
+    deviceSearchRequest,
+    setInstanceStartError,
   } = useAppStore();
 
   // 获取当前活动实例
@@ -90,6 +93,7 @@ export function ConnectionPanel() {
 
   // 设备相关状态
   const [isSearching, setIsSearching] = useState(false);
+  const searchGuard = useRef(new WindowSearchGuard());
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [deviceError, setDeviceError] = useState<string | null>(null);
@@ -208,6 +212,8 @@ export function ConnectionPanel() {
   const isDesktopWindowController = isDesktopWindowControllerType(controllerType);
   const { classRegex: desktopWindowClassRegex, titleRegex: desktopWindowTitleRegex } =
     getDesktopWindowFilters(currentController);
+  const searchContext = useRef({ instanceId, currentControllerName });
+  searchContext.current = { instanceId, currentControllerName };
   const linuxNeeds = controllerType === 'Linux' ? getLinuxDiscoveryNeeds(currentController) : null;
   const isUinputInput =
     controllerType === 'Linux' &&
@@ -366,6 +372,17 @@ export function ConnectionPanel() {
     }
   }, [currentControllerName]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (deviceSearchRequest?.instanceId === instanceId && !isRunning) void handleSearch();
+  }, [deviceSearchRequest]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(
+    () => () => {
+      searchGuard.current.invalidate();
+    },
+    [],
+  );
+
   // 应用启动/实例切换时自动重连之前保存的设备
   useEffect(() => {
     if (!instanceId || !activeInstance || !currentController) return;
@@ -390,7 +407,7 @@ export function ConnectionPanel() {
             (savedDevice.wlrSocketPath && linuxNeeds?.needWlrSocket))) ||
         (controllerType === 'PlayCover' && savedDevice.playcoverAddress));
 
-    if (hasHistoricalDevice && needsDeviceSearch) {
+    if ((hasHistoricalDevice || controllerType === 'Win32') && needsDeviceSearch) {
       // 标记该实例已尝试过自动重连
       autoReconnectAttempted.add(instanceId);
       // 触发搜索并自动连接（handleSearch 内部已有匹配+自动连接逻辑）
@@ -417,9 +434,17 @@ export function ConnectionPanel() {
   // 搜索设备
   const handleSearch = async () => {
     if (!currentController) return;
+    const isCurrentSearch = searchGuard.current.begin(
+      () =>
+        searchContext.current.instanceId === instanceId &&
+        searchContext.current.currentControllerName === currentControllerName &&
+        useAppStore.getState().activeInstanceId === instanceId &&
+        useAppStore.getState().selectedController[instanceId] === currentControllerName,
+    );
 
     setIsSearching(true);
     setDeviceError(null);
+    if (isDesktopWindowController) setCachedWin32Windows([]);
 
     try {
       const initialized = await ensureMaaInitialized();
@@ -465,35 +490,22 @@ export function ConnectionPanel() {
           desktopWindowClassRegex,
           desktopWindowTitleRegex,
         );
+        if (!isCurrentSearch()) return;
         setCachedWin32Windows(windows);
-
-        // 自动连接策略（与 Adb 一致）
-        let autoSelected: Win32Window | null = null;
-        if (savedDevice?.windowName) {
-          const matched = windows.filter((w) => w.window_name === savedDevice.windowName);
-          if (matched.length === 1) {
-            autoSelected = matched[0];
-          }
-        } else if (windows.length > 0) {
-          // 没有保存窗口时自动选择第一个
-          autoSelected = windows[0];
-          // 给出首次自动匹配提示
-          if (instanceId) {
-            addLog(instanceId, {
-              type: 'info',
-              message: t('taskList.autoConnect.autoSelectedWindow', {
-                name: autoSelected.window_name || autoSelected.class_name,
-              }),
-            });
-          }
-        }
-
-        if (autoSelected) {
-          handleSelectWindow(autoSelected);
-        } else if (windows.length > 0) {
-          // 有保存窗口但匹配失败，显示下拉框让用户选择
-          setShowDeviceDropdown(true);
-        }
+        setShowDeviceDropdown(windows.length > 1);
+        const autoSelected = selectWindow(windows, savedDevice);
+        addLog(instanceId, {
+          type: 'info',
+          message: t(
+            savedDevice && savedDevice.windowName !== autoSelected.window_name
+              ? 'windowTarget.corrected'
+              : 'taskList.autoConnect.autoSelectedWindow',
+            {
+              name: autoSelected.window_name || autoSelected.class_name,
+            },
+          ),
+        });
+        await handleSelectWindow(autoSelected);
       } else if (controllerType === 'Linux' && linuxNeeds) {
         // 发现所需的全部设备（按当前配置的截图/输入方法）
         let wlrSockets: string[] = [];
@@ -548,9 +560,12 @@ export function ConnectionPanel() {
         }
       }
     } catch (err) {
-      setDeviceError(controllerErrorMessage(err));
+      if (isCurrentSearch()) {
+        setDeviceError(controllerErrorMessage(err));
+        setConnectionPanelExpanded(true);
+      }
     } finally {
-      setIsSearching(false);
+      if (isCurrentSearch()) setIsSearching(false);
     }
   };
 
@@ -570,6 +585,7 @@ export function ConnectionPanel() {
     const result = await waitForCtrlResult(ctrlId);
 
     if (result === 'succeeded') {
+      setInstanceStartError(instanceId, null);
       setIsConnected(true);
       setInstanceConnectionStatus(instanceId, 'Connected');
       setIsConnecting(false);
@@ -892,6 +908,8 @@ export function ConnectionPanel() {
 
   // 选择 Win32 窗口并自动连接（如已连接会先断开旧连接）
   const handleSelectWindow = async (win: Win32Window) => {
+    searchGuard.current.invalidate();
+    setIsSearching(false);
     setSelectedWindow(win);
     setShowDeviceDropdown(false);
 
@@ -1049,6 +1067,10 @@ export function ConnectionPanel() {
 
   // 点击历史设备条目时，触发搜索并自动匹配连接
   const handleSearchAndConnectHistorical = async () => {
+    if (isDesktopWindowController) {
+      await handleSearch();
+      return;
+    }
     if (!currentController) return;
 
     setIsSearching(true);

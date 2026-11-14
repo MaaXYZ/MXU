@@ -16,6 +16,7 @@
 
 pub mod types;
 pub mod utils;
+pub mod window_target;
 
 pub mod app_config;
 mod callback_lifecycle;

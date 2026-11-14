@@ -323,6 +323,7 @@ fn update_instance_controller(
     instance_id: &str,
     controller: maa_framework::controller::Controller,
     new_config: super::types::ControllerConfig,
+    window_target: Option<super::window_target::WindowIdentity>,
     subscribers: Arc<super::types::ControllerEventSubscribers>,
     request: &CallbackGuard,
     on_event: super::types::ControllerEventCallback,
@@ -342,6 +343,7 @@ fn update_instance_controller(
             .replace(Arc::clone(&subscribers));
         let old_controller = instance.controller.replace(controller);
         instance.controller_config = Some(new_config.clone());
+        instance.window_target = window_target;
         let old_tasker = instance.tasker.take();
 
         // Subscription changes and instance replacement/destroy share the instances lock.
@@ -408,6 +410,7 @@ fn publish_controller_connection(
     pool.insert(
         config,
         super::types::ControllerPoolEntry {
+            window_target: instance.window_target.clone(),
             controller,
             subscribers,
             connection_id,
@@ -634,6 +637,10 @@ pub async fn find_win32_windows_impl(
     window_regex: Option<String>,
 ) -> Result<Vec<Win32Window>, String> {
     tokio::task::spawn_blocking(move || {
+        let filters = super::window_target::WindowFilters::new(
+            class_regex.as_deref(),
+            window_regex.as_deref(),
+        )?;
         #[cfg(target_os = "macos")]
         ensure_macos_requirements(false)?;
 
@@ -645,23 +652,11 @@ pub async fn find_win32_windows_impl(
         #[cfg(not(target_os = "macos"))]
         let windows = Toolkit::find_desktop_windows().map_err(|e| e.to_string())?;
 
-        let class_re = class_regex.as_ref().and_then(|r| regex::Regex::new(r).ok());
-        let window_re = window_regex
-            .as_ref()
-            .and_then(|r| regex::Regex::new(r).ok());
-
         let mut result_windows = Vec::new();
 
         for w in windows {
-            if let Some(re) = &class_re {
-                if !re.is_match(&w.class_name) {
-                    continue;
-                }
-            }
-            if let Some(re) = &window_re {
-                if !re.is_match(&w.window_name) {
-                    continue;
-                }
+            if !filters.matches(&w.class_name, &w.window_name) {
+                continue;
             }
 
             result_windows.push(Win32Window {
@@ -901,6 +896,7 @@ pub async fn connect_controller_impl(
         if !request.is_active() {
             return Err("CONTROLLER_CONNECTION_SUPERSEDED".to_string());
         }
+        let window_target = super::window_target::capture(&config)?;
         // ControllerPool: 检查是否有可复用的已连接控制器
         let pooled = {
             let pool = state_arc
@@ -909,11 +905,11 @@ pub async fn connect_controller_impl(
                 .map_err(|e| e.to_string())?;
             pool.get(&config)
                 .filter(|entry| {
-                    entry.controller.connected()
+                    entry.window_target == window_target && (entry.controller.connected()
                         || matches!(
                             entry.controller.status(entry.connection_id),
                             MaaStatus::PENDING | MaaStatus::RUNNING
-                        )
+                        ))
                 })
                 .cloned()
         };
@@ -929,6 +925,7 @@ pub async fn connect_controller_impl(
                 &instance_id,
                 pooled_ctrl.controller.clone(),
                 config.clone(),
+                window_target,
                 Arc::clone(&pooled_ctrl.subscribers),
                 &request,
                 on_event.clone(),
@@ -1131,6 +1128,7 @@ pub async fn connect_controller_impl(
             &instance_id,
             controller.clone(),
             config.clone(),
+            window_target,
             Arc::clone(&subscribers),
             &request,
             on_event,
@@ -1524,6 +1522,7 @@ pub fn run_task_impl(
             continue;
         }
 
+        super::window_target::validate_instance(instance)?;
         let resource = instance.resource.as_ref().ok_or("Resource not loaded")?;
         let controller = instance
             .controller

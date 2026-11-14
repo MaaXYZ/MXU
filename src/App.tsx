@@ -44,6 +44,8 @@ import {
   stopInstanceTasksAndExitApp,
 } from '@/services';
 import type { ConfigRecoveryNotice } from '@/services';
+import { controllerErrorMessage } from '@/services/maaService';
+import { discoverInitialWindow, type InitialWindowSelection } from '@/utils/windowSelection';
 import { isConfigRevisionError, type ConfigChangedEvent } from '@/utils/configSync';
 import { clearIconDataUrlCache, loadIconAsDataUrl } from '@/services/contentResolver';
 import * as wsService from '@/services/wsService';
@@ -971,6 +973,22 @@ function App() {
         log.warn('版本检查失败:', err);
       }
 
+      let initialWindow: InitialWindowSelection | undefined;
+      if (
+        config.instances.length === 0 &&
+        !result.interface.preset?.length &&
+        useAppStore.getState().instances.length === 0
+      ) {
+        try {
+          initialWindow = await discoverInitialWindow(result.interface, (classRegex, titleRegex) =>
+            maaService.findWin32Windows(classRegex, titleRegex),
+          );
+        } catch (error) {
+          log.warn('Initial desktop discovery failed:', error);
+          toast.warning(controllerErrorMessage(error), { duration: Infinity });
+        }
+      }
+
       log.info('加载完成, 项目:', result.interface.name);
       setLoadingState('success');
       // 完成配置加载后，允许后续状态变更自动保存
@@ -1007,7 +1025,17 @@ function App() {
           storeState.setPresetInitialized(true);
         } else if (currentInstances.length === 0) {
           // 无预设或已初始化且无实例 → 创建默认实例
-          createInstance(t('instance.defaultName'));
+          createInstance(
+            t('instance.defaultName'),
+            false,
+            initialWindow
+              ? {
+                  controllerName: initialWindow.controller.name,
+                  resourceName: initialWindow.resource.name,
+                  savedDevice: { windowName: initialWindow.window.window_name },
+                }
+              : undefined,
+          );
         }
       }, 0);
 

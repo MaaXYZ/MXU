@@ -1,4 +1,13 @@
 export default {
+  windowTarget: {
+    invalidFilter: '視窗比對規則無效，請檢查專案設定中的正規表示式。',
+    notFound: '找不到遊戲視窗，請啟動遊戲後重新搜尋。',
+    mismatch: '所選視窗不符合目前專案的遊戲視窗規則，請重新搜尋並選擇遊戲視窗。',
+    changed: '遊戲視窗或連線已變更，請重新搜尋後再開始任務。',
+    multiple: '找到多個符合規則的視窗，請選擇要操作的遊戲視窗。',
+    search: '重新搜尋',
+    corrected: '已將歷史視窗修正為：{{name}}',
+  },
   pi: {
     PI_DISPLAY_OPTIONS_INVALID: '請只設定一種截圖縮放模式，並使用正整數尺寸。',
     PI_DISPLAY_OPTIONS_UNSUPPORTED: '目前的 MaaFramework 不支援此截圖模式，請更新資源包。',
