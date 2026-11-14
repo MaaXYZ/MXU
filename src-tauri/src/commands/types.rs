@@ -2,7 +2,7 @@
 //!
 //! 包含 Tauri 命令使用的数据结构和枚举
 
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::PathBuf;
 use std::process::Child;
 use std::sync::{Arc, Mutex};
@@ -778,7 +778,7 @@ pub struct MaaState {
     pub resource_dir: Mutex<Option<PathBuf>>,
     pub instances: Mutex<HashMap<String, InstanceRuntime>>,
     /// 前置程序停止请求（用于中断等待退出）
-    pub pre_action_stop_requests: Mutex<HashSet<String>>,
+    pub pre_action_stop_requests: super::pre_action_stops::PreActionStops,
     /// Controller 连接池：相同配置的 Controller 复用同一个 MaaControllerHandle
     pub controller_pool: Mutex<HashMap<ControllerConfig, ControllerPoolEntry>>,
     pub controller_connection_gates: super::callback_lifecycle::ConnectionGates<ControllerConfig>,

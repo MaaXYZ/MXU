@@ -1410,16 +1410,10 @@ async fn handle_stop_pretask(
     axum::extract::Path(instance_id): axum::extract::Path<String>,
     Json(body): Json<PretaskStopRequest>,
 ) -> impl IntoResponse {
-    let mut requests = state
+    state
         .maa_state
         .pre_action_stop_requests
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    if body.stop {
-        requests.insert(instance_id);
-    } else {
-        requests.remove(&instance_id);
-    }
+        .set(instance_id, body.stop);
     Json(serde_json::json!({ "ok": true }))
 }
 
