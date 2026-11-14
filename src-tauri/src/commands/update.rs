@@ -223,35 +223,78 @@ pub fn check_changes_json(extract_dir: String) -> Result<Option<ChangesJson>, St
     Ok(Some(changes))
 }
 
-/// 递归清理目录内容，逐个删除文件和空目录，返回 (成功数, 失败数)
+/// 递归清理目录内容，逐个删除文件和空目录，返回 (成功数, 失败数)。
+/// 目录链接只删除链接本身，单个条目失败后继续清理其余条目。
 pub fn cleanup_dir_contents(dir: &std::path::Path) -> (usize, usize) {
+    let metadata = match dir.symlink_metadata() {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return (0, 0),
+        Err(_) => return (0, 1),
+    };
+    // 与 WebView2 运行时目录检查一致，Windows 上同时识别 junction 等重解析点。
+    #[cfg(windows)]
+    let directory_link = {
+        use std::os::windows::fs::MetadataExt;
+        const DIRECTORY_REPARSE_POINT: u32 = 0x10 | 0x400;
+        metadata.file_attributes() & DIRECTORY_REPARSE_POINT == DIRECTORY_REPARSE_POINT
+    };
+    #[cfg(not(windows))]
+    let directory_link = false;
+
+    if directory_link || metadata.file_type().is_symlink() {
+        let result = if directory_link {
+            std::fs::remove_dir(dir)
+        } else {
+            std::fs::remove_file(dir)
+        };
+        return match result {
+            Ok(()) => (1, 0),
+            Err(_) => (0, 1),
+        };
+    }
+
     let mut deleted = 0;
     let mut failed = 0;
 
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                // 递归清理子目录
-                let (d, f) = cleanup_dir_contents(&path);
-                deleted += d;
-                failed += f;
-                // 尝试删除空目录
-                if std::fs::remove_dir(&path).is_ok() {
-                    deleted += 1;
-                }
-            } else {
-                // 删除文件
-                match std::fs::remove_file(&path) {
-                    Ok(()) => deleted += 1,
-                    Err(_) => failed += 1,
-                }
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(_) => return (0, 1),
+    };
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(_) => {
+                failed += 1;
+                continue;
+            }
+        };
+        let path = entry.path();
+        // file_type 不跟随链接，目录重解析点在递归入口检查后只删除链接本身。
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(_) => {
+                failed += 1;
+                continue;
+            }
+        };
+        if file_type.is_dir() || file_type.is_symlink() {
+            let (d, f) = cleanup_dir_contents(&path);
+            deleted += d;
+            failed += f;
+        } else {
+            match std::fs::remove_file(&path) {
+                Ok(()) => deleted += 1,
+                Err(_) => failed += 1,
             }
         }
     }
 
-    // 尝试删除根目录本身
-    let _ = std::fs::remove_dir(dir);
+    match std::fs::remove_dir(dir) {
+        Ok(()) => deleted += 1,
+        // 子条目失败导致目录非空时，其失败已经计数。
+        Err(_) if failed == 0 => failed += 1,
+        Err(_) => {}
+    }
 
     (deleted, failed)
 }
@@ -1016,6 +1059,136 @@ mod bundle_update_tests {
         assert!(!source.exists());
         assert_eq!(std::fs::read(&first).unwrap(), b"original download");
         assert_eq!(std::fs::read(&second).unwrap(), b"replacement download");
+    }
+
+    #[cfg(unix)]
+    fn link_directory(target: &Path, link: &Path) {
+        std::os::unix::fs::symlink(target, link).unwrap();
+    }
+
+    #[cfg(windows)]
+    fn link_directory(target: &Path, link: &Path) {
+        use std::os::windows::process::CommandExt;
+
+        // Junctions do not require the symbolic-link privilege on Windows CI.
+        let output = std::process::Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "$ErrorActionPreference = 'Stop'; New-Item -ItemType Junction -Path $env:MXU_TEST_LINK -Target $env:MXU_TEST_TARGET | Out-Null",
+            ])
+            .env("MXU_TEST_LINK", link)
+            .env("MXU_TEST_TARGET", target)
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    fn cleanup_removes_nested_files_and_empty_directories() {
+        let temp = Fixture::new();
+        let archive = temp.0.join("old");
+        std::fs::create_dir_all(archive.join("nested/empty")).unwrap();
+        std::fs::write(archive.join("nested/old.bin"), b"old").unwrap();
+        std::fs::write(archive.join("old.txt"), b"old").unwrap();
+
+        assert_eq!(cleanup_dir_contents(&archive), (5, 0));
+        assert!(!archive.exists());
+        assert_eq!(cleanup_dir_contents(&archive), (0, 0));
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn cleanup_unlinks_nested_directory_links_and_preserves_their_targets() {
+        let temp = Fixture::new();
+        let archive = temp.0.join("old");
+        let user_data = temp.0.join("user-data");
+        std::fs::create_dir_all(archive.join("resource")).unwrap();
+        std::fs::create_dir(&user_data).unwrap();
+        std::fs::write(user_data.join("profile.txt"), b"user profile").unwrap();
+        std::fs::write(archive.join("resource/old.bin"), b"old").unwrap();
+        link_directory(&user_data, &archive.join("resource/linked"));
+
+        assert_eq!(cleanup_dir_contents(&archive), (4, 0));
+        assert!(!archive.exists());
+        assert_eq!(
+            std::fs::read(user_data.join("profile.txt")).unwrap(),
+            b"user profile"
+        );
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn cleanup_unlinks_the_archive_root_without_entering_its_target() {
+        let temp = Fixture::new();
+        let archive = temp.0.join("old");
+        let user_data = temp.0.join("user-data");
+        std::fs::create_dir(&user_data).unwrap();
+        std::fs::write(user_data.join("profile.txt"), b"user profile").unwrap();
+        link_directory(&user_data, &archive);
+
+        assert_eq!(cleanup_dir_contents(&archive), (1, 0));
+        assert!(archive.symlink_metadata().is_err());
+        assert_eq!(
+            std::fs::read(user_data.join("profile.txt")).unwrap(),
+            b"user profile"
+        );
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn cleanup_removes_dangling_directory_links() {
+        let temp = Fixture::new();
+        let archive = temp.0.join("old");
+        let target = temp.0.join("gone");
+        std::fs::create_dir(&archive).unwrap();
+        std::fs::create_dir(&target).unwrap();
+        link_directory(&target, &archive.join("linked"));
+        std::fs::remove_dir(&target).unwrap();
+
+        assert_eq!(cleanup_dir_contents(&archive), (2, 0));
+        assert!(!archive.exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn cleanup_continues_after_an_exclusively_open_file() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let temp = Fixture::new();
+        let archive = temp.0.join("old");
+        std::fs::create_dir(&archive).unwrap();
+        for name in ["one.bin", "two.bin", "three.bin"] {
+            std::fs::write(archive.join(name), b"old").unwrap();
+        }
+        // Lock the first enumerated entry so an early-aborting cleanup leaves siblings behind.
+        let locked_path = std::fs::read_dir(&archive)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let locked = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&locked_path)
+            .unwrap();
+
+        assert_eq!(cleanup_dir_contents(&archive), (2, 1));
+        let remaining: Vec<_> = std::fs::read_dir(&archive)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect();
+        assert_eq!(remaining, [locked_path]);
+        drop(locked);
+        assert_eq!(cleanup_dir_contents(&archive), (2, 0));
+        assert!(!archive.exists());
     }
 
     #[cfg(unix)]
