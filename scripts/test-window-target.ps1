@@ -2,8 +2,12 @@ $ErrorActionPreference = 'Stop'
 
 # Build the real library tests. Wry needs Common Controls v6 even for non-GUI tests.
 $messages = & cargo test --manifest-path src-tauri/Cargo.toml --locked --lib --no-run --message-format=json
-if ($LASTEXITCODE -ne 0) { throw 'Failed to build library tests' }
-$artifact = $messages | ForEach-Object { $_ | ConvertFrom-Json } |
+$buildExitCode = $LASTEXITCODE
+$events = $messages | ForEach-Object { $_ | ConvertFrom-Json }
+$events | Where-Object { $_.reason -eq 'compiler-message' -and $_.message.rendered } |
+    ForEach-Object { Write-Host $_.message.rendered }
+if ($buildExitCode -ne 0) { throw 'Failed to build library tests' }
+$artifact = $events |
     Where-Object { $_.reason -eq 'compiler-artifact' -and $_.target.name -eq 'mxu_lib' -and $_.executable } |
     Select-Object -Last 1
 if (-not $artifact) { throw 'Library test executable not found' }
