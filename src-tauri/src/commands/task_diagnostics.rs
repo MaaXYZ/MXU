@@ -5,7 +5,7 @@
 //! only images newly written to `on_error/` as an attachment. It deliberately excludes
 //! configuration, `vision/`, crash dumps, and a standalone manifest.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::fs::File;
 use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
 use std::path::{Component, Path, PathBuf};
@@ -26,6 +26,9 @@ const MAX_IMAGE_BUNDLE_BYTES: usize = 5 * 1024 * 1024;
 /// from screenshot attachment sampling.
 const MAX_LOG_RAW_BYTES: u64 = 1024 * 1024;
 const MAX_LOG_FILE_BYTES: u64 = 512 * 1024;
+/// A gzip tail requires decoding from the beginning. Bound that work separately
+/// from retained bytes; MaaFramework rotates logs at 128 MiB.
+const MAX_GZIP_SCAN_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_LOG_FILES: usize = 128;
 const MAX_IMAGE_FILES: usize = 128;
 /// Bound directory walking independently from file sizes. Limit hits are carried
@@ -39,7 +42,7 @@ const MTIME_TOLERANCE: Duration = Duration::from_secs(2);
 pub struct TaskEvidenceStart {
     root: PathBuf,
     started_at: SystemTime,
-    log_lengths: BTreeMap<PathBuf, u64>,
+    log_stamps: BTreeMap<PathBuf, FileStamp>,
     existing_images: BTreeMap<PathBuf, FileStamp>,
     warnings: Vec<String>,
 }
@@ -147,7 +150,7 @@ pub fn capture_task_start(root: &Path) -> TaskEvidenceStart {
     // on_error image while the directory is being walked; it must not be treated as
     // predating the task merely because discovery took time.
     let started_at = SystemTime::now();
-    let mut log_lengths = BTreeMap::new();
+    let mut log_stamps = BTreeMap::new();
     let mut existing_images = BTreeMap::new();
     let (files, warnings) = discover_files(root);
 
@@ -167,7 +170,7 @@ pub fn capture_task_start(root: &Path) -> TaskEvidenceStart {
             }
         } else if is_log_file(relative) {
             if let Ok(metadata) = path.metadata() {
-                log_lengths.insert(relative.to_path_buf(), metadata.len());
+                log_stamps.insert(relative.to_path_buf(), file_stamp(&metadata));
             }
         }
     }
@@ -175,7 +178,7 @@ pub fn capture_task_start(root: &Path) -> TaskEvidenceStart {
     TaskEvidenceStart {
         root: root.to_path_buf(),
         started_at,
-        log_lengths,
+        log_stamps,
         existing_images,
         warnings,
     }
@@ -241,15 +244,25 @@ pub fn apply_task_image_refresh(selection: &mut TaskEvidenceSelection, refresh: 
 /// emitted last. Limit hits are exposed through `truncated`.
 pub fn build_diagnostic_logs(selection: &mut TaskEvidenceSelection) -> DiagnosticLogs {
     selection.logs.sort_by(|left, right| {
-        log_priority(&left.archive_name)
+        let priority = log_priority(&left.archive_name);
+        priority
             .cmp(&log_priority(&right.archive_name))
-            .then_with(|| left.archive_name.cmp(&right.archive_name))
+            .then_with(|| {
+                if priority == 1 {
+                    // MaaFramework timestamps backup names. Prefer the newest
+                    // failure context when backups share the remaining budget.
+                    right.archive_name.cmp(&left.archive_name)
+                } else {
+                    left.archive_name.cmp(&right.archive_name)
+                }
+            })
     });
 
     let mut result = DiagnosticLogs {
         warnings: std::mem::take(&mut selection.warnings),
         ..Default::default()
     };
+    let mut gzip_scan_budget = MAX_GZIP_SCAN_BYTES;
     for entry in &mut selection.logs {
         let remaining_budget = MAX_LOG_RAW_BYTES.saturating_sub(result.selected_raw_bytes);
         if remaining_budget == 0 {
@@ -257,14 +270,18 @@ pub fn build_diagnostic_logs(selection: &mut TaskEvidenceSelection) -> Diagnosti
             break;
         }
 
-        let selected_len = entry.end.saturating_sub(entry.start);
-        let read_len = selected_len.min(MAX_LOG_FILE_BYTES).min(remaining_budget);
-        if read_len == 0 {
-            continue;
-        }
-        let read_start = entry.end.saturating_sub(read_len);
-        match read_log_slice(entry, read_start, read_len) {
-            Ok(bytes) if !bytes.is_empty() => {
+        let tail_limit = MAX_LOG_FILE_BYTES.min(remaining_budget);
+        let read_result = if is_gzip_log(Path::new(&entry.archive_name)) {
+            read_gzip_log_tail(entry, tail_limit, &mut gzip_scan_budget)
+        } else {
+            let selected_len = entry.end.saturating_sub(entry.start);
+            let read_len = selected_len.min(tail_limit);
+            let read_start = entry.end.saturating_sub(read_len);
+            read_log_slice(entry, read_start, read_len)
+                .map(|bytes| (bytes, read_len < selected_len))
+        };
+        match read_result {
+            Ok((bytes, truncated)) if !bytes.is_empty() => {
                 let content = String::from_utf8_lossy(&bytes)
                     .trim_matches('\0')
                     .to_string();
@@ -273,7 +290,7 @@ pub fn build_diagnostic_logs(selection: &mut TaskEvidenceSelection) -> Diagnosti
                 }
                 result.selected_raw_bytes =
                     result.selected_raw_bytes.saturating_add(bytes.len() as u64);
-                result.truncated |= read_len < selected_len;
+                result.truncated |= truncated;
                 result.entries.push(DiagnosticLog {
                     source: entry.archive_name.clone(),
                     kind: log_kind(&entry.archive_name),
@@ -282,9 +299,12 @@ pub fn build_diagnostic_logs(selection: &mut TaskEvidenceSelection) -> Diagnosti
                 });
             }
             Ok(_) => {}
-            Err(error) => result
-                .warnings
-                .push(format!("read_log_failed:{}:{error}", entry.archive_name)),
+            Err(error) => {
+                result.truncated |= error.kind() == io::ErrorKind::FileTooLarge;
+                result
+                    .warnings
+                    .push(format!("read_log_failed:{}:{error}", entry.archive_name));
+            }
         }
     }
     result
@@ -404,7 +424,38 @@ fn select_entries(start: &TaskEvidenceStart) -> (Vec<LogSlice>, Vec<ImageEntry>,
         }
 
         let end = metadata.len();
-        let Some(previous_len) = start.log_lengths.get(relative).copied() else {
+        if is_gzip_log(relative) {
+            // MaaFramework publishes closed backups atomically and preserves
+            // their mtime. Compression alone must not make pre-task logs new
+            // evidence, including a plain backup compressed during this task.
+            let previous = start
+                .log_stamps
+                .get(relative)
+                .or_else(|| start.log_stamps.get(&relative.with_extension("")));
+            if previous.is_some_and(|stamp| {
+                stamp
+                    .modified
+                    .is_none_or(|modified| modified < start.started_at)
+            }) || !modified_during_task(&metadata, start)
+                || end == 0
+            {
+                continue;
+            }
+            // A slow start snapshot can already contain a backup written after
+            // the task began. Use the strict boundary here (without tolerance),
+            // so genuinely pre-task backups stay excluded.
+            if previous.is_some() {
+                warnings.push(format!("log_changed_during_start_snapshot:{archive_name}"));
+            }
+            logs.push(LogSlice {
+                source,
+                archive_name,
+                start: 0,
+                end,
+            });
+            continue;
+        }
+        let Some(previous_len) = start.log_stamps.get(relative).map(|stamp| stamp.len) else {
             if !modified_during_task(&metadata, start) || end == 0 {
                 continue;
             }
@@ -447,6 +498,17 @@ fn select_entries(start: &TaskEvidenceStart) -> (Vec<LogSlice>, Vec<ImageEntry>,
         }
     }
 
+    // The gzip is published just before its plain source is deleted. If both
+    // generations were opened, retain the cheap seekable source only once.
+    let plain_names: std::collections::HashSet<_> = logs
+        .iter()
+        .filter(|entry| !is_gzip_log(Path::new(&entry.archive_name)))
+        .map(|entry| entry.archive_name.clone())
+        .collect();
+    logs.retain(|entry| {
+        !is_gzip_log(Path::new(&entry.archive_name))
+            || !plain_names.contains(&entry.archive_name[..entry.archive_name.len() - 3])
+    });
     logs.sort_by(|left, right| left.archive_name.cmp(&right.archive_name));
     images.sort_by(|left, right| left.archive_name.cmp(&right.archive_name));
     warnings.sort();
@@ -537,6 +599,40 @@ fn read_log_slice(entry: &mut LogSlice, start: u64, len: u64) -> Result<Vec<u8>,
     let mut bytes = Vec::with_capacity(len.min(usize::MAX as u64) as usize);
     selected.read_to_end(&mut bytes)?;
     Ok(bytes)
+}
+
+fn read_gzip_log_tail(
+    entry: &mut LogSlice,
+    tail_limit: u64,
+    scan_budget: &mut u64,
+) -> io::Result<(Vec<u8>, bool)> {
+    entry.source.seek(SeekFrom::Start(0))?;
+    // Keep the compressed end frozen as well as the file generation. Reading to
+    // EOF validates gzip trailers, so damaged archives never become log text.
+    let mut decoder = flate2::read::MultiGzDecoder::new((&mut entry.source).take(entry.end));
+    let mut tail = VecDeque::with_capacity(tail_limit as usize);
+    let mut buffer = [0_u8; 32 * 1024];
+    let mut decoded_bytes = 0_u64;
+    loop {
+        let read_limit = (buffer.len() as u64).min(scan_budget.saturating_add(1)) as usize;
+        let count = decoder.read(&mut buffer[..read_limit])?;
+        if count == 0 {
+            return Ok((tail.into_iter().collect(), decoded_bytes > tail_limit));
+        }
+        if count as u64 > *scan_budget {
+            *scan_budget = 0;
+            return Err(io::Error::new(
+                io::ErrorKind::FileTooLarge,
+                "gzip diagnostic scan limit exceeded",
+            ));
+        }
+        *scan_budget -= count as u64;
+        decoded_bytes = decoded_bytes.saturating_add(count as u64);
+        let bytes = &buffer[count.saturating_sub(tail_limit as usize)..count];
+        let discard = (tail.len() + bytes.len()).saturating_sub(tail_limit as usize);
+        tail.drain(..discard);
+        tail.extend(bytes);
+    }
 }
 
 fn write_image<W: Write + Seek>(
@@ -672,7 +768,36 @@ fn is_log_file(relative: &Path) -> bool {
         .file_name()
         .and_then(|name| name.to_str())
         .map(str::to_ascii_lowercase)
-        .is_some_and(|name| name.ends_with(".log") || name.contains(".log."))
+        .is_some_and(|name| {
+            if name.ends_with(".log") || name.ends_with(".log.gz") {
+                return true;
+            }
+            // Keep legacy numeric/date/custom rotation suffixes, but never read
+            // archives or the logger's .log.gz.<timestamp>.tmp as plain text.
+            name.split_once(".log.").is_some_and(|(_, suffix)| {
+                !suffix.split('.').any(|part| {
+                    matches!(
+                        part,
+                        "gz" | "gzip"
+                            | "zip"
+                            | "bz2"
+                            | "xz"
+                            | "zst"
+                            | "zstd"
+                            | "7z"
+                            | "tar"
+                            | "lz4"
+                            | "tmp"
+                    )
+                })
+            })
+        })
+}
+
+fn is_gzip_log(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.to_ascii_lowercase().ends_with(".log.gz"))
 }
 
 fn log_priority(path: &str) -> u8 {
@@ -683,20 +808,22 @@ fn log_priority(path: &str) -> u8 {
         .to_ascii_lowercase();
     if file_name.starts_with("maafw.log") {
         0
-    } else if file_name.starts_with("maa.log") {
+    } else if file_name.starts_with("maafw.bak.") {
         1
-    } else if file_name.starts_with("mxu") || file_name.starts_with("log-") {
+    } else if file_name.starts_with("maa.log") {
         2
-    } else {
+    } else if file_name.starts_with("mxu") || file_name.starts_with("log-") {
         3
+    } else {
+        4
     }
 }
 
 fn log_kind(path: &str) -> &'static str {
     match log_priority(path) {
-        0 => "maafw",
-        1 => "maa",
-        2 => "mxu",
+        0 | 1 => "maafw",
+        2 => "maa",
+        3 => "mxu",
         _ => "other",
     }
 }
@@ -736,6 +863,15 @@ mod tests {
         ));
         std::fs::create_dir_all(root.join("on_error")).expect("create test directory");
         root
+    }
+
+    fn write_gzip(path: &Path, contents: &[u8]) {
+        let mut encoder = flate2::write::GzEncoder::new(
+            File::create(path).expect("create gzip log"),
+            flate2::Compression::default(),
+        );
+        encoder.write_all(contents).expect("write gzip log");
+        encoder.finish().expect("finish gzip log");
     }
 
     fn zip_entries(buffer: Vec<u8>) -> BTreeMap<String, Vec<u8>> {
@@ -951,6 +1087,212 @@ mod tests {
             .warnings
             .iter()
             .any(|warning| warning.starts_with("log_changed_during_start_snapshot:")));
+
+        std::fs::remove_dir_all(&root).expect("remove test directory");
+    }
+
+    #[test]
+    fn decodes_new_framework_backups_and_keeps_the_selected_generation() {
+        let root = test_root();
+        let start = capture_task_start(&root);
+        let backup = root.join("maafw.bak.20261115-000000.log.gz");
+        write_gzip(&backup, b"rotated-task-failure\n");
+        std::fs::write(root.join("maafw.log"), b"current-task-failure\n")
+            .expect("write current log");
+
+        let mut selection = capture_task_end(start);
+        std::fs::rename(&backup, root.join("old-generation.gz")).expect("move selected gzip");
+        write_gzip(&backup, b"next-task-log\n");
+        let logs = build_diagnostic_logs(&mut selection);
+        assert_eq!(logs.entries.len(), 2);
+        assert_eq!(logs.entries[0].source, "maafw.log");
+        assert_eq!(logs.entries[0].content, "current-task-failure\n");
+        assert_eq!(logs.entries[1].content, "rotated-task-failure\n");
+        assert!(logs.entries.iter().all(|entry| entry.kind == "maafw"));
+        assert_eq!(
+            logs.selected_raw_bytes,
+            b"current-task-failure\nrotated-task-failure\n".len() as u64
+        );
+        assert!(!logs.truncated);
+
+        std::fs::remove_dir_all(&root).expect("remove test directory");
+    }
+
+    #[test]
+    fn compression_of_pre_task_backups_does_not_create_task_evidence() {
+        let root = test_root();
+        write_gzip(
+            &root.join("maafw.bak.existing.log.gz"),
+            b"old compressed log\n",
+        );
+        let plain = root.join("maafw.bak.pending.log");
+        std::fs::write(&plain, b"old plain log\n").expect("write old backup");
+        let start = capture_task_start(&root);
+        write_gzip(&root.join("maafw.bak.pending.log.gz"), b"old plain log\n");
+        std::fs::remove_file(&plain).expect("remove compressed source");
+        let old = root.join("maafw.bak.ancient.log.gz");
+        write_gzip(&old, b"old backup discovered after start\n");
+        File::options()
+            .write(true)
+            .open(old)
+            .unwrap()
+            .set_modified(SystemTime::UNIX_EPOCH)
+            .unwrap();
+
+        let mut selection = capture_task_end(start);
+        let logs = build_diagnostic_logs(&mut selection);
+        assert!(logs.entries.is_empty());
+
+        std::fs::remove_dir_all(&root).expect("remove test directory");
+    }
+
+    #[test]
+    fn retains_gzip_backups_written_during_the_start_snapshot() {
+        let root = test_root();
+        write_gzip(
+            &root.join("maafw.bak.compressed.log.gz"),
+            b"failure compressed during start snapshot\n",
+        );
+        let plain = root.join("maafw.bak.pending.log");
+        let plain_contents = b"failure rotated during start snapshot\n";
+        std::fs::write(&plain, plain_contents).expect("write rotated log");
+        let mut start = capture_task_start(&root);
+        // Deterministically model discovery that recorded both backups after
+        // they were written, although the task-start boundary came first.
+        start.started_at = SystemTime::UNIX_EPOCH;
+        let source_mtime = start.log_stamps[Path::new("maafw.bak.pending.log")]
+            .modified
+            .unwrap();
+        let compressed = root.join("maafw.bak.pending.log.gz");
+        write_gzip(&compressed, plain_contents);
+        File::options()
+            .write(true)
+            .open(compressed)
+            .unwrap()
+            .set_modified(source_mtime)
+            .unwrap();
+        std::fs::remove_file(plain).expect("remove compressed source");
+
+        let mut selection = capture_task_end(start);
+        let logs = build_diagnostic_logs(&mut selection);
+        assert_eq!(logs.entries.len(), 2);
+        assert!(logs.entries.iter().any(|entry| {
+            entry.source == "maafw.bak.compressed.log.gz"
+                && entry.content == "failure compressed during start snapshot\n"
+        }));
+        assert!(logs.entries.iter().any(|entry| {
+            entry.source == "maafw.bak.pending.log.gz"
+                && entry.content == "failure rotated during start snapshot\n"
+        }));
+        assert_eq!(
+            logs.warnings
+                .iter()
+                .filter(|warning| warning.starts_with("log_changed_during_start_snapshot:"))
+                .count(),
+            2
+        );
+
+        std::fs::remove_dir_all(&root).expect("remove test directory");
+    }
+
+    #[test]
+    fn ignores_unfinished_compression_and_deduplicates_published_backups() {
+        let root = test_root();
+        let start = capture_task_start(&root);
+        std::fs::write(root.join("maafw.bak.new.log"), b"task failure\n")
+            .expect("write rotated backup");
+        write_gzip(&root.join("maafw.bak.new.log.gz"), b"task failure\n");
+        for name in [
+            "maafw.bak.partial.log.gz.20261115.tmp",
+            "maafw.log.zip",
+            "maafw.log.gz.backup",
+        ] {
+            std::fs::write(root.join(name), b"not diagnostic text").unwrap();
+        }
+
+        let mut selection = capture_task_end(start);
+        let logs = build_diagnostic_logs(&mut selection);
+        assert_eq!(logs.entries.len(), 1);
+        assert_eq!(logs.entries[0].source, "maafw.bak.new.log");
+        assert_eq!(logs.entries[0].content, "task failure\n");
+        assert_eq!(logs.entries[0].kind, "maafw");
+        assert!(is_log_file(Path::new("maafw.log.1")));
+        assert!(is_log_file(Path::new("agent.log.2026-11-15")));
+        assert!(is_log_file(Path::new("agent.log.old")));
+        assert!(!is_log_file(Path::new("agent.log.1.gz")));
+        assert!(!is_log_file(Path::new("agent.log.2026-11-15.zip")));
+
+        std::fs::remove_dir_all(&root).expect("remove test directory");
+    }
+
+    #[test]
+    fn gzip_diagnostics_budget_decoded_tails_instead_of_compressed_sizes() {
+        let root = test_root();
+        let start = capture_task_start(&root);
+        let mut contents = vec![b'x'; 700 * 1024];
+        contents.extend_from_slice(b"last failure\n");
+        std::fs::write(root.join("maafw.log"), &contents).expect("write active log");
+        for index in 0..3 {
+            write_gzip(&root.join(format!("maafw.bak.{index}.log.gz")), &contents);
+        }
+
+        let mut selection = capture_task_end(start);
+        let logs = build_diagnostic_logs(&mut selection);
+        assert_eq!(logs.entries.len(), 2);
+        assert_eq!(logs.entries[0].source, "maafw.log");
+        assert_eq!(logs.entries[1].source, "maafw.bak.2.log.gz");
+        assert_eq!(logs.selected_raw_bytes, MAX_LOG_RAW_BYTES);
+        assert!(logs.entries.iter().all(|entry| {
+            entry.raw_bytes == MAX_LOG_FILE_BYTES && entry.content.ends_with("last failure\n")
+        }));
+        assert!(logs.truncated);
+
+        std::fs::remove_dir_all(&root).expect("remove test directory");
+    }
+
+    #[test]
+    fn corrupt_gzip_is_reported_without_returning_partial_or_binary_text() {
+        let root = test_root();
+        let start = capture_task_start(&root);
+        let path = root.join("maafw.bak.damaged.log.gz");
+        write_gzip(&path, b"must not publish an invalid archive\n");
+        let mut gzip = std::fs::read(&path).unwrap();
+        let crc_index = gzip.len() - 8;
+        gzip[crc_index] ^= 1;
+        std::fs::write(&path, gzip).unwrap();
+
+        let mut selection = capture_task_end(start);
+        let logs = build_diagnostic_logs(&mut selection);
+        assert!(logs.entries.is_empty());
+        assert!(logs
+            .warnings
+            .iter()
+            .any(|warning| warning.starts_with("read_log_failed:maafw.bak.damaged.log.gz:")));
+
+        std::fs::remove_dir_all(&root).expect("remove test directory");
+    }
+
+    #[test]
+    fn gzip_scan_budget_bounds_work_and_validates_eof_at_the_exact_limit() {
+        let root = test_root();
+        let start = capture_task_start(&root);
+        write_gzip(&root.join("maafw.bak.large.log.gz"), b"0123456789");
+        let mut selection = capture_task_end(start);
+        let entry = &mut selection.logs[0];
+        let mut too_small_budget = 9;
+        assert_eq!(
+            read_gzip_log_tail(entry, 4, &mut too_small_budget)
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::FileTooLarge
+        );
+        assert_eq!(too_small_budget, 0);
+        let mut exact_budget = 10;
+        assert_eq!(
+            read_gzip_log_tail(entry, 4, &mut exact_budget).unwrap(),
+            (b"6789".to_vec(), true)
+        );
+        assert_eq!(exact_budget, 0);
 
         std::fs::remove_dir_all(&root).expect("remove test directory");
     }

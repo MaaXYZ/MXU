@@ -34,6 +34,45 @@ struct ExportEntry {
     archive_name: String,
 }
 
+fn is_gzip_log(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.to_ascii_lowercase().ends_with(".log.gz"))
+}
+
+fn write_redacted_text(reader: impl io::BufRead, mut writer: impl Write) -> io::Result<()> {
+    let mut reader = reader;
+    let mut line = Vec::new();
+    while reader.read_until(b'\n', &mut line)? != 0 {
+        writer.write_all(super::log_secrets::redact(&String::from_utf8_lossy(&line)).as_bytes())?;
+        line.clear();
+    }
+    Ok(())
+}
+
+/// MaaFW 6 compresses rotated logs as .log.gz. Stage a redacted gzip first so
+/// corrupt archives fail before export, and volume sizing measures the actual
+/// bytes that will be included. Neither the source nor a plaintext copy is written.
+fn prepare_gzip_logs(entries: &mut [ExportEntry], staging_dir: &Path) -> Result<(), String> {
+    for (index, entry) in entries.iter_mut().enumerate() {
+        if !is_gzip_log(&entry.source_path) {
+            continue;
+        }
+        let staged = staging_dir.join(format!("{index}.log.gz"));
+        let prepare = || -> io::Result<()> {
+            let source = std::fs::File::open(&entry.source_path)?;
+            let reader = io::BufReader::new(flate2::read::MultiGzDecoder::new(source));
+            let target = BufWriter::new(std::fs::File::create(&staged)?);
+            let mut encoder = flate2::write::GzEncoder::new(target, flate2::Compression::default());
+            write_redacted_text(reader, &mut encoder)?;
+            encoder.finish()?.flush()
+        };
+        prepare().map_err(|error| format!("{}: {error}", entry.source_path.display()))?;
+        entry.source_path = staged;
+    }
+    Ok(())
+}
+
 /// 包装真实 writer，统计已写字节数，用于在写入分卷过程中实时查询当前卷大小。
 struct CountingWriter<W: Write + Seek> {
     inner: W,
@@ -108,24 +147,7 @@ where
             .contains(&ext.to_ascii_lowercase().as_str())
         });
     if text_file {
-        use std::io::BufRead;
-        let mut reader = std::io::BufReader::new(file);
-        let mut line = Vec::new();
-        loop {
-            match reader.read_until(b'\n', &mut line) {
-                Ok(0) => break,
-                Ok(_) => {}
-                Err(_) => return false,
-            }
-            if zip
-                .write_all(super::log_secrets::redact(&String::from_utf8_lossy(&line)).as_bytes())
-                .is_err()
-            {
-                return false;
-            }
-            line.clear();
-        }
-        return true;
+        return write_redacted_text(io::BufReader::new(file), zip).is_ok();
     }
 
     if let Err(e) = io::copy(&mut file, zip) {
@@ -290,7 +312,7 @@ fn collect_debug_subdir_files(
         };
 
         for export in collect_files_recursively(&path, &dir_name)? {
-            if has_extension(&export.source_path, extensions) {
+            if has_extension(&export.source_path, extensions) || is_gzip_log(&export.source_path) {
                 files.push(export);
             }
         }
@@ -387,7 +409,7 @@ fn clear_dir_contents(dir: &Path) -> u64 {
     deleted
 }
 
-/// 递归删除 `dir` 及其所有子目录下的 .log 文件，返回删除数量。
+/// 递归删除 `dir` 及其所有子目录下的 .log / .log.gz 文件，返回删除数量。
 /// `exclude_file_name` 匹配的文件名会被跳过（当前会话正在写入的前端日志）。
 /// 活动文件 `mxu-tauri.log` 同样跳过：日志插件全程握着它，删掉后写入会进已删除句柄。
 /// 已关闭的轮转文件 `mxu-tauri_*.log` 仍删除。只删文件不回收空目录，避免改动既有目录结构。
@@ -418,7 +440,7 @@ fn remove_log_files_recursively(dir: &Path, exclude_file_name: Option<&str>) -> 
             continue;
         };
 
-        if !name.ends_with(".log")
+        if !(name.ends_with(".log") || is_gzip_log(&path))
             || exclude_file_name == Some(name)
             || name == ACTIVE_TAURI_LOG_FILE
         {
@@ -453,7 +475,7 @@ fn clear_log_dirs(debug_dir: &Path, exports_dir: &Path, exclude_file_name: Optio
     deleted
 }
 
-/// 递归删除 debug 目录（含所有子目录）中的 .log 文件，清空 on_error/、vision/ 内的调试产物
+/// 递归删除 debug 目录中的 .log / .log.gz 文件，清空 on_error/、vision/ 内的调试产物
 /// 以及 debug_exports/ 下的日志导出产物（保留这几个目录本身）。
 /// 可选择排除一个当前正在使用的前端日志文件。活动文件 `mxu-tauri.log` 始终保留。
 /// 返回删除的文件与产物总数。
@@ -721,7 +743,7 @@ fn export_logs_from_dir(
         if !entry.file_type().is_ok_and(|file_type| file_type.is_file()) {
             continue;
         }
-        if !has_extension(&path, &["log", "dmp"]) {
+        if !has_extension(&path, &["log", "dmp"]) && !is_gzip_log(&path) {
             continue;
         }
         let Some(archive_name) = path.file_name().map(|n| n.to_string_lossy().to_string()) else {
@@ -758,6 +780,12 @@ fn export_logs_from_dir(
     if total_entries == 0 {
         return Err("没有可导出的日志文件".to_string());
     }
+
+    let staging_dir = tempfile::Builder::new()
+        .prefix("mxu-log-export-")
+        .tempdir()
+        .map_err(|error| error.to_string())?;
+    prepare_gzip_logs(&mut all_entries, staging_dir.path())?;
 
     // ─── 4. 分卷打包 ───
     // 卷数硬上界 = 总条目数（每文件独占一卷的退化情形）；据此选零填充宽度。
@@ -996,6 +1024,103 @@ mod tests {
             .unwrap()
             .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(seconds))
             .unwrap();
+    }
+
+    fn gzip(contents: &[u8]) -> Vec<u8> {
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(contents).unwrap();
+        encoder.finish().unwrap()
+    }
+
+    #[test]
+    fn exports_gzip_logs_with_redaction_and_preserves_sources() {
+        let root = TestDir::new();
+        let secret = "unique-gzip-export-secret".to_string();
+        super::super::log_secrets::register(&[secret.clone()]);
+        let mut compressed = gzip(format!("password={secret}\r\n").as_bytes());
+        // Read all gzip members, including a final line without a newline.
+        compressed.extend(gzip(format!("token={secret}").as_bytes()));
+        let source = root.write("debug/maafw.bak.2026-11-15.log.gz", &compressed);
+        root.write("debug/agent/debug/maafw.bak.2026-11-14.log.gz", &compressed);
+        root.write("debug/maafw.log", b"active log\n");
+        root.write("debug/maafw.bak.pending.log.gz.123.tmp", b"in progress");
+        root.write("debug/unrelated.gz", b"not a log");
+
+        let entries = read_export(&root.export());
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].0, "maafw.bak.2026-11-15.log.gz");
+        assert_eq!(entries[1], ("maafw.log".into(), b"active log\n".to_vec()));
+        assert_eq!(entries[2].0, "agent/debug/maafw.bak.2026-11-14.log.gz");
+        for index in [0, 2] {
+            let mut decoded = String::new();
+            flate2::read::MultiGzDecoder::new(entries[index].1.as_slice())
+                .read_to_string(&mut decoded)
+                .unwrap();
+            assert_eq!(decoded, "password=******\r\ntoken=******");
+        }
+        assert_eq!(std::fs::read(source).unwrap(), compressed);
+    }
+
+    #[test]
+    fn gzip_only_logs_can_be_exported_and_corrupt_archives_fail_closed() {
+        let root = TestDir::new();
+        let compressed = gzip(b"historical log\n");
+        let source = root.write("debug/maafw.bak.previous.log.gz", &compressed);
+        let entries = read_export(&root.export());
+        assert_eq!(entries.len(), 1);
+        let mut decoded = Vec::new();
+        flate2::read::MultiGzDecoder::new(entries[0].1.as_slice())
+            .read_to_end(&mut decoded)
+            .unwrap();
+        assert_eq!(decoded, b"historical log\n");
+
+        for broken in [
+            b"not gzip".to_vec(),
+            compressed[..compressed.len() - 1].to_vec(),
+            {
+                let mut bad_crc = compressed.clone();
+                let footer = bad_crc.len() - 8;
+                bad_crc[footer] ^= 0xff;
+                bad_crc
+            },
+        ] {
+            std::fs::write(&source, broken).unwrap();
+            let error = export_logs_from_dir(&root.0, Some("broken".into()), None).unwrap_err();
+            assert!(error.contains("maafw.bak.previous.log.gz"), "{error}");
+        }
+    }
+
+    #[test]
+    fn clearing_logs_removes_gzip_backups_but_preserves_active_and_unrelated_files() {
+        let root = TestDir::new();
+        let removed = [
+            "debug/maafw.bak.previous.log.gz",
+            "debug/agent/debug/maafw.bak.previous.log.gz",
+            "debug/maafw.log",
+        ];
+        let retained = [
+            "debug/mxu-tauri.log",
+            "debug/current.log",
+            "debug/maafw.bak.pending.log.gz.123.tmp",
+            "debug/other.gz",
+        ];
+        for path in removed.iter().chain(retained.iter()) {
+            root.write(path, b"contents");
+        }
+        assert_eq!(
+            clear_log_dirs(
+                &root.0.join(DEBUG_DIR),
+                &root.0.join(DEBUG_EXPORTS_DIR),
+                Some("current.log"),
+            ),
+            3
+        );
+        for path in removed {
+            assert!(!root.0.join(path).exists(), "{path}");
+        }
+        for path in retained {
+            assert!(root.0.join(path).exists(), "{path}");
+        }
     }
 
     /// 使用确定性伪随机数据模拟无法再次压缩的图片，无需外部资源或随机数依赖。

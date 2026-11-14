@@ -36,6 +36,7 @@ regex = "1.10"
 base64 = "0.22"
 zip = "7.2.0"
 flate2 = "1.0"
+tempfile = "3"
 tar = "0.4"
 tokio = { version = "1", features = ["rt", "sync", "net", "rt-multi-thread"] }
 reqwest = { version = "0.12", features = ["stream", "blocking", "json", "socks"] }
@@ -75,7 +76,6 @@ debug = true
 [target.'cfg(windows)'.dependencies]
 dunce = "1"
 image = { version = "0.25", default-features = false, features = ["png", "ico"] }
-tempfile = "3"
 winsafe = { version = "0.0.28", features = [
     "advapi",
     "kernel",
