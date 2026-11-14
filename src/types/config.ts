@@ -175,6 +175,10 @@ export interface AppSettings {
   preActionConnectDelaySec?: number;
   /** 是否开启匿名遥测（帮助改进软件），默认 true；调试 / 开发版本强制关闭 */
   helpImproveSoftware?: boolean;
+  /** 更新下载：连接超时时间（秒），超过后中断并触发重试 */
+  updateTimeoutSec?: number;
+  /** 更新下载：连接超时后的自动重试次数 */
+  updateRetries?: number;
 }
 
 // MXU 配置文件完整结构
@@ -237,6 +241,29 @@ export function normalizeAddTaskPanelHeight(value: unknown): number {
 
 // 默认强调色
 export const defaultAccentColor: AccentColor = 'emerald';
+
+// 更新下载超时与重试默认值
+export const defaultUpdateTimeoutSec = 10;
+export const updateTimeoutSecMin = 1;
+export const updateTimeoutSecMax = 600;
+export const defaultUpdateRetries = 0;
+export const updateRetriesMin = 0;
+export const updateRetriesMax = 10;
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+export function normalizeUpdateTimeoutSec(value: unknown): number {
+  return clampNumber(value, updateTimeoutSecMin, updateTimeoutSecMax, defaultUpdateTimeoutSec);
+}
+
+export function normalizeUpdateRetries(value: unknown): number {
+  return clampNumber(value, updateRetriesMin, updateRetriesMax, defaultUpdateRetries);
+}
 
 // 默认快捷键设置
 export const defaultHotkeySettings: HotkeySettings = {

@@ -24,9 +24,13 @@ import {
   defaultMirrorChyanSettings,
   defaultScheduledUpdateCheckTime,
   defaultScreenshotFrameRate,
+  defaultUpdateRetries,
+  defaultUpdateTimeoutSec,
   defaultWindowSize,
   normalizeAddTaskPanelHeight,
   normalizeScheduledUpdateCheckTime,
+  normalizeUpdateRetries,
+  normalizeUpdateTimeoutSec,
 } from '@/types/config';
 import type {
   ActionConfig,
@@ -212,6 +216,7 @@ function forwardLogToStdout(message: string) {
 // 重新导出类型供外部使用
 export type {
   DownloadProgress,
+  DownloadRetryNotice,
   DownloadStatus,
   InstallStatus,
   JustUpdatedInfo,
@@ -1558,6 +1563,8 @@ export const useAppStore = create<AppState>()(
           return saved;
         })(),
         proxySettings: config.settings.proxy,
+        updateTimeoutSec: normalizeUpdateTimeoutSec(config.settings.updateTimeoutSec),
+        updateRetries: normalizeUpdateRetries(config.settings.updateRetries),
         showOptionPreview:
           localLayout?.showOptionPreview ?? config.settings.showOptionPreview ?? true,
         sidePanelExpanded:
@@ -2068,6 +2075,12 @@ export const useAppStore = create<AppState>()(
     proxySettings: undefined,
     setProxySettings: (settings) => set({ proxySettings: settings }),
 
+    // 更新下载超时与重试
+    updateTimeoutSec: defaultUpdateTimeoutSec,
+    setUpdateTimeoutSec: (seconds) => set({ updateTimeoutSec: normalizeUpdateTimeoutSec(seconds) }),
+    updateRetries: defaultUpdateRetries,
+    setUpdateRetries: (retries) => set({ updateRetries: normalizeUpdateRetries(retries) }),
+
     // 任务选项预览显示设置
     showOptionPreview: true,
     setShowOptionPreview: (show) => {
@@ -2173,25 +2186,39 @@ export const useAppStore = create<AppState>()(
     downloadProgress: null,
     downloadSavePath: null,
     slowDownloadSince: null,
+    downloadRetryNotice: null,
+    downloadError: null,
     // 每次状态变化都重置慢速计时：'downloading' 表示新一轮下载开始，其余状态表示下载已结束
-    setDownloadStatus: (status) => set({ downloadStatus: status, slowDownloadSince: null }),
+    setDownloadStatus: (status) =>
+      set({
+        downloadStatus: status,
+        slowDownloadSince: null,
+        downloadRetryNotice: null,
+      }),
     // 要求 downloadedSize > 0 才起算：下载开始前先写入的那条 speed 为 0 的占位进度，
     // 以及 Rust 建连/重定向期间（进度事件还没开始推送）都不应计入慢速时长
     setDownloadProgress: (progress) =>
       set((state) => ({
         downloadProgress: progress,
+        // 重试后真正开始传输数据，重试提示即可消失
+        downloadRetryNotice:
+          progress && progress.downloadedSize > 0 ? null : state.downloadRetryNotice,
         slowDownloadSince:
           progress && progress.downloadedSize > 0 && progress.speed < SLOW_DOWNLOAD_SPEED_BPS
             ? (state.slowDownloadSince ?? Date.now())
             : null,
       })),
     setDownloadSavePath: (path) => set({ downloadSavePath: path }),
+    setDownloadRetryNotice: (notice) => set({ downloadRetryNotice: notice }),
+    setDownloadError: (error) => set({ downloadError: error }),
     resetDownloadState: () =>
       set({
         downloadStatus: 'idle',
         downloadProgress: null,
         downloadSavePath: null,
         slowDownloadSince: null,
+        downloadRetryNotice: null,
+        downloadError: null,
       }),
 
     // 安装状态
@@ -2578,6 +2605,8 @@ function generateConfig(): MxuConfig {
             cdkEncrypted: encryptCdk(state.mirrorChyanSettings.cdk, state.projectInterface?.name),
           },
           proxy: state.proxySettings,
+          updateTimeoutSec: state.updateTimeoutSec,
+          updateRetries: state.updateRetries,
           welcomeShownHash: state.welcomeShownHash,
           devMode: state.devMode,
           tcpCompatMode: state.tcpCompatMode,
@@ -2660,6 +2689,8 @@ useAppStore.subscribe(
     scheduledUpdateCheckEnabled: state.scheduledUpdateCheckEnabled,
     scheduledUpdateCheckTime: state.scheduledUpdateCheckTime,
     proxySettings: state.proxySettings,
+    updateTimeoutSec: state.updateTimeoutSec,
+    updateRetries: state.updateRetries,
     welcomeShownHash: state.welcomeShownHash,
     devMode: state.devMode,
     tcpCompatMode: state.tcpCompatMode,

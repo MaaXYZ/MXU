@@ -14,6 +14,7 @@ import {
   Bug,
   Network,
   Clock,
+  Timer,
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -29,6 +30,14 @@ import {
 } from '@/services/updateService';
 import { createProxySettings, proxySettingsForUpdateDownload } from '@/services/proxyService';
 import { resolveI18nText } from '@/services/contentResolver';
+import {
+  normalizeUpdateRetries,
+  normalizeUpdateTimeoutSec,
+  updateRetriesMax,
+  updateRetriesMin,
+  updateTimeoutSecMax,
+  updateTimeoutSecMin,
+} from '@/types/config';
 import { getInterfaceLangKey } from '@/i18n';
 import { loggers } from '@/utils/logger';
 import { SwitchButton, TimeInput } from '../FormControls';
@@ -50,6 +59,10 @@ export function UpdateSection() {
     setScheduledUpdateCheckTime,
     proxySettings,
     setProxySettings,
+    updateTimeoutSec,
+    setUpdateTimeoutSec,
+    updateRetries,
+    setUpdateRetries,
     updateInfo,
     updateCheckLoading,
     setUpdateInfo,
@@ -60,6 +73,7 @@ export function UpdateSection() {
     setDownloadStatus,
     setDownloadProgress,
     setDownloadSavePath,
+    setDownloadError,
     resetDownloadState,
     installStatus,
     setInstallStatus,
@@ -70,6 +84,8 @@ export function UpdateSection() {
   const cdkInputRef = useRef<HTMLInputElement>(null);
   const [proxyInput, setProxyInput] = useState(proxySettings?.url || '');
   const [proxyError, setProxyError] = useState(false);
+  const [timeoutInput, setTimeoutInput] = useState(String(updateTimeoutSec));
+  const [retriesInput, setRetriesInput] = useState(String(updateRetries));
   const [checkFailed, setCheckFailed] = useState(false);
   const [, setDebugLog] = useState<string[]>([]);
 
@@ -121,13 +137,51 @@ export function UpdateSection() {
     }
   }, [proxySettings]);
 
+  // 同步更新下载设置到输入框
+  useEffect(() => {
+    setTimeoutInput(String(updateTimeoutSec));
+  }, [updateTimeoutSec]);
+
+  useEffect(() => {
+    setRetriesInput(String(updateRetries));
+  }, [updateRetries]);
+
+  // 提交超时时间 / 重试次数（失焦或回车时生效）
+  const commitTimeoutInput = useCallback(() => {
+    const parsed = Number(timeoutInput);
+    if (timeoutInput.trim() === '' || !Number.isFinite(parsed)) {
+      setTimeoutInput(String(updateTimeoutSec));
+      return;
+    }
+    const normalized = normalizeUpdateTimeoutSec(parsed);
+    setUpdateTimeoutSec(normalized);
+    setTimeoutInput(String(normalized));
+  }, [timeoutInput, updateTimeoutSec, setUpdateTimeoutSec]);
+
+  const commitRetriesInput = useCallback(() => {
+    const parsed = Number(retriesInput);
+    if (retriesInput.trim() === '' || !Number.isFinite(parsed)) {
+      setRetriesInput(String(updateRetries));
+      return;
+    }
+    const normalized = normalizeUpdateRetries(parsed);
+    setUpdateRetries(normalized);
+    setRetriesInput(String(normalized));
+  }, [retriesInput, updateRetries, setUpdateRetries]);
+
   // 开始下载
+  // 下载代际：快速重试/取消后重新下载时，旧调用的结果不应覆盖新下载的状态
+  const downloadAttemptRef = useRef(0);
   const startDownload = useCallback(
     async (targetUpdateInfo?: typeof updateInfo) => {
       const info = targetUpdateInfo || updateInfo;
       if (!info?.downloadUrl) return;
 
+      const attempt = ++downloadAttemptRef.current;
+      const isCurrent = () => attempt === downloadAttemptRef.current;
+
       setDownloadStatus('downloading');
+      setDownloadError(null);
       setDownloadProgress({
         downloadedSize: 0,
         totalSize: info.fileSize || 0,
@@ -137,6 +191,7 @@ export function UpdateSection() {
 
       try {
         const savePath = await getUpdateSavePath(info.filename);
+        if (!isCurrent()) return;
         setDownloadSavePath(savePath);
 
         const proxyForDownload = proxySettingsForUpdateDownload(
@@ -151,9 +206,12 @@ export function UpdateSection() {
           totalSize: info.fileSize,
           proxySettings: proxyForDownload,
           onProgress: (progress) => {
+            if (!isCurrent()) return;
             setDownloadProgress(progress);
           },
         });
+
+        if (!isCurrent()) return;
 
         if (result.success) {
           // 使用实际保存路径（可能与请求路径不同，如果从 302 重定向检测到正确文件名）
@@ -163,7 +221,9 @@ export function UpdateSection() {
           setDownloadStatus('failed');
         }
       } catch (error) {
+        if (!isCurrent()) return;
         loggers.ui.error('下载失败:', error);
+        setDownloadError(String(error));
         setDownloadStatus('failed');
       }
     },
@@ -173,6 +233,7 @@ export function UpdateSection() {
       setDownloadStatus,
       setDownloadProgress,
       setDownloadSavePath,
+      setDownloadError,
       proxySettings,
       mirrorChyanSettings.cdk,
     ],
@@ -525,6 +586,69 @@ export function UpdateSection() {
                 </div>
               </div>
             )}
+
+            {/* 下载超时与重试 */}
+            <div className="pt-4 border-t border-border space-y-4">
+              <div className="flex items-center gap-3">
+                <Timer className="w-5 h-5 text-accent" />
+                <span className="font-medium text-text-primary">
+                  {t('mirrorChyan.downloadOptions')}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <span className="text-sm text-text-primary">{t('mirrorChyan.timeout')}</span>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    {t('mirrorChyan.timeoutHint', { seconds: updateTimeoutSec })}
+                  </p>
+                </div>
+                <input
+                  type="number"
+                  min={updateTimeoutSecMin}
+                  max={updateTimeoutSecMax}
+                  value={timeoutInput}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setTimeoutInput(value);
+                    // 输入即生效，避免只靠失焦提交导致设置看起来“没保存”
+                    const parsed = Number(value);
+                    if (value.trim() !== '' && Number.isFinite(parsed)) {
+                      setUpdateTimeoutSec(parsed);
+                    }
+                  }}
+                  onBlur={commitTimeoutInput}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur();
+                  }}
+                  className="w-24 px-2.5 py-1.5 text-sm font-mono text-right bg-bg-tertiary border border-border rounded-lg text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <span className="text-sm text-text-primary">{t('mirrorChyan.retries')}</span>
+                  <p className="text-xs text-text-muted mt-0.5">{t('mirrorChyan.retriesHint')}</p>
+                </div>
+                <input
+                  type="number"
+                  min={updateRetriesMin}
+                  max={updateRetriesMax}
+                  value={retriesInput}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setRetriesInput(value);
+                    const parsed = Number(value);
+                    if (value.trim() !== '' && Number.isFinite(parsed)) {
+                      setUpdateRetries(parsed);
+                    }
+                  }}
+                  onBlur={commitRetriesInput}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur();
+                  }}
+                  className="w-24 px-2.5 py-1.5 text-sm font-mono text-right bg-bg-tertiary border border-border rounded-lg text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+              </div>
+            </div>
 
             {/* 检查更新按钮 */}
             <div className="pt-4 border-t border-border space-y-4">

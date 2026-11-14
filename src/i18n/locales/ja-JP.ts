@@ -744,6 +744,12 @@ export default {
     getCdk: 'CDKをお持ちでない方はこちら',
     cdkHint: 'CDK が正しいか、または有効期限が切れていないか確認してください',
     slowDownloadHint: '他の入手先',
+    downloadOptions: 'ダウンロード設定',
+    timeout: 'タイムアウト（秒）',
+    timeoutHint: '{{seconds}} 秒以内にサーバーへ接続できない場合はダウンロードを中断します',
+    retries: '再試行回数',
+    retriesHint: 'タイムアウトで中断した場合は自動的に再試行します',
+    retrying: '接続タイムアウト（{{seconds}} 秒）。再試行中（{{attempt}}/{{max}}）',
     checkUpdate: '更新を確認',
     checking: '確認中...',
     upToDate: '最新バージョンです ({{version}})',
@@ -760,6 +766,13 @@ export default {
     downloading: 'ダウンロード中',
     downloadComplete: 'ダウンロード完了',
     downloadFailed: 'ダウンロードに失敗しました',
+    downloadErrorCancelled: 'ダウンロードはキャンセルされました',
+    downloadErrorTimeout:
+      'サーバーへの接続がタイムアウトしました。ネットワーク接続を確認して再試行してください',
+    downloadErrorConnectFailed:
+      'サーバーに接続できませんでした。ネットワーク接続を確認して再試行してください',
+    downloadErrorHttpStatus: 'ダウンロードサーバーがエラーを返しました（HTTP {{code}}）',
+    downloadErrorIncomplete: 'ダウンロードが不完全です。再試行してください',
     viewDetails: '詳細を表示',
     noDownloadUrl:
       'ダウンロード URL がありません。CDK を入力するか、ネットワーク環境を確認してください',
