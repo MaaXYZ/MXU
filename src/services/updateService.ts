@@ -1109,8 +1109,12 @@ export async function installUpdate(options: InstallUpdateOptions): Promise<bool
     // 生成临时解压目录
     const extractDir = joinPath(await dirname(zipPath), 'update_extract');
 
-    // 先清理上次可能残留的解压目录，避免历史文件混入本次更新
-    await invoke('cleanup_extract_dir', { extractDir }).catch(() => {});
+    // 解压会合并目录，清理失败时必须终止，避免应用上次残留的清单或文件。
+    try {
+      await invoke('cleanup_extract_dir', { extractDir });
+    } catch (error) {
+      throw new UpdateInstallError('extractFailed', getErrorMessage(error));
+    }
 
     // 1. 解压更新包
     onProgress?.('extracting', zipPath);
