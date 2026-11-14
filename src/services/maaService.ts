@@ -590,10 +590,10 @@ export const maaService = {
    * 检查是否正在运行
    * @param instanceId 实例 ID
    */
-  async isRunning(instanceId: string): Promise<boolean> {
+  async isRunning(instanceId: string): Promise<boolean | null> {
     if (!isTauri()) {
-      const state = await this.getInstanceState(instanceId);
-      return state?.isRunning ?? false;
+      const states = await this.getAllStates();
+      return states ? (states.instances[instanceId]?.isRunning ?? false) : null;
     }
     const running = await invoke<boolean>('maa_is_running', { instanceId });
     return running;

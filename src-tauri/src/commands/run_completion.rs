@@ -22,6 +22,7 @@ struct CompletionState {
     cancelled: bool,
     pending: bool,
     completed: bool,
+    observing_idle: bool,
 }
 
 #[derive(Default)]
@@ -59,6 +60,33 @@ impl RunCompletion {
     /// submission won the permit first, it must not lose its newly added Agents.
     pub fn acquire_generation(self: &Arc<Self>, generation: u64) -> Option<StartPermit> {
         self.acquire(Some(generation))
+    }
+
+    /// An idle observer must never wait for (or cancel) an admitted submission.
+    /// This may be called under the instance lock, unlike acquire_generation.
+    pub fn try_acquire_generation(self: &Arc<Self>, generation: u64) -> Option<StartPermit> {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if generation != state.generation
+            || state.starting
+            || state.pending
+            || state.completed
+            || self.retired.load(Ordering::Acquire)
+        {
+            return None;
+        }
+        state.starting = true;
+        state.submitting = false;
+        Some(StartPermit(Arc::clone(self)))
+    }
+
+    /// Observe native idle once per queue, independently of its final callback.
+    pub fn begin_idle_observer(&self) -> Option<u64> {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.observing_idle || state.pending || state.completed {
+            return None;
+        }
+        state.observing_idle = true;
+        Some(state.generation)
     }
 
     fn acquire(self: &Arc<Self>, generation: Option<u64>) -> Option<StartPermit> {
@@ -111,6 +139,7 @@ impl RunCompletion {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         state.generation = state.generation.wrapping_add(1);
         state.completed = false;
+        state.observing_idle = false;
         self.changed.notify_all();
     }
 
@@ -166,6 +195,31 @@ mod tests {
     use std::sync::{mpsc, Arc};
     use std::thread;
     use std::time::Duration;
+
+    #[test]
+    fn idle_observer_cannot_enter_an_active_submission_or_another_generation() {
+        let completion = Arc::new(RunCompletion::default());
+        let start = completion.acquire_start();
+        completion.reset();
+        let generation = completion.begin_idle_observer().unwrap();
+        assert!(completion.begin_idle_observer().is_none());
+        assert!(completion.try_acquire_generation(generation).is_none());
+        assert!(!completion.submission_cancelled());
+        drop(start);
+
+        let observation = completion.try_acquire_generation(generation).unwrap();
+        assert!(!completion.cancel_submission());
+        drop(observation);
+        let next = completion.acquire_start();
+        completion.reset();
+        let replacement = completion.begin_idle_observer().unwrap();
+        assert_ne!(generation, replacement);
+        drop(next);
+        assert!(completion.try_acquire_generation(generation).is_none());
+        assert!(completion.try_acquire_generation(replacement).is_some());
+        completion.retire();
+        assert!(completion.try_acquire_generation(replacement).is_none());
+    }
 
     #[test]
     fn delayed_framework_idle_and_agent_cleanup_both_keep_the_run_pending() {
