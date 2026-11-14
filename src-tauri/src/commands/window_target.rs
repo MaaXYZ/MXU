@@ -161,6 +161,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn live_window_is_rechecked_before_submission() {
+        use winsafe::prelude::Handle;
         use winsafe::{co, AtomStr, IdMenu, HINSTANCE, HWND, POINT, SIZE};
 
         // A hidden test-owned STATIC window requires neither a game nor Maa DLLs.
