@@ -89,6 +89,10 @@ pub enum ControllerConfig {
     },
     Win32 {
         handle: u64,
+        #[serde(default)]
+        class_regex: Option<String>,
+        #[serde(default)]
+        window_regex: Option<String>,
         screencap_method: u64,
         mouse_method: u64,
         keyboard_method: u64,
@@ -595,6 +599,7 @@ pub struct InstanceRuntime {
     pub controller_subscribers: Option<Arc<ControllerEventSubscribers>>,
     /// 当前控制器的配置（用于 ControllerPool 引用管理）
     pub controller_config: Option<ControllerConfig>,
+    pub window_target: Option<super::window_target::WindowIdentity>,
     pub tasker: Option<Tasker>,
     pub agent_clients: Vec<AgentClient>,
     pub agent_children: Vec<Child>,
@@ -840,6 +845,7 @@ impl ControllerEventSubscribers {
 
 #[derive(Clone)]
 pub struct ControllerPoolEntry {
+    pub window_target: Option<super::window_target::WindowIdentity>,
     pub controller: Controller,
     pub subscribers: Arc<ControllerEventSubscribers>,
     pub connection_id: i64,

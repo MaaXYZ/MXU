@@ -158,7 +158,15 @@ export interface AppState {
   instances: Instance[];
   activeInstanceId: string | null;
   nextInstanceNumber: number;
-  createInstance: (name?: string, exactName?: boolean) => string;
+  createInstance: (
+    name?: string,
+    exactName?: boolean,
+    defaults?: {
+      controllerName: string;
+      resourceName: string;
+      savedDevice?: SavedDeviceInfo;
+    },
+  ) => string;
   removeInstance: (id: string) => void;
   setActiveInstance: (id: string) => void;
   updateInstance: (id: string, updates: Partial<Instance>) => void;
@@ -265,6 +273,12 @@ export interface AppState {
 
   // 实例运行时状态
   instanceConnectionStatus: Record<string, ConnectionStatus>;
+  instanceStartErrors: Record<string, string>;
+  setInstanceStartError: (instanceId: string, error: string | null) => void;
+  windowSelectionRequired: Record<string, boolean>;
+  setWindowSelectionRequired: (instanceId: string, required: boolean) => void;
+  deviceSearchRequest: { instanceId: string; sequence: number } | null;
+  requestDeviceSearch: (instanceId: string) => void;
   instanceResourceLoaded: Record<string, boolean>;
   instanceCurrentTaskId: Record<string, number | null>;
   instanceTaskStatus: Record<string, TaskStatus | null>;

@@ -1,4 +1,15 @@
 export default {
+  windowTarget: {
+    invalidFilter:
+      'The window filter is invalid. Check the regular expressions in the project configuration.',
+    notFound: 'No game window was found. Start the game and search again.',
+    mismatch:
+      "The selected window does not match this project's window rules. Search again and select the game window.",
+    changed: 'The game window or connection has changed. Search again before starting tasks.',
+    multiple: 'Several windows match. Select the game window to use.',
+    search: 'Search again',
+    corrected: 'Updated the remembered window to: {{name}}',
+  },
   pi: {
     PI_DISPLAY_OPTIONS_INVALID:
       'Configure one screenshot scaling mode with positive integer dimensions.',

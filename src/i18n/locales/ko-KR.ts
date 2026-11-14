@@ -1,4 +1,14 @@
 export default {
+  windowTarget: {
+    invalidFilter: '창 검색 규칙이 올바르지 않습니다. 프로젝트 설정의 정규식을 확인하세요.',
+    notFound: '게임 창을 찾을 수 없습니다. 게임을 실행한 후 다시 검색하세요.',
+    mismatch:
+      '선택한 창이 프로젝트의 창 규칙과 일치하지 않습니다. 다시 검색하여 게임 창을 선택하세요.',
+    changed: '게임 창 또는 연결이 변경되었습니다. 작업을 시작하기 전에 다시 검색하세요.',
+    multiple: '조건에 맞는 창이 여러 개 있습니다. 사용할 게임 창을 선택하세요.',
+    search: '다시 검색',
+    corrected: '저장된 창을 업데이트했습니다: {{name}}',
+  },
   pi: {
     PI_DISPLAY_OPTIONS_INVALID: '크기 조정 방식을 하나만 지정하고 양의 정수 크기를 사용하세요.',
     PI_DISPLAY_OPTIONS_UNSUPPORTED:

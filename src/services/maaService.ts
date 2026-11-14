@@ -25,6 +25,7 @@ import * as wsService from '@/services/wsService';
 import { dispatchMaaCallback, type MaaCallbackHandler } from '@/utils/maaCallbackRouting';
 import { ControllerConnectionSupersededError } from '@/utils/controllerErrors';
 import { getLogSecrets } from '@/utils/logSecrets';
+import { localizeWindowError, WindowTargetError } from '@/utils/windowSelection';
 
 const log = loggers.maa;
 
@@ -37,6 +38,8 @@ async function taskOperation<T>(call: () => Promise<T>): Promise<T> {
 }
 
 export function localizeControllerError(error: unknown): unknown {
+  const windowError = localizeWindowError(error, (key) => i18n.t(key));
+  if (windowError instanceof WindowTargetError) return windowError;
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes('CONTROLLER_CONNECTION_SUPERSEDED')) {
     return new ControllerConnectionSupersededError(i18n.t('controller.connectionSuperseded'));

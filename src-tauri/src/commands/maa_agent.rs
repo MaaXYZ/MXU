@@ -553,6 +553,23 @@ async fn start_single_agent(
     }).await.map_err(|e| e.to_string())?
 }
 
+// Keep newly launched Agents owned by this submission until the final window /
+// lifecycle checks succeed. An early return must not leave child processes behind.
+#[derive(Default)]
+struct PendingAgents {
+    clients: Vec<AgentClient>,
+    children: Vec<std::process::Child>,
+}
+
+impl Drop for PendingAgents {
+    fn drop(&mut self) {
+        stop_agent_resources(
+            std::mem::take(&mut self.clients),
+            std::mem::take(&mut self.children),
+        );
+    }
+}
+
 /// 启动任务的核心实现（Tauri invoke 和 HTTP handler 共享）
 pub async fn start_tasks_impl(
     app: tauri::AppHandle,
@@ -602,7 +619,7 @@ pub async fn start_tasks_impl(
     );
     info!("cwd: {}, tcp_compat_mode: {}", cwd, tcp_compat_mode);
 
-    let (resource, controller, tasker) = {
+    let (resource, controller, tasker, controller_request) = {
         debug!("[start_tasks] Acquiring instances lock...");
         let mut instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
         debug!("[start_tasks] Instances lock acquired");
@@ -611,6 +628,7 @@ pub async fn start_tasks_impl(
             return Err("INSTANCE_REPLACED".to_string());
         }
         debug!("[start_tasks] Instance found: {}", instance_id);
+        super::window_target::validate_instance(instance)?;
 
         let res = instance
             .resource
@@ -699,7 +717,7 @@ pub async fn start_tasks_impl(
         }
 
         let t = instance.tasker.as_ref().unwrap().clone();
-        (res, ctrl, t)
+        (res, ctrl, t, instance.controller_request.clone())
     };
     debug!("[start_tasks] Resource, controller and tasker acquired, proceeding...");
 
@@ -710,6 +728,7 @@ pub async fn start_tasks_impl(
     }
 
     // 启动所有 Agent（如果配置了）
+    let mut pending_agents = PendingAgents::default();
     debug!("[start_tasks] Checking agent configs...");
     if let Some(configs) = agent_configs {
         if configs.is_empty() {
@@ -732,10 +751,6 @@ pub async fn start_tasks_impl(
                 data_dir.to_string_lossy().to_string(),
             );
             let pi_envs = Arc::new(pi_envs);
-
-            // 用于收集所有成功启动的 agent，失败时需要回滚清理
-            let mut new_clients = Vec::new();
-            let mut new_children = Vec::new();
 
             for (idx, config) in configs.iter().enumerate() {
                 let res_clone = resource.clone();
@@ -761,8 +776,8 @@ pub async fn start_tasks_impl(
                 .await
                 {
                     Ok((client, child)) => {
-                        new_clients.push(client);
-                        new_children.push(child);
+                        pending_agents.clients.push(client);
+                        pending_agents.children.push(child);
                     }
                     Err(e) => {
                         error!(
@@ -770,36 +785,9 @@ pub async fn start_tasks_impl(
                             idx, e
                         );
 
-                        // 回滚：清理已启动的 agent
-                        for client in &new_clients {
-                            let _ = client.disconnect();
-                        }
-                        for mut child in new_children {
-                            let _ = child.kill();
-                            let _ = child.wait();
-                        }
                         return Err(format!("Agent start failed: {}", e));
                     }
                 }
-            }
-
-            // A destroyed/recreated ID must not receive the old instance's Agents.
-            let attached = {
-                let mut instances = maa_state.instances.lock().map_err(|e| e.to_string())?;
-                if let Some(instance) = instances
-                    .get_mut(&instance_id)
-                    .filter(|instance| Arc::ptr_eq(&instance.run_completion, &completion))
-                {
-                    instance.agent_clients.append(&mut new_clients);
-                    instance.agent_children.append(&mut new_children);
-                    true
-                } else {
-                    false
-                }
-            };
-            if !attached {
-                stop_agent_resources(new_clients, new_children);
-                return Err("INSTANCE_REPLACED".to_string());
             }
 
             info!(
@@ -847,6 +835,10 @@ pub async fn start_tasks_impl(
         if instance.stop_in_progress || completion.submission_cancelled() {
             return Err("TASKER_STOPPING".to_string());
         }
+        if !instance.controller_request.is_current(&controller_request) {
+            return Err("WINDOW_TARGET_CHANGED".into());
+        }
+        super::window_target::validate_instance(instance)?;
         // The old queue can lose its final callback while this append awaits
         // Agent registration. Do not resurrect it by posting into an idle Tasker.
         if instance.has_abandoned_queue() {
@@ -865,6 +857,8 @@ pub async fn start_tasks_impl(
             }
             return Err("TASKER_STOPPING".into());
         }
+        instance.agent_clients.append(&mut pending_agents.clients);
+        instance.agent_children.append(&mut pending_agents.children);
         if reset_state {
             // 首批：重置任务运行状态
             instance.task_ids.clear();

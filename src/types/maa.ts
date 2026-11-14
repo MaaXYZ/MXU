@@ -41,6 +41,8 @@ export interface AdbControllerConfig extends ControllerDisplayOptions {
 export interface Win32ControllerConfig extends ControllerDisplayOptions {
   type: 'Win32';
   handle: number;
+  class_regex?: string;
+  window_regex?: string;
   screencap_method: number;
   mouse_method: number;
   keyboard_method: number;

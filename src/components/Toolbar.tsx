@@ -16,6 +16,8 @@ import { isTaskCompatible } from '@/stores/helpers';
 import { maaService, controllerErrorMessage } from '@/services/maaService';
 import { preservesTaskRun } from '@/utils/taskErrors';
 import { ControllerConnectionSupersededError } from '@/utils/controllerErrors';
+import { selectWindow, WindowTargetError } from '@/utils/windowSelection';
+import { toast } from 'sonner';
 
 import { buildTaskOptionSummary } from '@/services/telemetryService';
 import { collectPasswordPlaintextsFromRunnableTasks } from '@/utils/passwordOptionValues';
@@ -222,6 +224,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
   const translations = interfaceTranslations[langKey];
 
   const instanceId = instance?.id || '';
+  const startError = useAppStore((state) => state.instanceStartErrors[instanceId]);
   const isPreActionControlledInstance =
     Boolean(instanceId) && preActionControlledInstanceId === instanceId;
   const isStartStopRunning = Boolean(instance?.isRunning) || isPreActionControlledInstance;
@@ -331,11 +334,19 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
       const targetId = targetInstance.id;
       const targetTasks = targetInstance.selectedTasks || [];
       lastStartCancelledRef.current = false;
+      useAppStore.getState().setInstanceStartError(targetId, null);
 
       const failStart = (reason: string): false => {
         const message = `${t('taskList.autoConnect.startFailed')}: ${reason}`;
         log.warn(`实例 ${targetInstance.name}: ${message}`);
         addLog(targetId, { type: 'error', message });
+        useAppStore.getState().setInstanceStartError(targetId, message);
+        toast.error(`${targetInstance.name}: ${message}`, {
+          action: {
+            label: t('windowTarget.search'),
+            onClick: () => useAppStore.getState().requestDeviceSearch(targetId),
+          },
+        });
         onPhaseChange?.('idle');
         return false;
       };
@@ -450,6 +461,9 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
       );
       if (!controller) {
         return failStart(t('errors.controllerNotFound'));
+      }
+      if (controller.type === 'Win32' && useAppStore.getState().windowSelectionRequired[targetId]) {
+        return failStart(t('windowTarget.multiple'));
       }
 
       // 只有依赖 Windows 交互式桌面的实际控制器才受锁屏限制。
@@ -641,15 +655,17 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                   } else if (isDesktopWindowControllerType(controllerType)) {
                     const { classRegex, titleRegex } = getDesktopWindowFilters(controller);
                     const windows = await maaService.findWin32Windows(classRegex, titleRegex);
-                    if (savedDevice?.windowName) {
-                      deviceFound = windows.some((w) => w.window_name === savedDevice.windowName);
-                    } else {
-                      deviceFound = windows.length > 0;
-                    }
+                    deviceFound = windows.length > 0;
+                    if (deviceFound) selectWindow(windows, savedDevice);
                   } else {
                     deviceFound = true;
                   }
                 } catch (searchErr) {
+                  if (
+                    searchErr instanceof WindowTargetError ||
+                    String(searchErr).includes('WINDOW_FILTER_INVALID')
+                  )
+                    throw searchErr;
                   log.warn(
                     `实例 ${targetInstance.name}: ${isWindowType ? '窗口' : '设备'}搜索出错:`,
                     searchErr,
@@ -689,10 +705,11 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
                       const { classRegex, titleRegex } = getDesktopWindowFilters(controller);
                       const windows = await maaService.findWin32Windows(classRegex, titleRegex);
                       if (windows.length > 0) {
+                        const selected = selectWindow(windows);
                         addLog(targetId, {
                           type: 'info',
                           message: t('taskList.autoConnect.autoSelectedWindow', {
-                            name: windows[0].window_name || windows[0].class_name,
+                            name: selected.window_name || selected.class_name,
                           }),
                         });
                       }
@@ -723,6 +740,8 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               }
             }
           } catch (err) {
+            if (err instanceof WindowTargetError || String(err).includes('WINDOW_FILTER_INVALID'))
+              throw err;
             if (controllerErrorMessage(err) === PRE_ACTION_CANCELLED_ERROR) {
               throw err;
             }
@@ -796,12 +815,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
             } else if (isDesktopWindowControllerType(controllerType) && savedDevice.windowName) {
               const { classRegex, titleRegex } = getDesktopWindowFilters(controller);
               const windows = await maaService.findWin32Windows(classRegex, titleRegex);
-              const matchedWindow = windows.find((w) => w.window_name === savedDevice.windowName);
-              if (!matchedWindow) {
-                return failStart(
-                  t('taskList.autoConnect.windowNotFound', { name: savedDevice.windowName }),
-                );
-              }
+              const matchedWindow = selectWindow(windows, savedDevice);
               config = buildDesktopWindowControllerConfig(controller, matchedWindow.handle);
               deviceName = matchedWindow.window_name || matchedWindow.class_name;
               targetType = 'window';
@@ -858,10 +872,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
             } else if (isDesktopWindowControllerType(controllerType)) {
               const { classRegex, titleRegex } = getDesktopWindowFilters(controller);
               const windows = await maaService.findWin32Windows(classRegex, titleRegex);
-              if (windows.length === 0) {
-                return failStart(t('taskList.autoConnect.noWindowFound'));
-              }
-              const firstWindow = windows[0];
+              const firstWindow = selectWindow(windows);
               log.info(`实例 ${targetInstance.name}: 自动选择窗口: ${firstWindow.window_name}`);
               // 没有保存过设备，给出首次自动匹配提示
               addLog(targetId, {
@@ -1155,10 +1166,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               ' [[hint:spawn_app_control]]',
               ` ${t('taskList.autoConnect.agentSpawnHintAppControl')}`,
             );
-          addLog(targetId, {
-            type: 'error',
-            message: `${t('taskList.autoConnect.startFailed')}: ${localizedErrMsg}`,
-          });
+          failStart(localizedErrMsg);
         }
 
         if (preservesTaskRun(err)) {
@@ -1538,136 +1546,152 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
   };
 
   return (
-    <div
-      className={clsx(
-        'flex items-center justify-between px-3 py-2 bg-bg-secondary border-t border-border',
-        className,
+    <>
+      {startError && (
+        <div
+          role="alert"
+          className="flex items-center gap-3 px-3 py-2 bg-error/10 text-error text-sm"
+        >
+          <span className="flex-1">{startError}</span>
+          <button
+            className="shrink-0 underline"
+            onClick={() => useAppStore.getState().requestDeviceSearch(instanceId)}
+          >
+            {t('windowTarget.search')}
+          </button>
+        </div>
       )}
-    >
-      {/* 左侧工具按钮 */}
-      <div className="flex items-center gap-1">
-        {/* 全选/取消全选 */}
-        <button
-          onClick={handleSelectAll}
-          disabled={tasks.length === 0}
-          className={clsx(
-            'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm transition-colors',
-            tasks.length === 0
-              ? 'text-text-muted cursor-not-allowed'
-              : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
-          )}
-          title={allEnabled ? t('taskList.deselectAll') : t('taskList.selectAll')}
-        >
-          {allEnabled ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
-          <span className="hidden sm:inline">
-            {allEnabled ? t('taskList.deselectAll') : t('taskList.selectAll')}
-          </span>
-        </button>
-
-        {/* 展开/折叠 */}
-        <button
-          onClick={handleCollapseAll}
-          disabled={tasks.length === 0}
-          className={clsx(
-            'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm transition-colors',
-            tasks.length === 0
-              ? 'text-text-muted cursor-not-allowed'
-              : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
-          )}
-          title={anyExpanded ? t('taskList.collapseAll') : t('taskList.expandAll')}
-        >
-          {anyExpanded ? (
-            <ChevronsDownUp className="w-4 h-4" />
-          ) : (
-            <ChevronsUpDown className="w-4 h-4" />
-          )}
-          <span className="hidden sm:inline">
-            {anyExpanded ? t('taskList.collapseAll') : t('taskList.expandAll')}
-          </span>
-        </button>
-
-        {/* 添加任务 */}
-        <button
-          id="add-task-button"
-          onClick={onToggleAddPanel}
-          className={clsx(
-            'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm transition-colors',
-            showAddPanel
-              ? 'bg-accent/10 text-accent'
-              : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
-          )}
-          title={t('taskList.addTask')}
-        >
-          <Plus className="w-4 h-4" />
-          <span className="hidden sm:inline">{t('taskList.addTask')}</span>
-        </button>
-      </div>
-
-      {/* 右侧执行按钮组 */}
-      <div className="flex items-center gap-2 relative">
-        {/* 定时执行按钮和状态气泡 */}
-        <ScheduleButton
-          enabledCount={instance?.schedulePolicies?.filter((p) => p.enabled).length || 0}
-          scheduleExecution={instance ? scheduleExecutions[instance.id] : null}
-          showPanel={showSchedulePanel}
-          onToggle={() => setShowSchedulePanel(!showSchedulePanel)}
-        />
-
-        {/* 定时执行面板 */}
-        {showSchedulePanel && instance && (
-          <SchedulePanel instanceId={instance.id} onClose={() => setShowSchedulePanel(false)} />
+      <div
+        className={clsx(
+          'flex items-center justify-between px-3 py-2 bg-bg-secondary border-t border-border',
+          className,
         )}
+      >
+        {/* 左侧工具按钮 */}
+        <div className="flex items-center gap-1">
+          {/* 全选/取消全选 */}
+          <button
+            onClick={handleSelectAll}
+            disabled={tasks.length === 0}
+            className={clsx(
+              'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm transition-colors',
+              tasks.length === 0
+                ? 'text-text-muted cursor-not-allowed'
+                : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+            )}
+            title={allEnabled ? t('taskList.deselectAll') : t('taskList.selectAll')}
+          >
+            {allEnabled ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+            <span className="hidden sm:inline">
+              {allEnabled ? t('taskList.deselectAll') : t('taskList.selectAll')}
+            </span>
+          </button>
 
-        {/* 权限提示弹窗 */}
-        <PermissionModal
-          isOpen={showPermissionModal}
-          isRestarting={isRestartingAsAdmin}
-          onCancel={() => setShowPermissionModal(false)}
-          onRestart={handleRestartAsAdmin}
-        />
+          {/* 展开/折叠 */}
+          <button
+            onClick={handleCollapseAll}
+            disabled={tasks.length === 0}
+            className={clsx(
+              'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm transition-colors',
+              tasks.length === 0
+                ? 'text-text-muted cursor-not-allowed'
+                : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+            )}
+            title={anyExpanded ? t('taskList.collapseAll') : t('taskList.expandAll')}
+          >
+            {anyExpanded ? (
+              <ChevronsDownUp className="w-4 h-4" />
+            ) : (
+              <ChevronsUpDown className="w-4 h-4" />
+            )}
+            <span className="hidden sm:inline">
+              {anyExpanded ? t('taskList.collapseAll') : t('taskList.expandAll')}
+            </span>
+          </button>
 
-        {/* 开始/停止按钮 */}
-        <button
-          data-role="start-stop-button"
-          onClick={handleStartStop}
-          disabled={isDisabled || isStopping || (isStarting && !isStartStopRunning)}
-          className={clsx(
-            'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-            isStopping
-              ? 'bg-warning text-white'
-              : isStartStopRunning
-                ? 'bg-error hover:bg-error/90 text-white'
-                : isStarting
-                  ? 'bg-success text-white'
-                  : isDisabled
-                    ? 'bg-bg-active text-text-tertiary cursor-not-allowed'
-                    : 'bg-accent hover:bg-accent-hover text-white',
+          {/* 添加任务 */}
+          <button
+            id="add-task-button"
+            onClick={onToggleAddPanel}
+            className={clsx(
+              'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm transition-colors',
+              showAddPanel
+                ? 'bg-accent/10 text-accent'
+                : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+            )}
+            title={t('taskList.addTask')}
+          >
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">{t('taskList.addTask')}</span>
+          </button>
+        </div>
+
+        {/* 右侧执行按钮组 */}
+        <div className="flex items-center gap-2 relative">
+          {/* 定时执行按钮和状态气泡 */}
+          <ScheduleButton
+            enabledCount={instance?.schedulePolicies?.filter((p) => p.enabled).length || 0}
+            scheduleExecution={instance ? scheduleExecutions[instance.id] : null}
+            showPanel={showSchedulePanel}
+            onToggle={() => setShowSchedulePanel(!showSchedulePanel)}
+          />
+
+          {/* 定时执行面板 */}
+          {showSchedulePanel && instance && (
+            <SchedulePanel instanceId={instance.id} onClose={() => setShowSchedulePanel(false)} />
           )}
-          title={getButtonTitle()}
-        >
-          {isStopping ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>{t('taskList.stoppingTasks')}</span>
-            </>
-          ) : isStartStopRunning ? (
-            <>
-              <StopCircle className="w-4 h-4" />
-              <span>{t('taskList.stopTasks')}</span>
-            </>
-          ) : isStarting ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>{getStartButtonText()}</span>
-            </>
-          ) : (
-            <>
-              <Play className="w-4 h-4" />
-              <span>{t('taskList.startTasks')}</span>
-            </>
-          )}
-        </button>
+
+          {/* 权限提示弹窗 */}
+          <PermissionModal
+            isOpen={showPermissionModal}
+            isRestarting={isRestartingAsAdmin}
+            onCancel={() => setShowPermissionModal(false)}
+            onRestart={handleRestartAsAdmin}
+          />
+
+          {/* 开始/停止按钮 */}
+          <button
+            data-role="start-stop-button"
+            onClick={handleStartStop}
+            disabled={isDisabled || isStopping || (isStarting && !isStartStopRunning)}
+            className={clsx(
+              'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+              isStopping
+                ? 'bg-warning text-white'
+                : isStartStopRunning
+                  ? 'bg-error hover:bg-error/90 text-white'
+                  : isStarting
+                    ? 'bg-success text-white'
+                    : isDisabled
+                      ? 'bg-bg-active text-text-tertiary cursor-not-allowed'
+                      : 'bg-accent hover:bg-accent-hover text-white',
+            )}
+            title={getButtonTitle()}
+          >
+            {isStopping ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>{t('taskList.stoppingTasks')}</span>
+              </>
+            ) : isStartStopRunning ? (
+              <>
+                <StopCircle className="w-4 h-4" />
+                <span>{t('taskList.stopTasks')}</span>
+              </>
+            ) : isStarting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>{getStartButtonText()}</span>
+              </>
+            ) : (
+              <>
+                <Play className="w-4 h-4" />
+                <span>{t('taskList.startTasks')}</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

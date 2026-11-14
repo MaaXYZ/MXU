@@ -19,6 +19,7 @@ import {
   History,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { toast } from 'sonner';
 import { maaService, controllerErrorMessage } from '@/services/maaService';
 import { useAppStore } from '@/stores/appStore';
 import { resolveI18nText } from '@/services/contentResolver';
@@ -38,6 +39,7 @@ import {
   isDesktopWindowControllerType,
 } from '@/utils/controller';
 import { getInterfaceLangKey } from '@/i18n';
+import { selectWindow, hasWindowFilters, WindowSearchGuard } from '@/utils/windowSelection';
 import {
   startGlobalCallbackListener,
   waitForCtrlResult,
@@ -77,6 +79,8 @@ export function ConnectionPanel() {
     registerResIdName,
     registerResBatch,
     addLog,
+    deviceSearchRequest,
+    setInstanceStartError,
   } = useAppStore();
 
   // 获取当前活动实例
@@ -90,6 +94,7 @@ export function ConnectionPanel() {
 
   // 设备相关状态
   const [isSearching, setIsSearching] = useState(false);
+  const searchGuard = useRef(new WindowSearchGuard());
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [deviceError, setDeviceError] = useState<string | null>(null);
@@ -208,6 +213,8 @@ export function ConnectionPanel() {
   const isDesktopWindowController = isDesktopWindowControllerType(controllerType);
   const { classRegex: desktopWindowClassRegex, titleRegex: desktopWindowTitleRegex } =
     getDesktopWindowFilters(currentController);
+  const searchContext = useRef({ instanceId, currentControllerName });
+  searchContext.current = { instanceId, currentControllerName };
   const linuxNeeds = controllerType === 'Linux' ? getLinuxDiscoveryNeeds(currentController) : null;
   const isUinputInput =
     controllerType === 'Linux' &&
@@ -251,6 +258,7 @@ export function ConnectionPanel() {
 
   // 当实例切换时，重置和恢复状态
   useEffect(() => {
+    searchGuard.current.invalidate();
     // 从 store 恢复连接状态
     const isInstanceConnected = storedConnectionStatus === 'Connected';
     const isInstanceResourceLoaded = storedResourceLoaded;
@@ -366,6 +374,17 @@ export function ConnectionPanel() {
     }
   }, [currentControllerName]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (deviceSearchRequest?.instanceId === instanceId && !isRunning) void handleSearch();
+  }, [deviceSearchRequest]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(
+    () => () => {
+      searchGuard.current.invalidate();
+    },
+    [],
+  );
+
   // 应用启动/实例切换时自动重连之前保存的设备
   useEffect(() => {
     if (!instanceId || !activeInstance || !currentController) return;
@@ -390,7 +409,7 @@ export function ConnectionPanel() {
             (savedDevice.wlrSocketPath && linuxNeeds?.needWlrSocket))) ||
         (controllerType === 'PlayCover' && savedDevice.playcoverAddress));
 
-    if (hasHistoricalDevice && needsDeviceSearch) {
+    if ((hasHistoricalDevice || hasWindowFilters(currentController)) && needsDeviceSearch) {
       // 标记该实例已尝试过自动重连
       autoReconnectAttempted.add(instanceId);
       // 触发搜索并自动连接（handleSearch 内部已有匹配+自动连接逻辑）
@@ -417,12 +436,22 @@ export function ConnectionPanel() {
   // 搜索设备
   const handleSearch = async () => {
     if (!currentController) return;
+    const isCurrentSearch = searchGuard.current.begin(
+      () =>
+        searchContext.current.instanceId === instanceId &&
+        searchContext.current.currentControllerName === currentControllerName &&
+        useAppStore.getState().activeInstanceId === instanceId &&
+        (useAppStore.getState().selectedController[instanceId] || controllers[0]?.name) ===
+          currentControllerName,
+    );
 
     setIsSearching(true);
     setDeviceError(null);
+    if (isDesktopWindowController) setCachedWin32Windows([]);
 
     try {
       const initialized = await ensureMaaInitialized();
+      if (!isCurrentSearch()) return;
       if (!initialized) {
         throw new Error(t('maa.initFailed'));
       }
@@ -431,6 +460,7 @@ export function ConnectionPanel() {
 
       if (controllerType === 'Adb') {
         const devices = await maaService.findAdbDevices();
+        if (!isCurrentSearch()) return;
         setCachedAdbDevices(devices);
 
         // 自动连接策略：
@@ -465,35 +495,31 @@ export function ConnectionPanel() {
           desktopWindowClassRegex,
           desktopWindowTitleRegex,
         );
+        if (!isCurrentSearch()) return;
         setCachedWin32Windows(windows);
-
-        // 自动连接策略（与 Adb 一致）
-        let autoSelected: Win32Window | null = null;
-        if (savedDevice?.windowName) {
-          const matched = windows.filter((w) => w.window_name === savedDevice.windowName);
-          if (matched.length === 1) {
-            autoSelected = matched[0];
-          }
-        } else if (windows.length > 0) {
-          // 没有保存窗口时自动选择第一个
-          autoSelected = windows[0];
-          // 给出首次自动匹配提示
-          if (instanceId) {
-            addLog(instanceId, {
-              type: 'info',
-              message: t('taskList.autoConnect.autoSelectedWindow', {
-                name: autoSelected.window_name || autoSelected.class_name,
-              }),
-            });
-          }
-        }
-
-        if (autoSelected) {
-          handleSelectWindow(autoSelected);
-        } else if (windows.length > 0) {
-          // 有保存窗口但匹配失败，显示下拉框让用户选择
+        setShowDeviceDropdown(windows.length > 1);
+        if (useAppStore.getState().windowSelectionRequired[instanceId] && windows.length > 0) {
           setShowDeviceDropdown(true);
+          setDeviceError(t('windowTarget.multiple'));
+          setConnectionPanelExpanded(true);
+          return;
         }
+        const autoSelected = selectWindow(windows, savedDevice);
+        if (savedDevice && savedDevice.windowName !== autoSelected.window_name) {
+          toast.info(t('windowTarget.corrected', { name: autoSelected.window_name }));
+        }
+        addLog(instanceId, {
+          type: 'info',
+          message: t(
+            savedDevice && savedDevice.windowName !== autoSelected.window_name
+              ? 'windowTarget.corrected'
+              : 'taskList.autoConnect.autoSelectedWindow',
+            {
+              name: autoSelected.window_name || autoSelected.class_name,
+            },
+          ),
+        });
+        await handleSelectWindow(autoSelected);
       } else if (controllerType === 'Linux' && linuxNeeds) {
         // 发现所需的全部设备（按当前配置的截图/输入方法）
         let wlrSockets: string[] = [];
@@ -501,10 +527,12 @@ export function ConnectionPanel() {
 
         if (linuxNeeds.needWlrSocket) {
           wlrSockets = await maaService.findWlrootsSockets();
+          if (!isCurrentSearch()) return;
           setCachedWlrootsSockets(wlrSockets);
         }
         if (linuxNeeds.needGamescopeNode || linuxNeeds.needEisSocket) {
           instances = await maaService.findGamescopeInstances();
+          if (!isCurrentSearch()) return;
           setCachedGamescopeInstances(instances);
         }
 
@@ -548,9 +576,12 @@ export function ConnectionPanel() {
         }
       }
     } catch (err) {
-      setDeviceError(controllerErrorMessage(err));
+      if (isCurrentSearch()) {
+        setDeviceError(controllerErrorMessage(err));
+        setConnectionPanelExpanded(true);
+      }
     } finally {
-      setIsSearching(false);
+      if (isCurrentSearch()) setIsSearching(false);
     }
   };
 
@@ -570,6 +601,7 @@ export function ConnectionPanel() {
     const result = await waitForCtrlResult(ctrlId);
 
     if (result === 'succeeded') {
+      setInstanceStartError(instanceId, null);
       setIsConnected(true);
       setInstanceConnectionStatus(instanceId, 'Connected');
       setIsConnecting(false);
@@ -746,6 +778,9 @@ export function ConnectionPanel() {
       return;
     }
 
+    searchGuard.current.invalidate();
+    setIsSearching(false);
+
     // 如果选择的是同一个资源且已加载，不做任何操作
     if (resource.name === lastLoadedResourceRef.current && isResourceLoaded) {
       setSelectedResource(instanceId, resource.name);
@@ -892,6 +927,9 @@ export function ConnectionPanel() {
 
   // 选择 Win32 窗口并自动连接（如已连接会先断开旧连接）
   const handleSelectWindow = async (win: Win32Window) => {
+    useAppStore.getState().setWindowSelectionRequired(instanceId, false);
+    searchGuard.current.invalidate();
+    setIsSearching(false);
     setSelectedWindow(win);
     setShowDeviceDropdown(false);
 
@@ -1049,6 +1087,10 @@ export function ConnectionPanel() {
 
   // 点击历史设备条目时，触发搜索并自动匹配连接
   const handleSearchAndConnectHistorical = async () => {
+    if (isDesktopWindowController) {
+      await handleSearch();
+      return;
+    }
     if (!currentController) return;
 
     setIsSearching(true);
@@ -1413,6 +1455,9 @@ export function ConnectionPanel() {
                           // 点击当前已选中的控制器，不做任何操作
                           if (currentControllerName === controller.name) return;
 
+                          searchGuard.current.invalidate();
+                          setIsSearching(false);
+
                           // 切换控制器：销毁实例（清除 tasker）并重新创建
                           // 保留资源加载状态（资源在 Rust 后端独立存储）
                           await maaService.destroyInstance(instanceId).catch(() => {});
@@ -1452,14 +1497,13 @@ export function ConnectionPanel() {
                             lastLoadedResourceRef.current = null;
                           }
                         }}
-                        disabled={isConnecting || isSearching || isRunning}
+                        disabled={isConnecting || isRunning}
                         className={clsx(
                           'inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded-md transition-colors',
                           currentControllerName === controller.name
                             ? 'bg-accent text-white'
                             : 'bg-bg-tertiary text-text-secondary hover:bg-bg-hover',
-                          (isConnecting || isSearching || isRunning) &&
-                            'opacity-50 cursor-not-allowed',
+                          (isConnecting || isRunning) && 'opacity-50 cursor-not-allowed',
                         )}
                       >
                         <PiIcon icon={controller.icon} />
