@@ -50,6 +50,19 @@ export default {
   },
 
   // 設定
+  skin: {
+    regionLabel: '造型夥伴',
+    state: {
+      idle: '待命中',
+      running: '執行中',
+      success: '已完成',
+      error: '執行失敗',
+    },
+    feed: '餵白飯',
+    poke: '播放大笑',
+    reducedMotion: '已減少動態效果',
+  },
+
   settings: {
     title: '設定',
     appearance: '外觀',
@@ -70,6 +83,15 @@ export default {
     themeDark: '深色',
     accentColor: '強調色',
     themeSystem: '系統',
+    skin: '內建造型',
+    skinHint: '選擇任務畫面的角色外觀。選擇預設可隱藏角色。',
+    skinAssetLicense: '素材來源與授權',
+    skinDefault: '預設',
+    skinDeepseek: '藍色大肥魚',
+    skinNaiwa: '奶蛙',
+    skinReducedMotion: '減少造型動態效果',
+    skinReducedMotionHint: '減少連續動作，同時遵循系統的減少動態效果設定。',
+    skinPreview: '造型預覽',
     showOptionPreview: '顯示選項預覽',
     showOptionPreviewHint: '在任務列表中顯示選項的快捷預覽資訊',
     openLogDir: '開啟日誌目錄',

@@ -18,6 +18,7 @@ import {
   ConnectionPanel,
 } from '@/components';
 import { BackgroundOverlay } from '@/components/BackgroundOverlay';
+import { BuiltinSkinCompanion } from '@/components/skins/BuiltinSkinCompanion';
 import { isAllowedSettingsHotkey } from '@/components/FormControls';
 import type { BadPathType } from '@/components';
 import {
@@ -105,12 +106,7 @@ import { WebUIBetaBanner } from './components/app/WebUIBetaBanner';
 import { startGlobalCallbackListener } from './components/connection/callbackCache';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { ScrollText } from 'lucide-react';
-import {
-  defaultConfig,
-  defaultScheduledUpdateCheckTime,
-  defaultWindowSize,
-  isValidMxuConfig,
-} from '@/types/config';
+import { defaultConfig, defaultWindowSize, isValidMxuConfig } from '@/types/config';
 
 const log = loggers.app;
 
@@ -782,17 +778,8 @@ function App() {
         toast.error(t('config.recoveryFailed'));
       }
 
-      // 应用配置
-      if (config.instances.length > 0) {
-        importConfig(config);
-      } else {
-        // 无实例时单独恢复定时检查偏好
-        const state = useAppStore.getState();
-        state.setScheduledUpdateCheckEnabled(config.settings.scheduledUpdateCheckEnabled === true);
-        state.setScheduledUpdateCheckTime(
-          config.settings.scheduledUpdateCheckTime ?? defaultScheduledUpdateCheckTime,
-        );
-      }
+      // 外观与全局设置也适用于尚无实例的配置；下方仍会按既有流程创建初始实例。
+      importConfig(config);
 
       // 初始化匿名遥测（仅当 interface 声明了 telemetry.sentry.dsn 且非调试 / 开发版本）
       // 即便用户当前关闭，也传入配置以便后端缓存，用户在设置中开启时无需重启
@@ -1232,6 +1219,8 @@ function App() {
         localAppearance.customAccents?.forEach((a) => registerCustomAccent(a));
         useAppStore.setState({
           theme: localAppearance.theme,
+          skinId: localAppearance.skinId,
+          skinReducedMotion: localAppearance.skinReducedMotion,
           accentColor: localAppearance.accentColor,
           language: localAppearance.language,
           backgroundImage: localAppearance.backgroundImage,
@@ -2209,6 +2198,7 @@ function App() {
               </div>
 
               {/* 工具栏（任务列表下方） */}
+              <BuiltinSkinCompanion />
               <Toolbar
                 showAddPanel={showAddTaskPanel}
                 onToggleAddPanel={() => setShowAddTaskPanel(!showAddTaskPanel)}
@@ -2255,6 +2245,7 @@ function App() {
               </div>
 
               {/* 底部工具栏 */}
+              <BuiltinSkinCompanion />
               <Toolbar
                 showAddPanel={showAddTaskPanel}
                 onToggleAddPanel={() => setShowAddTaskPanel(!showAddTaskPanel)}

@@ -1,0 +1,21 @@
+{
+  "name": "mxu-skin-system-design",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "generate": "node scripts/generate.mjs",
+    "check:generated": "node scripts/generate.mjs --check",
+    "check": "npm run check:generated && node tests/check.mjs",
+    "check:browser": "node tests/browser.mjs",
+    "check:integration": "node tests/integration-browser.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "26.1.0",
+    "marked": "17.0.1",
+    "playwright": "1.62.1"
+  }
+}

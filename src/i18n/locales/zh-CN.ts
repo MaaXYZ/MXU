@@ -50,6 +50,19 @@ export default {
     close: '关闭',
   },
 
+  skin: {
+    regionLabel: '皮肤伙伴',
+    state: {
+      idle: '待机中',
+      running: '执行中',
+      success: '已完成',
+      error: '执行失败',
+    },
+    feed: '投喂白饭',
+    poke: '播放大笑',
+    reducedMotion: '已减少动态效果',
+  },
+
   // 设置
   settings: {
     title: '设置',
@@ -70,6 +83,15 @@ export default {
     themeLight: '浅色',
     themeDark: '深色',
     themeSystem: '系统',
+    skin: '内置皮肤',
+    skinHint: '选择任务界面的角色皮肤。选择默认可隐藏角色。',
+    skinAssetLicense: '素材来源与许可',
+    skinDefault: '默认',
+    skinDeepseek: '蓝色大肥鱼',
+    skinNaiwa: '奶蛙',
+    skinReducedMotion: '减少皮肤动效',
+    skinReducedMotionHint: '减少连续动作，同时遵循系统的减少动态效果设置。',
+    skinPreview: '皮肤预览',
     accentColor: '强调色',
     showOptionPreview: '显示选项预览',
     showOptionPreviewHint: '在任务列表中显示选项的快捷预览信息',

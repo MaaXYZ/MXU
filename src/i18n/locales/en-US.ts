@@ -56,6 +56,19 @@ export default {
   },
 
   // Settings
+  skin: {
+    regionLabel: 'Skin companion',
+    state: {
+      idle: 'Idle',
+      running: 'Running',
+      success: 'Completed',
+      error: 'Failed',
+    },
+    feed: 'Feed rice',
+    poke: 'Play laughter',
+    reducedMotion: 'Motion reduced',
+  },
+
   settings: {
     title: 'Settings',
     appearance: 'Appearance',
@@ -76,6 +89,16 @@ export default {
     themeDark: 'Dark',
     accentColor: 'Accent Color',
     themeSystem: 'System',
+    skin: 'Built-in Skins',
+    skinHint: 'Choose a character skin for the task view. Default hides the character.',
+    skinAssetLicense: 'Asset source and license',
+    skinDefault: 'Default',
+    skinDeepseek: 'Blue Fat Fish',
+    skinNaiwa: 'Naiwa',
+    skinReducedMotion: 'Reduce skin motion',
+    skinReducedMotionHint:
+      'Reduce continuous animation. Your system’s reduced motion preference also applies.',
+    skinPreview: 'Skin preview',
     showOptionPreview: 'Show Option Preview',
     showOptionPreviewHint: 'Display quick preview of options in the task list',
     openLogDir: 'Open Log Directory',

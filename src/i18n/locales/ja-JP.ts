@@ -51,6 +51,19 @@ export default {
   },
 
   // 設定
+  skin: {
+    regionLabel: 'スキンの仲間',
+    state: {
+      idle: '待機中',
+      running: '実行中',
+      success: '完了',
+      error: '実行失敗',
+    },
+    feed: '白ごはんをあげる',
+    poke: '大笑いを再生',
+    reducedMotion: '動きを減らしています',
+  },
+
   settings: {
     title: '設定',
     appearance: '外観',
@@ -71,6 +84,15 @@ export default {
     themeDark: 'ダーク',
     accentColor: 'アクセントカラー',
     themeSystem: 'システムに従う',
+    skin: '内蔵スキン',
+    skinHint: 'タスク画面のキャラクタースキンを選択します。「デフォルト」で非表示になります。',
+    skinAssetLicense: '素材の出典とライセンス',
+    skinDefault: 'デフォルト',
+    skinDeepseek: '青い太っちょクジラ',
+    skinNaiwa: 'ナイワ',
+    skinReducedMotion: 'スキンの動きを減らす',
+    skinReducedMotionHint: '連続する動きを減らします。システムの視覚効果を減らす設定にも従います。',
+    skinPreview: 'スキンのプレビュー',
     showOptionPreview: 'オプションプレビューを表示',
     showOptionPreviewHint: 'タスクリストにオプションのクイックプレビューを表示します',
     openLogDir: 'ログフォルダを開く',

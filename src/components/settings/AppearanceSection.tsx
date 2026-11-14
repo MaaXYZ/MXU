@@ -16,6 +16,10 @@ import { useAppStore } from '@/stores/appStore';
 import { getAccentInfoList, type AccentColor, type CustomAccent } from '@/themes';
 import { SortableAccentTile } from './SortableAccentTile';
 import { isTauri } from '@/utils/windowUtils';
+import { BuiltinSkinCompanion } from '@/components/skins/BuiltinSkinCompanion';
+import deepseekThumbnail from '@/assets/skins/deepseek.png';
+import naiwaThumbnail from '@/assets/skins/naiwa-calm.png';
+import deepseekLicense from '@/assets/skins/LICENSE.deepseek.txt?raw';
 
 interface AppearanceSectionProps {
   onOpenCreateAccentModal: () => void;
@@ -32,6 +36,10 @@ export function AppearanceSection({
   const {
     theme,
     setTheme,
+    skinId,
+    setSkinId,
+    skinReducedMotion,
+    setSkinReducedMotion,
     accentColor,
     setAccentColor,
     customAccents,
@@ -135,6 +143,95 @@ export function AppearanceSection({
             </button>
           ))}
         </div>
+      </div>
+
+      {/* 内置皮肤 */}
+      <div className="bg-bg-secondary rounded-xl p-4 border border-border space-y-3">
+        <div className="flex items-center gap-3">
+          <Palette className="w-5 h-5 text-accent" aria-hidden="true" />
+          <span id="settings-skin-label" className="font-medium text-text-primary">
+            {t('settings.skin')}
+          </span>
+        </div>
+        <p id="settings-skin-hint" className="text-sm text-text-secondary">
+          {t('settings.skinHint')}
+        </p>
+        <div
+          role="group"
+          aria-labelledby="settings-skin-label"
+          aria-describedby="settings-skin-hint"
+          className="grid grid-cols-3 gap-2"
+        >
+          {(['default', 'deepseek', 'naiwa'] as const).map((id) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={skinId === id}
+              onClick={() => setSkinId(id)}
+              className={clsx(
+                'flex min-w-0 flex-col items-center gap-2 rounded-lg border px-2 py-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+                skinId === id
+                  ? 'border-accent bg-accent/10 text-text-primary'
+                  : 'border-border bg-bg-tertiary text-text-secondary hover:bg-bg-hover',
+              )}
+            >
+              <span className="flex h-20 w-full items-center justify-center" aria-hidden="true">
+                {id === 'default' ? (
+                  <Palette className="h-10 w-10 text-text-muted" />
+                ) : (
+                  <img
+                    src={id === 'deepseek' ? deepseekThumbnail : naiwaThumbnail}
+                    alt=""
+                    className={clsx(
+                      'pointer-events-none h-full max-w-full',
+                      id === 'deepseek' ? 'w-20 object-cover' : 'object-contain',
+                    )}
+                  />
+                )}
+              </span>
+              <span className="text-center">
+                {t(
+                  id === 'default'
+                    ? 'settings.skinDefault'
+                    : id === 'deepseek'
+                      ? 'settings.skinDeepseek'
+                      : 'settings.skinNaiwa',
+                )}
+              </span>
+            </button>
+          ))}
+        </div>
+        {skinId === 'deepseek' && (
+          <details className="text-xs text-text-secondary">
+            <summary className="cursor-pointer">{t('settings.skinAssetLicense')}</summary>
+            <pre className="mt-2 whitespace-pre-wrap break-all rounded-lg bg-bg-tertiary p-3 font-sans">
+              {deepseekLicense}
+            </pre>
+          </details>
+        )}
+        <div className="border-t border-border pt-3">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary">
+            <input
+              type="checkbox"
+              checked={skinReducedMotion}
+              onChange={(event) => setSkinReducedMotion(event.target.checked)}
+              aria-describedby="settings-skin-motion-hint"
+              className="h-4 w-4 accent-accent"
+            />
+            {t('settings.skinReducedMotion')}
+          </label>
+          <p id="settings-skin-motion-hint" className="mt-1 text-xs text-text-muted">
+            {t('settings.skinReducedMotionHint')}
+          </p>
+        </div>
+        {skinId !== 'default' && (
+          <div className="rounded-lg bg-bg-tertiary p-3">
+            <p className="mb-2 text-xs font-medium text-text-secondary">
+              {t('settings.skinPreview')}
+            </p>
+            <BuiltinSkinCompanion preview />
+          </div>
+        )}
       </div>
 
       {/* 强调色 */}

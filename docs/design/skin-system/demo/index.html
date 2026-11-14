@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      name="description"
+      content="MXU 皮肤协议概念实验室：用 HTML、CSS 与轻量宿主协议，探索会占位、会越框、会响应任务的界面。"
+    />
+    <title>MXU Skin Lab · 让界面有自己的性格</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#"
+        ><span class="brand-icon">m<span>✳</span></span
+        ><b>MXU <span>SKIN LAB</span></b></a
+      >
+      <nav aria-label="页面导航">
+        <a href="#playground">实验场</a><a href="#ideas">灵感库 <span class="nav-count">24</span></a
+        ><a href="protocol.html">协议草案 ↗</a>
+      </nav>
+      <span class="version"><i></i> CONCEPT / 0.1</span>
+    </header>
+    <main>
+      <section class="intro">
+        <div class="eyebrow">
+          <span>INTERFACES WITH CHARACTER</span><span class="tiny-rule"></span
+          ><span>界面，也可以有脾气。</span>
+        </div>
+        <div class="intro-row">
+          <h1>
+            不止换肤。<br />让界面<span class="ink-highlight"
+              >活起来<svg viewBox="0 0 350 20" aria-hidden="true">
+                <path d="M3 12 Q160 -1 345 8M15 18 Q170 6 325 15" /></svg></span
+            >。
+          </h1>
+          <div class="intro-note">
+            <span class="asterisk">✳</span>
+            <p>
+              让角色参与布局，让故事溢出边框。<br />用熟悉的 HTML / CSS / SVG，<br />加一层很薄的
+              MXU 皮肤协议。
+            </p>
+            <a href="protocol.html">阅读设计提案 <span>↗</span></a>
+          </div>
+        </div>
+      </section>
+      <section id="playground" class="playground" aria-label="交互皮肤实验场">
+        <div class="section-heading">
+          <h2><span>01 /</span> 先玩一下</h2>
+          <p>同一组功能，八种场景。新增：大肥鱼和奶蛙。</p>
+          <button id="reset" class="text-button">↻ 重置实验</button>
+        </div>
+        <div class="skin-tabs" role="group" aria-label="选择皮肤">
+          <button id="deepseek" data-skin="deepseek" aria-pressed="false">
+            <span class="skin-symbol ocean">◒</span
+            ><span
+              ><b>蓝色大肥鱼 <em>NEW</em></b
+              ><small>吃白饭 · 状态联动</small></span
+            ><span class="tab-index">07</span>
+          </button>
+          <button id="naiwa" data-skin="naiwa" aria-pressed="false">
+            <span class="skin-symbol butter">◉</span
+            ><span
+              ><b>奶蛙 <em>NEW</em></b
+              ><small>大笑视频 · 状态联动</small></span
+            ><span class="tab-index">08</span>
+          </button>
+          <button data-skin="mascot" aria-pressed="true">
+            <span class="skin-symbol mint">◕</span
+            ><span><b>捣蛋团子</b><small>角色 × 布局</small></span
+            ><span class="tab-index">01</span>
+          </button>
+          <button data-skin="mecha" aria-pressed="false">
+            <span class="skin-symbol coral">⌁</span
+            ><span><b>边界破坏者</b><small>装饰 × 空间</small></span
+            ><span class="tab-index">02</span>
+          </button>
+          <button data-skin="garden" aria-pressed="false">
+            <span class="skin-symbol blue">♧</span
+            ><span><b>微型生态舱</b><small>状态 × 生长</small></span
+            ><span class="tab-index">03</span>
+          </button>
+          <button data-skin="vinyl" aria-pressed="false">
+            <span class="skin-symbol peach">◉</span
+            ><span><b>黑胶工作台</b><small>控件 × 隐喻</small></span
+            ><span class="tab-index">04</span>
+          </button>
+          <button data-skin="paper" aria-pressed="false">
+            <span class="skin-symbol sand">▱</span
+            ><span><b>纸上事务所</b><small>材质 × 反馈</small></span
+            ><span class="tab-index">05</span>
+          </button>
+          <button data-skin="sonar" aria-pressed="false">
+            <span class="skin-symbol teal">◎</span
+            ><span><b>深海声呐站</b><small>事件 × 氛围</small></span
+            ><span class="tab-index">06</span>
+          </button>
+        </div>
+        <div class="lab-grid">
+          <div id="stage" class="stage theme-mascot">
+            <div class="stage-topline">
+              <span><i class="live-dot"></i> LIVE SKIN PREVIEW</span
+              ><span id="scene-code">SCENE 001 — MISCHIEF</span>
+            </div>
+            <div class="scene-label">
+              <span id="scene-kicker">MAKE SOME ROOM.</span>
+              <h3 id="scene-title">借过，我也要上班。</h3>
+            </div>
+            <div class="app-wrap">
+              <div class="shell-shadow"></div>
+              <section class="app-shell" aria-label="模拟 MXU 任务界面">
+                <div class="app-titlebar">
+                  <span class="mini-brand">m<span>✳</span></span
+                  ><b>MXU</b><span class="app-project">我的自动化工作台</span>
+                  <div class="window-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+                </div>
+                <div class="app-body">
+                  <aside class="mini-sidebar" aria-label="示意导航">
+                    <span class="sidebar-selected" title="任务">▦</span><span>⌘</span><span>◷</span
+                    ><span class="sidebar-bottom">⚙</span>
+                  </aside>
+                  <div class="task-pane">
+                    <div class="pane-heading">
+                      <div>
+                        <small>WORKSPACE / 01</small>
+                        <h4>今日任务</h4>
+                      </div>
+                      <span class="connection"><i></i> 模拟设备已就绪</span>
+                    </div>
+                    <div class="task-list">
+                      <label class="task-row"
+                        ><input type="checkbox" checked data-task="0" /><span class="task-glyph"
+                          >↗</span
+                        ><span class="task-copy"
+                          ><b>启动与连接</b><small>建立连接 · 检查运行环境</small></span
+                        ><span class="task-state">等待</span></label
+                      >
+                      <label class="task-row"
+                        ><input type="checkbox" checked data-task="1" /><span class="task-glyph"
+                          >◇</span
+                        ><span class="task-copy"
+                          ><b>日常任务</b><small>自动执行 · 收集运行结果</small></span
+                        ><span class="task-state">等待</span></label
+                      >
+                      <label class="task-row"
+                        ><input type="checkbox" checked data-task="2" /><span class="task-glyph"
+                          >▤</span
+                        ><span class="task-copy"
+                          ><b>整理与收尾</b><small>保存记录 · 完成后待机</small></span
+                        ><span class="task-state">等待</span></label
+                      >
+                    </div>
+                    <div class="progress-line">
+                      <span id="task-caption">准备就绪，随时出发</span
+                      ><span id="progress-value">0%</span>
+                    </div>
+                    <div
+                      id="task-progress"
+                      class="progress-track"
+                      role="progressbar"
+                      aria-label="模拟任务进度"
+                      aria-valuemin="0"
+                      aria-valuemax="100"
+                      aria-valuenow="0"
+                      aria-valuetext="待机中，进度 0%，已完成 0 项，共 3 项"
+                    >
+                      <div id="progress-fill"></div>
+                    </div>
+                    <div class="action-area" id="action-area">
+                      <div class="reservation" id="reservation" aria-hidden="true">
+                        <span>角色占位</span>
+                      </div>
+                      <div class="action-buttons">
+                        <button id="run-button" class="run-button">
+                          <span id="run-icon">▶</span><span id="run-label">开始任务</span></button
+                        ><button id="stop-button" class="stop-button" disabled>停止任务</button>
+                      </div>
+                    </div>
+                  </div>
+                  <aside class="device-panel">
+                    <div class="device-top">
+                      <span id="device-title">运行概览</span><span>↗</span>
+                    </div>
+                    <div class="device-art">
+                      <div class="plain-device">
+                        <span class="device-screen">m✳</span><span class="device-base"></span>
+                      </div>
+                      <div class="vinyl-art" aria-hidden="true">
+                        <div class="record">
+                          <div class="record-label">
+                            <span>MXU<br />33⅓ RPM</span>
+                          </div>
+                        </div>
+                        <div class="tonearm"></div>
+                      </div>
+                      <div class="paper-art" aria-hidden="true">
+                        <span class="paper-clip"></span
+                        ><span>TO DO<br /><i>✓</i> 少一点琐事<br /><i>✓</i> 多一点时间</span>
+                        <div class="paper-stamp">DONE</div>
+                      </div>
+                      <div class="sonar-art" aria-hidden="true">
+                        <div class="sonar-cross"></div>
+                        <div class="sonar-sweep"></div>
+                        <i class="sonar-dot d1"></i><i class="sonar-dot d2"></i
+                        ><i class="sonar-dot d3"></i>
+                      </div>
+                    </div>
+                    <div class="device-footer">
+                      <span class="tiny-dot"></span> LOCAL DEMO · OFFLINE
+                    </div>
+                  </aside>
+                </div>
+                <div id="host-status" class="host-status" role="group" aria-label="宿主任务状态">
+                  <div class="device-metrics">
+                    <div><small>执行状态</small><b id="status-label">待机中</b></div>
+                    <div>
+                      <small>已完成</small
+                      ><b
+                        ><span id="completed-count">0</span
+                        ><em> / <span id="selected-count">3</span></em></b
+                      >
+                    </div>
+                  </div>
+                  <button id="fail-button" class="failure-button" disabled>模拟失败</button>
+                  <p class="host-status-note">运行或暂停后可模拟失败；停止将记为取消。</p>
+                </div>
+                <p
+                  id="task-announcement"
+                  class="sr-only"
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
+                ></p>
+              </section>
+              <aside class="meme-companion" aria-label="皮肤角色反馈">
+                <div class="meme-badge"><span class="meme-spark">✳</span> 内置皮肤 · 本地预览</div>
+                <div class="meme-portrait" aria-hidden="true">
+                  <div class="meme-orbit"></div>
+                  <span class="meme-confetti c1">✦</span><span class="meme-confetti c2">✦</span>
+                  <div class="actor deepseek-actor">
+                    <video
+                      id="deepseek-motion"
+                      muted
+                      loop
+                      playsinline
+                      preload="metadata"
+                      poster="assets/deepseek.png"
+                      aria-hidden="true"
+                    >
+                      <source src="assets/deepseek-eat.mp4" type="video/mp4" />
+                    </video>
+                    <img class="meme-active-art" src="assets/deepseek.png" alt="" />
+                    <img class="meme-calm-art" src="assets/deepseek-calm.png" alt="" />
+                    <img class="meme-error-art" src="assets/deepseek-error.png" alt="" />
+                  </div>
+                  <div class="actor naiwa-actor">
+                    <video
+                      id="naiwa-motion"
+                      muted
+                      loop
+                      playsinline
+                      preload="metadata"
+                      poster="assets/naiwa-still.webp"
+                      aria-hidden="true"
+                    >
+                      <source src="assets/naiwa-laugh.mp4" type="video/mp4" />
+                    </video>
+                    <img class="meme-laugh-still" src="assets/naiwa-still.webp" alt="" />
+                    <img class="meme-calm-art" src="assets/naiwa-calm.png" alt="" />
+                  </div>
+                  <span class="meme-alert">!</span>
+                </div>
+                <div class="meme-copy">
+                  <span id="meme-state" class="meme-state">待机中</span>
+                </div>
+                <div class="meme-meter" aria-hidden="true">
+                  <div class="meme-meter-track"><div id="rice-fill"></div></div>
+                  <span id="meme-progress-text">任务进度 0%</span>
+                </div>
+              </aside>
+              <div class="actor mascot-actor" aria-hidden="true">
+                <div class="speech-bubble" id="speech-bubble">给我腾个位置嘛！</div>
+                <img src="assets/mascot.svg" alt="" />
+              </div>
+              <div class="actor mecha-actor" aria-hidden="true">
+                <div class="mecha-halo"></div>
+                <img src="assets/mecha.svg" alt="" />
+              </div>
+              <div class="actor garden-actor" aria-hidden="true">
+                <img src="assets/terrarium.svg" alt="" /><span class="growth-orbit"></span>
+              </div>
+              <div class="outline-tag" aria-hidden="true">HOST PANEL BOUNDARY</div>
+            </div>
+            <div class="scene-bottom">
+              <span class="scene-caption" id="scene-caption"
+                >↳ 小家伙走进来，按钮真的为它让出位置。</span
+              ><span class="stage-stamp">MXU / EXPERIMENTAL</span>
+            </div>
+          </div>
+          <aside class="inspector">
+            <div class="inspector-title">
+              <span class="eyebrow">PLAY WITH IT</span><span>↙</span>
+            </div>
+            <h3 id="inspector-title">它不只是贴纸。</h3>
+            <p id="inspector-description">
+              团子进入操作栏时，宿主给它分配真实空间。按钮跟着布局移动，点击范围也一起移动。
+            </p>
+            <div id="capability-tags" class="capability-tags"></div>
+            <div class="control-block">
+              <span class="control-label">试试这个</span
+              ><button
+                id="scene-trigger"
+                class="scene-trigger"
+                type="button"
+                aria-describedby="hotspot-note"
+                aria-controls="reservation"
+                data-host-hotspot="mascot"
+              >
+                角色互动：让团子挤进来 <span aria-hidden="true">→</span>
+              </button>
+              <p id="hotspot-note" class="hotspot-note">
+                宿主拥有的角色热点：Tab 聚焦，Enter / 空格激活。只改变场景，不启动任务；此 demo
+                未验证隔离渲染器的命中保护。
+              </p>
+              <div class="range-control">
+                <label for="intensity" id="intensity-label">占位宽度</label
+                ><output for="intensity" id="intensity-value">132 px</output
+                ><input id="intensity" type="range" min="80" max="164" value="132" />
+              </div>
+            </div>
+            <div class="inspection-options">
+              <label
+                ><input id="show-bounds" type="checkbox" /><span>显示布局边界</span
+                ><span class="toggle-track"></span></label
+              ><label
+                ><input id="reduce-motion" type="checkbox" /><span>减少动态效果</span
+                ><span class="toggle-track"></span
+              ></label>
+            </div>
+            <div class="code-preview">
+              <div><span>能力概念切片</span><span>ILLUSTRATION</span></div>
+              <pre id="scene-snippet"></pre>
+            </div>
+            <a class="inspector-link" href="protocol.html">查看完整协议与边界 <span>↗</span></a>
+          </aside>
+        </div>
+        <div class="event-console">
+          <span><i></i> HOST EVENTS</span
+          ><output id="event-log" role="log" aria-live="off"
+            >skin.mounted → 捣蛋团子 · 等待交互</output
+          ><span id="motion-state">MOTION ON</span>
+        </div>
+        <div class="preset-bar">
+          <div>
+            <b>你的皮肤，从一个文件开始。</b
+            ><span>导出示例配置，改个名字或颜色，再导回来试试。</span>
+          </div>
+          <div>
+            <button id="export-preset" class="secondary-button">↓ 导出预设 JSON</button
+            ><button id="import-preset" class="secondary-button">↑ 导入预设</button
+            ><input type="file" id="preset-file" accept=".json,application/json" hidden />
+          </div>
+          <p id="import-result" role="status">
+            此处仅验证演示预设；完整 .mxuskin 包的安装与隔离见协议。
+          </p>
+          <p class="meme-downloads">
+            新朋友的预设：
+            <a href="examples/deepseek.demo.json" download>大肥鱼 ↓</a>
+            <a href="examples/naiwa.demo.json" download>奶蛙 ↓</a>
+            <a href="../meme-skins.md">形象与玩法说明 ↗</a>
+          </p>
+        </div>
+      </section>
+      <section class="architecture" id="architecture">
+        <div class="section-heading">
+          <h2><span>02 /</span> 多一点协议，少造一点轮子</h2>
+          <a href="protocol.html">阅读全文 ↗</a>
+        </div>
+        <div class="architecture-intro">
+          <h3>浏览器负责画。<br /><span>MXU 负责边界。</span></h3>
+          <p>
+            不发明新的绘图语言。保留现有主题变量与 React
+            业务控件，给皮肤一套稳定的挂载、占位、分层与状态约定。
+          </p>
+        </div>
+        <div class="architecture-grid">
+          <article>
+            <span>01 / TOKENS</span>
+            <h4>从配色开始</h4>
+            <p>沿用现有 CSS 变量。只换颜色、圆角和材质，也是一款完整皮肤。</p>
+            <code>CSS custom properties</code>
+          </article>
+          <article>
+            <span>02 / SCENE</span>
+            <h4>给表现自由</h4>
+            <p>HTML / CSS / SVG 组织角色、背景和动画；复杂媒体用可选适配器。</p>
+            <code>HTML + CSS + SVG</code>
+          </article>
+          <article>
+            <span>03 / LAYOUT</span>
+            <h4>让布局配合</h4>
+            <p>声明锚点、占位和越框区域，由宿主保护按钮、弹窗与窗口边界。</p>
+            <code>anchor · reserve · bleed</code>
+          </article>
+          <article>
+            <span>04 / EVENTS</span>
+            <h4>对任务有反应</h4>
+            <p>接收最小只读状态，通过受控事件响应运行、成功与错误。</p>
+            <code>state → visual response</code>
+          </article>
+        </div>
+        <div class="architecture-note">
+          <b>先做两层，就能玩得很丰富。</b>
+          <p>
+            L0 主题变量 + L1 声明式场景覆盖本页大多数创意；L2
+            隔离脚本留给更复杂的物理、小游戏和外部渲染器。角色位移不等于布局占位，越过面板也不等于越过原生窗口。
+          </p>
+        </div>
+      </section>
+      <section class="ideas" id="ideas">
+        <div class="section-heading">
+          <h2><span>03 /</span> 皮肤还能怎么玩？</h2>
+          <p>24 个可以继续生长的方向。</p>
+        </div>
+        <div class="ideas-intro">
+          <h3>把自动化，变成你的<span>小世界。</span></h3>
+          <div class="idea-filters" role="group" aria-label="创意分类">
+            <button class="active" data-filter="全部" aria-pressed="true">全部</button
+            ><button data-filter="角色" aria-pressed="false">角色</button
+            ><button data-filter="空间" aria-pressed="false">空间</button
+            ><button data-filter="状态" aria-pressed="false">状态</button
+            ><button data-filter="交互" aria-pressed="false">交互</button
+            ><button data-filter="叙事" aria-pressed="false">叙事</button>
+          </div>
+        </div>
+        <div id="ideas-grid" class="ideas-grid"></div>
+        <p class="ideas-note">
+          这些是能力设计提案，不代表 MXU 已实现。L1 / L2
+          表示建议实现层级；部分创意需额外开放宿主槽位与只读状态。所有趣味表现都应提供静态模式，并保留直接的任务操作。
+        </p>
+      </section>
+      <section class="closing">
+        <div>
+          <span class="eyebrow">THE SMALL CONTRACT BEHIND THE MAGIC</span>
+          <h2>皮肤可以任性。<br />操作始终可靠。</h2>
+        </div>
+        <div>
+          <p>完整设计包含包结构、字段样例、安全隔离、<br />能力协商，以及对现有 MXU 的接入建议。</p>
+          <a href="protocol.html" class="dark-button">打开 MXU Skin Protocol v0.1 <span>↗</span></a
+          ><a href="../README.md" class="download-manifest">查看仓库内的设计说明与源码 ↗</a
+          ><a href="examples/mascot.skin.json" download class="download-manifest"
+            >单独下载 Manifest 示例 ↓</a
+          >
+        </div>
+      </section>
+    </main>
+    <footer>
+      <span>MXU SKIN LAB</span>
+      <p>概念设计与交互验证 · 非生产皮肤运行时</p>
+      <span>BUILT WITH HTML, CSS & A LITTLE IMAGINATION.</span>
+    </footer>
+    <script src="ideas.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
