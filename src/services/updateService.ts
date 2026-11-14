@@ -588,6 +588,7 @@ async function tryDirectDownloadUrls(
   repo: string,
   projectName: string,
   version: string,
+  proxyUrl?: string,
 ): Promise<{ url: string; filename: string } | null> {
   const extensions = getDownloadExtensions();
   const arch = await getArch();
@@ -601,18 +602,13 @@ async function tryDirectDownloadUrls(
 
     try {
       log.info(`尝试直接下载链接: ${url}`);
-      const response = await tauriFetch(url, {
-        method: 'HEAD',
-        headers: {
-          'User-Agent': await buildUserAgent(),
-        },
-      });
+      const status = await invoke<number>('probe_download_url', { url, proxyUrl });
 
-      if (response.ok) {
+      if (status >= 200 && status < 300) {
         log.info(`直接下载链接可用: ${filename}`);
         return { url, filename };
       }
-      log.info(`直接下载链接不存在 (${response.status}): ${filename}`);
+      log.info(`直接下载链接不存在 (${status}): ${filename}`);
     } catch (error) {
       log.warn(`检查直接下载链接失败: ${filename}`, error);
     }
@@ -674,7 +670,7 @@ export interface GetGitHubDownloadUrlOptions {
   targetVersion: string; // Mirror酱返回的目标版本号
   githubPat?: string; // GitHub Personal Access Token (支持 classic 和 fine-grained)
   projectName?: string; // 项目名称，用于拼接直接下载链接（来自 interface.name）
-  proxyUrl?: string; // 代理 URL，用于 GitHub API 请求
+  proxyUrl?: string; // 代理 URL，用于 GitHub API 请求和直接下载链接探测
 }
 
 /**
@@ -716,7 +712,13 @@ export async function getGitHubDownloadUrl(
 
   // API 失败或未匹配到 asset，尝试直接拼接下载链接
   if (projectName) {
-    const directResult = await tryDirectDownloadUrls(owner, repo, projectName, targetVersion);
+    const directResult = await tryDirectDownloadUrls(
+      owner,
+      repo,
+      projectName,
+      targetVersion,
+      proxyUrl,
+    );
     if (directResult) {
       log.info(`使用直接下载链接: ${directResult.filename}`);
       return {
