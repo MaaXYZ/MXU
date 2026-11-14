@@ -905,11 +905,12 @@ pub async fn connect_controller_impl(
                 .map_err(|e| e.to_string())?;
             pool.get(&config)
                 .filter(|entry| {
-                    entry.window_target == window_target && (entry.controller.connected()
-                        || matches!(
-                            entry.controller.status(entry.connection_id),
-                            MaaStatus::PENDING | MaaStatus::RUNNING
-                        ))
+                    entry.window_target == window_target
+                        && (entry.controller.connected()
+                            || matches!(
+                                entry.controller.status(entry.connection_id),
+                                MaaStatus::PENDING | MaaStatus::RUNNING
+                            ))
                 })
                 .cloned()
         };

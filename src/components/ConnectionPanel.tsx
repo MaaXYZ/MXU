@@ -19,6 +19,7 @@ import {
   History,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { toast } from 'sonner';
 import { maaService, controllerErrorMessage } from '@/services/maaService';
 import { useAppStore } from '@/stores/appStore';
 import { resolveI18nText } from '@/services/contentResolver';
@@ -439,7 +440,8 @@ export function ConnectionPanel() {
         searchContext.current.instanceId === instanceId &&
         searchContext.current.currentControllerName === currentControllerName &&
         useAppStore.getState().activeInstanceId === instanceId &&
-        useAppStore.getState().selectedController[instanceId] === currentControllerName,
+        (useAppStore.getState().selectedController[instanceId] || controllers[0]?.name) ===
+          currentControllerName,
     );
 
     setIsSearching(true);
@@ -494,6 +496,9 @@ export function ConnectionPanel() {
         setCachedWin32Windows(windows);
         setShowDeviceDropdown(windows.length > 1);
         const autoSelected = selectWindow(windows, savedDevice);
+        if (savedDevice && savedDevice.windowName !== autoSelected.window_name) {
+          toast.info(t('windowTarget.corrected', { name: autoSelected.window_name }));
+        }
         addLog(instanceId, {
           type: 'info',
           message: t(
@@ -761,6 +766,9 @@ export function ConnectionPanel() {
       setResourceError(t('resource.cannotSwitchWhileRunning'));
       return;
     }
+
+    searchGuard.current.invalidate();
+    setIsSearching(false);
 
     // 如果选择的是同一个资源且已加载，不做任何操作
     if (resource.name === lastLoadedResourceRef.current && isResourceLoaded) {
@@ -1435,6 +1443,9 @@ export function ConnectionPanel() {
                           // 点击当前已选中的控制器，不做任何操作
                           if (currentControllerName === controller.name) return;
 
+                          searchGuard.current.invalidate();
+                          setIsSearching(false);
+
                           // 切换控制器：销毁实例（清除 tasker）并重新创建
                           // 保留资源加载状态（资源在 Rust 后端独立存储）
                           await maaService.destroyInstance(instanceId).catch(() => {});
@@ -1474,14 +1485,13 @@ export function ConnectionPanel() {
                             lastLoadedResourceRef.current = null;
                           }
                         }}
-                        disabled={isConnecting || isSearching || isRunning}
+                        disabled={isConnecting || isRunning}
                         className={clsx(
                           'inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded-md transition-colors',
                           currentControllerName === controller.name
                             ? 'bg-accent text-white'
                             : 'bg-bg-tertiary text-text-secondary hover:bg-bg-hover',
-                          (isConnecting || isSearching || isRunning) &&
-                            'opacity-50 cursor-not-allowed',
+                          (isConnecting || isRunning) && 'opacity-50 cursor-not-allowed',
                         )}
                       >
                         <PiIcon icon={controller.icon} />

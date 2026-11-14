@@ -83,11 +83,13 @@ export async function discoverInitialWindow(
       (controller.win32?.class_regex || controller.win32?.window_regex),
   );
   const candidates = new Map<number, InitialWindowSelection>();
+  let searched = false;
   for (const controller of controllers) {
     const resource = pi.resource.find(
       (item) => !item.controller?.length || item.controller.includes(controller.name),
     );
     if (!resource) continue;
+    searched = true;
     const windows = await find(controller.win32?.class_regex, controller.win32?.window_regex);
     for (const window of windows) {
       if (!candidates.has(window.handle))
@@ -95,5 +97,6 @@ export async function discoverInitialWindow(
     }
   }
   if (candidates.size > 1) throw new WindowTargetError('WINDOW_SELECTION_REQUIRED');
+  if (searched && candidates.size === 0) throw new WindowTargetError('WINDOW_NOT_FOUND');
   return candidates.values().next().value;
 }

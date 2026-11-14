@@ -43,9 +43,12 @@ test('first launch chooses the first matching desktop controller and compatible 
   assert.equal(selected?.resource.name, 'PC resources');
 });
 
-test('zero windows leave defaults alone and multiple windows require a choice', async () => {
+test('zero and multiple windows report actionable discovery errors', async () => {
   const pi = { controller: controllers, resource: resources };
-  assert.equal(await discoverInitialWindow(pi, async () => []), undefined);
+  await assert.rejects(
+    discoverInitialWindow(pi, async () => []),
+    { code: 'WINDOW_NOT_FOUND' },
+  );
   await assert.rejects(
     discoverInitialWindow(pi, async () => [game, another]),
     { code: 'WINDOW_SELECTION_REQUIRED' },
