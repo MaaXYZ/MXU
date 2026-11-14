@@ -6,6 +6,8 @@ import {
   localizeWindowError,
   WindowTargetError,
   WindowSearchGuard,
+  InitialWindowDiscoveryError,
+  hasWindowFilters,
 } from '../src/utils/windowSelection.ts';
 import type { ControllerItem, ResourceItem } from '../src/types/interface';
 
@@ -45,13 +47,21 @@ test('first launch chooses the first matching desktop controller and compatible 
 
 test('zero and multiple windows report actionable discovery errors', async () => {
   const pi = { controller: controllers, resource: resources };
+  const failure = (code: string) => (error: unknown) => {
+    assert.ok(error instanceof InitialWindowDiscoveryError);
+    assert.equal(error.defaults.controller.name, 'Desktop foreground');
+    assert.equal(error.defaults.resource.name, 'PC resources');
+    assert.ok(error.reason instanceof WindowTargetError);
+    assert.equal(error.reason.code, code);
+    return true;
+  };
   await assert.rejects(
     discoverInitialWindow(pi, async () => []),
-    { code: 'WINDOW_NOT_FOUND' },
+    failure('WINDOW_NOT_FOUND'),
   );
   await assert.rejects(
     discoverInitialWindow(pi, async () => [game, another]),
-    { code: 'WINDOW_SELECTION_REQUIRED' },
+    failure('WINDOW_SELECTION_REQUIRED'),
   );
   await assert.rejects(
     discoverInitialWindow(pi, async () => {
@@ -59,6 +69,36 @@ test('zero and multiple windows report actionable discovery errors', async () =>
     }),
     /WINDOW_FILTER_INVALID/,
   );
+});
+
+test('different targets across controllers require a choice, never the first matching controller', async () => {
+  let call = 0;
+  await assert.rejects(
+    discoverInitialWindow({ controller: controllers, resource: resources }, async () => [
+      ++call === 1 ? game : another,
+    ]),
+    (error: unknown) => {
+      assert.ok(error instanceof InitialWindowDiscoveryError);
+      assert.ok(error.reason instanceof WindowTargetError);
+      assert.equal(error.reason.code, 'WINDOW_SELECTION_REQUIRED');
+      assert.equal(error.defaults.controller.name, 'Desktop foreground');
+      return true;
+    },
+  );
+});
+
+test('automatic discovery requires a configured Win32 filter', () => {
+  assert.equal(hasWindowFilters({ name: 'Any', type: 'Win32' }), false);
+  assert.equal(
+    hasWindowFilters({
+      name: 'Empty',
+      type: 'Win32',
+      win32: { class_regex: '', window_regex: '' },
+    }),
+    false,
+  );
+  assert.equal(hasWindowFilters(controllers[1]), true);
+  assert.equal(hasWindowFilters(controllers[0]), false);
 });
 
 test('unconfigured generic Win32 controllers are not guessed on first launch', async () => {

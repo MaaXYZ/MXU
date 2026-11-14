@@ -72,31 +72,56 @@ export interface InitialWindowSelection {
   window: Win32Window;
 }
 
+export class InitialWindowDiscoveryError extends Error {
+  constructor(
+    readonly defaults: Omit<InitialWindowSelection, 'window'>,
+    readonly reason: unknown,
+  ) {
+    super(reason instanceof Error ? reason.message : String(reason));
+    this.name = 'InitialWindowDiscoveryError';
+  }
+}
+
+export function hasWindowFilters(controller: ControllerItem): boolean {
+  return (
+    controller.type === 'Win32' &&
+    Boolean(controller.win32?.class_regex || controller.win32?.window_regex)
+  );
+}
+
 /** Bootstrap only an empty configuration, before rendering editable UI. */
 export async function discoverInitialWindow(
   pi: Pick<ProjectInterface, 'controller' | 'resource'>,
   find: (classRegex?: string, titleRegex?: string) => Promise<Win32Window[]>,
 ): Promise<InitialWindowSelection | undefined> {
-  const controllers = pi.controller.filter(
-    (controller) =>
-      controller.type === 'Win32' &&
-      (controller.win32?.class_regex || controller.win32?.window_regex),
-  );
+  const controllers = pi.controller.filter(hasWindowFilters);
   const candidates = new Map<number, InitialWindowSelection>();
-  let searched = false;
+  let defaults: Omit<InitialWindowSelection, 'window'> | undefined;
   for (const controller of controllers) {
     const resource = pi.resource.find(
       (item) => !item.controller?.length || item.controller.includes(controller.name),
     );
     if (!resource) continue;
-    searched = true;
-    const windows = await find(controller.win32?.class_regex, controller.win32?.window_regex);
+    defaults ??= { controller, resource };
+    let windows: Win32Window[];
+    try {
+      windows = await find(controller.win32?.class_regex, controller.win32?.window_regex);
+    } catch (reason) {
+      throw new InitialWindowDiscoveryError({ controller, resource }, reason);
+    }
     for (const window of windows) {
       if (!candidates.has(window.handle))
         candidates.set(window.handle, { controller, resource, window });
     }
   }
-  if (candidates.size > 1) throw new WindowTargetError('WINDOW_SELECTION_REQUIRED');
-  if (searched && candidates.size === 0) throw new WindowTargetError('WINDOW_NOT_FOUND');
+  if (candidates.size > 1) {
+    const first = candidates.values().next().value!;
+    throw new InitialWindowDiscoveryError(
+      first,
+      new WindowTargetError('WINDOW_SELECTION_REQUIRED'),
+    );
+  }
+  if (defaults && candidates.size === 0)
+    throw new InitialWindowDiscoveryError(defaults, new WindowTargetError('WINDOW_NOT_FOUND'));
   return candidates.values().next().value;
 }

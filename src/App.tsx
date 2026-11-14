@@ -45,7 +45,12 @@ import {
 } from '@/services';
 import type { ConfigRecoveryNotice } from '@/services';
 import { controllerErrorMessage } from '@/services/maaService';
-import { discoverInitialWindow, type InitialWindowSelection } from '@/utils/windowSelection';
+import {
+  discoverInitialWindow,
+  InitialWindowDiscoveryError,
+  WindowTargetError,
+  type InitialWindowSelection,
+} from '@/utils/windowSelection';
 import { isConfigRevisionError, type ConfigChangedEvent } from '@/utils/configSync';
 import { clearIconDataUrlCache, loadIconAsDataUrl } from '@/services/contentResolver';
 import * as wsService from '@/services/wsService';
@@ -974,6 +979,7 @@ function App() {
       }
 
       let initialWindow: InitialWindowSelection | undefined;
+      let initialWindowError: InitialWindowDiscoveryError | undefined;
       if (
         config.instances.length === 0 &&
         !result.interface.preset?.length &&
@@ -984,6 +990,7 @@ function App() {
             maaService.findWin32Windows(classRegex, titleRegex),
           );
         } catch (error) {
+          if (error instanceof InitialWindowDiscoveryError) initialWindowError = error;
           log.warn('Initial desktop discovery failed:', error);
           toast.warning(controllerErrorMessage(error), { duration: Infinity });
         }
@@ -1025,17 +1032,31 @@ function App() {
           storeState.setPresetInitialized(true);
         } else if (currentInstances.length === 0) {
           // 无预设或已初始化且无实例 → 创建默认实例
-          createInstance(
+          const defaults = initialWindow ?? initialWindowError?.defaults;
+          const instanceId = createInstance(
             t('instance.defaultName'),
             false,
-            initialWindow
+            defaults
               ? {
-                  controllerName: initialWindow.controller.name,
-                  resourceName: initialWindow.resource.name,
-                  savedDevice: { windowName: initialWindow.window.window_name },
+                  controllerName: defaults.controller.name,
+                  resourceName: defaults.resource.name,
+                  savedDevice: initialWindow
+                    ? { windowName: initialWindow.window.window_name }
+                    : undefined,
                 }
               : undefined,
           );
+          if (initialWindowError) {
+            storeState.setInstanceStartError(
+              instanceId,
+              controllerErrorMessage(initialWindowError),
+            );
+            if (
+              initialWindowError.reason instanceof WindowTargetError &&
+              initialWindowError.reason.code === 'WINDOW_SELECTION_REQUIRED'
+            )
+              storeState.setWindowSelectionRequired(instanceId, true);
+          }
         }
       }, 0);
 

@@ -462,6 +462,9 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
       if (!controller) {
         return failStart(t('errors.controllerNotFound'));
       }
+      if (controller.type === 'Win32' && useAppStore.getState().windowSelectionRequired[targetId]) {
+        return failStart(t('windowTarget.multiple'));
+      }
 
       // 只有依赖 Windows 交互式桌面的实际控制器才受锁屏限制。
       // ADB、Linux 和 PlayCover 均可在锁屏时运行。
@@ -1163,18 +1166,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
               ' [[hint:spawn_app_control]]',
               ` ${t('taskList.autoConnect.agentSpawnHintAppControl')}`,
             );
-          addLog(targetId, {
-            type: 'error',
-            message: `${t('taskList.autoConnect.startFailed')}: ${localizedErrMsg}`,
-          });
-          const message = `${t('taskList.autoConnect.startFailed')}: ${localizedErrMsg}`;
-          useAppStore.getState().setInstanceStartError(targetId, message);
-          toast.error(`${targetInstance.name}: ${message}`, {
-            action: {
-              label: t('windowTarget.search'),
-              onClick: () => useAppStore.getState().requestDeviceSearch(targetId),
-            },
-          });
+          failStart(localizedErrMsg);
         }
 
         if (preservesTaskRun(err)) {

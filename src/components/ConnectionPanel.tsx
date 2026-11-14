@@ -39,7 +39,7 @@ import {
   isDesktopWindowControllerType,
 } from '@/utils/controller';
 import { getInterfaceLangKey } from '@/i18n';
-import { selectWindow, WindowSearchGuard } from '@/utils/windowSelection';
+import { selectWindow, hasWindowFilters, WindowSearchGuard } from '@/utils/windowSelection';
 import {
   startGlobalCallbackListener,
   waitForCtrlResult,
@@ -258,6 +258,7 @@ export function ConnectionPanel() {
 
   // 当实例切换时，重置和恢复状态
   useEffect(() => {
+    searchGuard.current.invalidate();
     // 从 store 恢复连接状态
     const isInstanceConnected = storedConnectionStatus === 'Connected';
     const isInstanceResourceLoaded = storedResourceLoaded;
@@ -408,7 +409,7 @@ export function ConnectionPanel() {
             (savedDevice.wlrSocketPath && linuxNeeds?.needWlrSocket))) ||
         (controllerType === 'PlayCover' && savedDevice.playcoverAddress));
 
-    if ((hasHistoricalDevice || controllerType === 'Win32') && needsDeviceSearch) {
+    if ((hasHistoricalDevice || hasWindowFilters(currentController)) && needsDeviceSearch) {
       // 标记该实例已尝试过自动重连
       autoReconnectAttempted.add(instanceId);
       // 触发搜索并自动连接（handleSearch 内部已有匹配+自动连接逻辑）
@@ -450,6 +451,7 @@ export function ConnectionPanel() {
 
     try {
       const initialized = await ensureMaaInitialized();
+      if (!isCurrentSearch()) return;
       if (!initialized) {
         throw new Error(t('maa.initFailed'));
       }
@@ -458,6 +460,7 @@ export function ConnectionPanel() {
 
       if (controllerType === 'Adb') {
         const devices = await maaService.findAdbDevices();
+        if (!isCurrentSearch()) return;
         setCachedAdbDevices(devices);
 
         // 自动连接策略：
@@ -495,6 +498,12 @@ export function ConnectionPanel() {
         if (!isCurrentSearch()) return;
         setCachedWin32Windows(windows);
         setShowDeviceDropdown(windows.length > 1);
+        if (useAppStore.getState().windowSelectionRequired[instanceId] && windows.length > 0) {
+          setShowDeviceDropdown(true);
+          setDeviceError(t('windowTarget.multiple'));
+          setConnectionPanelExpanded(true);
+          return;
+        }
         const autoSelected = selectWindow(windows, savedDevice);
         if (savedDevice && savedDevice.windowName !== autoSelected.window_name) {
           toast.info(t('windowTarget.corrected', { name: autoSelected.window_name }));
@@ -518,10 +527,12 @@ export function ConnectionPanel() {
 
         if (linuxNeeds.needWlrSocket) {
           wlrSockets = await maaService.findWlrootsSockets();
+          if (!isCurrentSearch()) return;
           setCachedWlrootsSockets(wlrSockets);
         }
         if (linuxNeeds.needGamescopeNode || linuxNeeds.needEisSocket) {
           instances = await maaService.findGamescopeInstances();
+          if (!isCurrentSearch()) return;
           setCachedGamescopeInstances(instances);
         }
 
@@ -916,6 +927,7 @@ export function ConnectionPanel() {
 
   // 选择 Win32 窗口并自动连接（如已连接会先断开旧连接）
   const handleSelectWindow = async (win: Win32Window) => {
+    useAppStore.getState().setWindowSelectionRequired(instanceId, false);
     searchGuard.current.invalidate();
     setIsSearching(false);
     setSelectedWindow(win);

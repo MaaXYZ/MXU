@@ -275,6 +275,8 @@ export interface AppState {
   instanceConnectionStatus: Record<string, ConnectionStatus>;
   instanceStartErrors: Record<string, string>;
   setInstanceStartError: (instanceId: string, error: string | null) => void;
+  windowSelectionRequired: Record<string, boolean>;
+  setWindowSelectionRequired: (instanceId: string, required: boolean) => void;
   deviceSearchRequest: { instanceId: string; sequence: number } | null;
   requestDeviceSearch: (instanceId: string) => void;
   instanceResourceLoaded: Record<string, boolean>;

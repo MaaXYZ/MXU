@@ -1656,6 +1656,14 @@ export const useAppStore = create<AppState>()(
     // 实例运行时状态
     instanceConnectionStatus: {},
     instanceStartErrors: {},
+    windowSelectionRequired: {},
+    setWindowSelectionRequired: (instanceId, required) =>
+      set((state) => {
+        const pending = { ...state.windowSelectionRequired };
+        if (required) pending[instanceId] = true;
+        else delete pending[instanceId];
+        return { windowSelectionRequired: pending };
+      }),
     setInstanceStartError: (instanceId, error) =>
       set((state) => {
         const errors = { ...state.instanceStartErrors };
@@ -2367,6 +2375,9 @@ export const useAppStore = create<AppState>()(
           instanceConnectionStatus: restConnectionStatus,
           instanceStartErrors: Object.fromEntries(
             Object.entries(state.instanceStartErrors).filter(([id]) => id !== instanceId),
+          ),
+          windowSelectionRequired: Object.fromEntries(
+            Object.entries(state.windowSelectionRequired).filter(([id]) => id !== instanceId),
           ),
           instanceResourceLoaded: restResourceLoaded,
           instanceCurrentTaskId: restCurrentTaskId,
