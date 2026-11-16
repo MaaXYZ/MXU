@@ -718,17 +718,28 @@ fn execute_power_screenoff() -> bool {
     {
         use winsafe::co::SC;
         use winsafe::msg::WmSysCommand;
+        use winsafe::prelude::*;
         use winsafe::{HWND, POINT};
-        unsafe {
-            // NOTE: POINT::from(2) is equal to LPARAM(2)
 
-            HWND::BROADCAST.SendMessage(WmSysCommand {
-                request: SC::MONITORPOWER,
-                position: POINT::from(2),
-            });
+        // NOTE: POINT::from(2) is equal to LPARAM(2), which means "turn off the display"
+        let msg = WmSysCommand {
+            request: SC::MONITORPOWER,
+            position: POINT::from(2),
         }
-        info!("[MXU_POWER] Screen off command issued (Windows)");
-        true
+        .as_generic_wm();
+
+        // 使用 PostMessage 而非 SendMessage：广播 SendMessage 会同步等待所有顶层窗口处理完毕，
+        // 只要有一个窗口不响应就会永久阻塞，进而卡死调用它的 tasker 线程
+        match unsafe { HWND::BROADCAST.PostMessage(msg) } {
+            Ok(_) => {
+                info!("[MXU_POWER] Screen off command issued (Windows)");
+                true
+            }
+            Err(e) => {
+                log::error!("[MXU_POWER] Screen off failed: {}", e);
+                false
+            }
+        }
     }
 
     #[cfg(target_os = "macos")]
