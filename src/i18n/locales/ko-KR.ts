@@ -52,8 +52,12 @@ export default {
 
   // 설정
   skin: {
-    deepseekScene: '흰쌀밥 해변',
-    naiwaScene: '크림 연못',
+    route: '작업 항로',
+    pondRoute: '물길을 따라 하나씩',
+    instances: '인스턴스',
+    instruments: '장치와 화면',
+    deepseekScene: '흰쌀밥 잠수정',
+    naiwaScene: '나이와의 연못',
     taskCount: '활성 작업 {{count}}개',
     regionLabel: '스킨 친구',
     state: {

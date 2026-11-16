@@ -57,8 +57,12 @@ export default {
 
   // Settings
   skin: {
-    deepseekScene: 'Rice & tides',
-    naiwaScene: 'Butter pond',
+    route: 'Mission route',
+    pondRoute: 'A little path through the day',
+    instances: 'Instances',
+    instruments: 'Devices and screen',
+    deepseekScene: 'The rice submarine',
+    naiwaScene: 'Naiwa’s pond',
     taskCount: '{{count}} tasks enabled',
     regionLabel: 'Skin companion',
     state: {

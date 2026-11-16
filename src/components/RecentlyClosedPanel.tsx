@@ -7,6 +7,7 @@ import type { ProjectInterface } from '@/types/interface';
 import clsx from 'clsx';
 import { getInterfaceLangKey } from '@/i18n';
 import { ConfirmDialog } from './ConfirmDialog';
+import { useAnchoredPanelPosition } from '@/hooks/useAnchoredPanelPosition';
 
 interface RecentlyClosedPanelProps {
   onClose: () => void;
@@ -101,7 +102,7 @@ function formatTasksSummary(
 export function RecentlyClosedPanel({ onClose, anchorRef }: RecentlyClosedPanelProps) {
   const { t } = useTranslation();
   const panelRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ top: 0, right: 0 });
+  const position = useAnchoredPanelPosition(anchorRef, panelRef);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const {
@@ -116,17 +117,6 @@ export function RecentlyClosedPanel({ onClose, anchorRef }: RecentlyClosedPanelP
   } = useAppStore();
 
   const langKey = getInterfaceLangKey(language);
-
-  // 计算面板位置
-  useEffect(() => {
-    if (anchorRef.current) {
-      const rect = anchorRef.current.getBoundingClientRect();
-      setPosition({
-        top: rect.bottom + 8,
-        right: window.innerWidth - rect.right,
-      });
-    }
-  }, [anchorRef]);
 
   // 点击外部关闭
   useEffect(() => {
@@ -179,10 +169,14 @@ export function RecentlyClosedPanel({ onClose, anchorRef }: RecentlyClosedPanelP
     <>
       <div
         ref={panelRef}
+        data-skin-slot="recently-closed-popover"
         className="mxu-overlay-surface fixed z-50 w-80 bg-bg-secondary rounded-xl shadow-lg border border-border overflow-hidden animate-in"
         style={{
           top: position.top,
-          right: position.right,
+          left: position.left,
+          maxWidth: 'calc(100vw - 16px)',
+          maxHeight: 'calc(100dvh - 16px)',
+          overflowY: 'auto',
         }}
       >
         {/* 标题栏 */}

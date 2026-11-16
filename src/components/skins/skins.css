@@ -1,183 +1,27 @@
-/* The hero reserves real layout space; decoration never floats over controls. */
+/* Actors occupy a reserved bank / hull slot. There is no extra hero card in the app. */
 .builtin-skin {
-  --scene-ink: #153e67;
-  --scene-color: #17679c;
-  --scene-light: #d5f4ff;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   position: relative;
-  isolation: isolate;
-  flex: 0 0 auto;
   min-width: 0;
-  min-height: 204px;
-  margin: 16px 16px 4px;
-  padding: 24px 28px;
-  color: var(--scene-ink);
-  background: linear-gradient(120deg, #f6fdff 5%, #c7eafa 65%, #a9d9ee);
-  border: 1px solid #97cce0;
-  border-radius: 22px 22px 56px 22px;
-  box-shadow:
-    inset 0 1px 0 #ffffffb3,
-    0 8px 28px #134e7312;
-}
-.builtin-skin--naiwa {
-  --scene-ink: #314d30;
-  --scene-color: #3f6d3c;
-  --scene-light: #e6edbf;
-  background: linear-gradient(125deg, #fff5bd, #f5df86);
-  border: 2px solid #c4ad62;
-  border-radius: 28px 52px 28px 28px;
-  box-shadow: 0 5px 0 #a995552b;
-}
-.dark .builtin-skin--deepseek {
-  --scene-ink: #e4f7ff;
-  --scene-color: #a0def6;
-  --scene-light: #28516a;
-  background: linear-gradient(120deg, #153953, #1c5674);
-  border-color: #497a92;
-}
-.dark .builtin-skin--naiwa {
-  --scene-ink: #fff1b8;
-  --scene-color: #e0edb6;
-  --scene-light: #5c653b;
-  background: linear-gradient(120deg, #3c492c, #606336);
-  border-color: #899359;
-  box-shadow: 0 5px 0 #080f173b;
-}
-.builtin-skin--preview {
-  margin: 0;
-}
-.builtin-skin__copy {
-  position: relative;
-  z-index: 1;
-  min-width: 0;
-}
-.builtin-skin__eyebrow {
+  min-height: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  color: var(--scene-color);
-}
-.builtin-skin__signal {
-  width: 18px;
-  height: 3px;
-  border-radius: 2px;
-  background: currentColor;
-}
-.builtin-skin h2 {
-  font-size: clamp(24px, 2.8vw, 38px);
-  font-weight: 750;
-  letter-spacing: -0.045em;
-  line-height: 1.2;
-  margin: 7px 0 12px;
-}
-.builtin-skin__heading {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-  font-size: 12px;
-}
-.builtin-skin__state {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 600;
-}
-.builtin-skin__state > span {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-.builtin-skin[data-task-state='error'] .builtin-skin__state {
-  color: #ab2738;
-}
-.dark .builtin-skin[data-task-state='error'] .builtin-skin__state {
-  color: #ffb6b6;
-}
-.builtin-skin[data-task-state='success'] .builtin-skin__state {
-  color: #246337;
-}
-.dark .builtin-skin[data-task-state='success'] .builtin-skin__state {
-  color: #c7f7af;
-}
-.builtin-skin__count {
-  color: var(--scene-color);
-}
-.builtin-skin__copy small {
-  display: block;
-  font-size: 10px;
-  margin-top: 5px;
-  color: var(--scene-color);
-}
-.builtin-skin__interact {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 34px;
-  margin-top: 14px;
-  padding: 6px 13px;
-  border: 1px solid currentColor;
-  border-radius: 8px;
-  color: var(--scene-ink);
-  background: #ffffff40;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-.builtin-skin--naiwa .builtin-skin__interact {
-  border-radius: 999px;
-  border-width: 2px;
-}
-.builtin-skin__interact:hover:not(:disabled),
-.builtin-skin__interact[aria-pressed='true'] {
-  background: #ffffff80;
-}
-.dark .builtin-skin__interact:hover:not(:disabled),
-.dark .builtin-skin__interact[aria-pressed='true'] {
-  background: #00000030;
-}
-.builtin-skin__interact:focus-visible {
-  outline: 3px solid var(--scene-color);
-  outline-offset: 3px;
-}
-.builtin-skin__interact:disabled {
-  opacity: 0.55;
-  cursor: default;
+  justify-content: flex-end;
+  color: var(--color-text-primary);
 }
 .builtin-skin__stage {
   position: relative;
-  flex: 0 0 180px;
-  height: 180px;
-  margin: -16px 0 -16px 20px;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
   pointer-events: none;
 }
 .builtin-skin__art {
-  width: 150px;
-  height: 166px;
   position: absolute;
-  inset: 6px 15px auto;
-  background: #fff;
-  border-radius: 50% 50% 44% 44%;
-  overflow: hidden;
-  box-shadow:
-    0 8px 0 #28597d20,
-    0 12px 26px #123f5220;
-  border: 5px solid #ffffff;
-}
-.builtin-skin--naiwa .builtin-skin__art {
-  width: 164px;
-  height: 164px;
-  inset: 8px;
-  border-radius: 50%;
-  box-shadow: 0 8px 0 #69774235;
-  border-width: 7px;
+  inset: 0;
+  max-width: 220px;
+  margin: auto;
+  pointer-events: none;
 }
 .builtin-skin__art img,
 .builtin-skin__art video {
@@ -186,13 +30,39 @@
   display: block;
   object-fit: contain;
 }
+.builtin-skin__art video {
+  position: absolute;
+  inset: 0;
+}
+.builtin-skin__art--deepseek {
+  isolation: isolate;
+}
 .builtin-skin__art--deepseek img,
 .builtin-skin__art--deepseek video {
   object-fit: cover;
 }
-.builtin-skin__art video {
+.builtin-skin[data-performing='true'] .builtin-skin__art--deepseek {
+  background: #fff;
+  border-radius: 48% 48% 44% 44%;
+  overflow: hidden;
+}
+.builtin-skin__art--naiwa {
+  background: #fff;
+  border-radius: 44% 56% 58% 42% / 62% 40% 60% 38%;
+  overflow: hidden;
+}
+.builtin-skin__plinth {
   position: absolute;
-  inset: 0;
+  inset: auto 5% 0;
+  height: 22px;
+  border-radius: 50%;
+  background: #105e7038;
+  box-shadow: 0 9px 0 #17677d12;
+}
+.builtin-skin--naiwa .builtin-skin__plinth {
+  background: #426b3e;
+  box-shadow: 0 8px 0 #34582b30;
+  transform: rotate(-5deg);
 }
 .builtin-skin__video {
   visibility: hidden;
@@ -200,220 +70,97 @@
 .builtin-skin__video.is-playing {
   visibility: visible;
 }
-.builtin-skin__orbit {
-  position: absolute;
-  inset: -6px;
-  border: 1px dashed var(--scene-color);
-  border-radius: 50%;
-  opacity: 0.45;
+.builtin-skin__interact {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 5px 12px;
+  margin-top: 5px;
+  border: 1px solid currentColor;
+  color: inherit;
+  background: var(--color-bg-secondary);
+  font-size: 11px;
+  font-weight: 650;
+  border-radius: 3px;
+  cursor: pointer;
 }
-.builtin-skin--naiwa .builtin-skin__orbit {
-  inset: -2px;
-  border: 12px dotted #91a05080;
-  transform: rotate(-12deg);
+.builtin-skin--naiwa .builtin-skin__interact {
+  border-radius: 48% 48% 40% 40% / 30% 30% 50% 50%;
+  background: #ffed9d;
+  color: #304b2b;
+  border: 2px solid #647848;
+  box-shadow: 0 3px 0 #304b2b2e;
 }
-.builtin-skin__stage-mark {
-  position: absolute;
-  bottom: 3px;
-  right: 8px;
-  width: 28px;
-  height: 28px;
-  border: 6px solid #fff;
-  background: var(--scene-color);
-  border-radius: 50%;
-  box-shadow: 0 2px 8px #0002;
+.builtin-skin__interact:hover:not(:disabled),
+.builtin-skin__interact[aria-pressed='true'] {
+  outline: 2px solid var(--skin-highlight);
+  outline-offset: 2px;
 }
-.builtin-skin__scenery {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  overflow: hidden;
-  pointer-events: none;
+.builtin-skin__interact:focus-visible {
+  outline: 3px solid var(--color-accent);
+  outline-offset: 3px;
 }
-.builtin-skin__scenery svg {
-  position: absolute;
-  inset: auto 0 0;
-  width: 100%;
-  height: 60%;
-  fill: #4fa1c71a;
+.builtin-skin__interact:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
-.builtin-skin__scenery path + path {
-  fill: #338db31a;
+.builtin-skin--preview {
+  display: grid;
+  grid-template-columns: 1fr 150px;
+  grid-template-rows: 160px 38px;
+  align-items: center;
+  gap: 0 12px;
+  padding: 18px;
+  background: var(--color-bg-primary);
+  border-radius: 12px;
 }
-.builtin-skin__scenery > span {
-  position: absolute;
-  border: 1px solid #64acd359;
-  width: 220px;
-  height: 220px;
-  right: -25px;
-  top: -50px;
-  border-radius: 50%;
+.builtin-skin--preview .builtin-skin__stage {
+  grid-column: 2;
+  grid-row: 1/3;
+  align-self: stretch;
+  height: 100%;
 }
-.builtin-skin__scenery > span:nth-child(2) {
-  width: 290px;
-  height: 290px;
-  right: -60px;
-  top: -85px;
+.builtin-skin--preview .builtin-skin__copy {
+  grid-column: 1;
+  grid-row: 1;
 }
-.builtin-skin__scenery > span:nth-child(3) {
-  width: 360px;
-  height: 360px;
-  right: -95px;
-  top: -120px;
+.builtin-skin--preview .builtin-skin__interact {
+  grid-column: 1;
+  grid-row: 2;
+  justify-self: start;
 }
-.builtin-skin--naiwa .builtin-skin__scenery svg {
-  fill: #65874219;
-  transform: scaleX(-1);
+.builtin-skin__eyebrow {
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  margin-bottom: 8px;
 }
-.builtin-skin--naiwa .builtin-skin__scenery path + path {
-  fill: #456e381a;
+.builtin-skin__copy h2 {
+  font-size: 26px;
+  line-height: 1.15;
+  font-weight: 750;
+  margin-bottom: 12px;
 }
-.builtin-skin--naiwa .builtin-skin__scenery > span {
-  background: #fdf9d961;
-  border: 0;
-  border-radius: 45% 55% 60% 40%;
-  width: 180px;
-  height: 180px;
-  right: 40px;
-  top: -45px;
+.builtin-skin__copy > span {
+  font-size: 12px;
 }
-.builtin-skin--naiwa .builtin-skin__scenery > span:nth-child(2) {
-  width: 16px;
-  height: 16px;
-  right: 235px;
-  top: 32px;
-  background: #88974d66;
+.builtin-skin__copy small {
+  display: block;
+  font-size: 10px;
+  margin-top: 8px;
 }
-.builtin-skin--naiwa .builtin-skin__scenery > span:nth-child(3) {
-  width: 32px;
-  height: 32px;
-  right: 210px;
-  top: 120px;
-  border: 6px solid #88974d66;
-  background: transparent;
-}
-.builtin-skin[data-task-state='running'] .builtin-skin__orbit {
-  animation: skin-orbit 24s linear infinite;
-}
-.builtin-skin[data-interacting='true'] .builtin-skin__stage-mark {
-  animation: skin-ripple 1.2s ease-out 2;
-}
-@keyframes skin-orbit {
-  to {
-    transform: rotate(360deg);
-  }
-}
-@keyframes skin-ripple {
-  50% {
-    transform: scale(1.2);
-  }
-}
-.builtin-skin[data-reduced-motion='true'] *,
-.builtin-skin[data-scene-motion='paused'] * {
-  animation: none;
-  transition: none;
-}
-@media (max-width: 1000px) {
-  .builtin-skin {
-    padding: 18px 20px;
-    min-height: 176px;
-  }
-  .builtin-skin__stage {
-    flex-basis: 148px;
-    height: 156px;
-    margin-left: 12px;
-  }
-  .builtin-skin__art {
-    width: 128px;
-    height: 142px;
-    inset: 6px 10px auto;
-  }
-  .builtin-skin--naiwa .builtin-skin__art {
-    width: 136px;
-    height: 136px;
-    inset: 10px 6px;
-  }
-}
-@media (max-width: 600px) {
-  .builtin-skin {
-    margin: 10px;
-    min-height: 178px;
-    padding: 18px;
-    border-radius: 20px 20px 42px 20px;
-  }
-  .builtin-skin--naiwa {
-    border-radius: 24px 40px 24px 24px;
-  }
-  .builtin-skin__stage {
-    flex-basis: 126px;
-    height: 142px;
-    margin-left: 8px;
-  }
-  .builtin-skin__art {
-    width: 114px;
-    height: 132px;
-    inset: 5px 6px auto;
-  }
-  .builtin-skin--naiwa .builtin-skin__art {
-    width: 122px;
-    height: 122px;
-    inset: 10px 2px;
-  }
-  .builtin-skin__eyebrow {
-    font-size: 10px;
-    letter-spacing: 0.06em;
-  }
-  .builtin-skin h2 {
-    font-size: 26px;
-  }
-  .builtin-skin__heading {
-    gap: 4px 8px;
-    font-size: 11px;
+@media (max-width: 767px) {
+  .scene-companion .builtin-skin {
+    max-width: 240px;
+    margin: 0 auto;
   }
   .builtin-skin--preview {
-    margin: 0;
+    grid-template-columns: 1fr 115px;
   }
-}
-@media (max-height: 600px) {
-  .builtin-skin {
-    min-height: 120px;
-    margin: 8px 10px 2px;
-    padding: 12px 18px;
-  }
-  .builtin-skin h2 {
-    font-size: 25px;
-    margin: 4px 0 7px;
-  }
-  .builtin-skin__stage {
-    flex-basis: 112px;
-    height: 110px;
-    margin: -6px 0 -6px 12px;
-  }
-  .builtin-skin__art {
-    width: 90px;
-    height: 104px;
-    inset: 2px 11px;
-    border-width: 3px;
-  }
-  .builtin-skin--naiwa .builtin-skin__art {
-    width: 100px;
-    height: 100px;
-    inset: 5px 6px;
-    border-width: 4px;
-  }
-  .builtin-skin__interact {
-    min-height: 28px;
-    margin-top: 7px;
-    padding: 3px 10px;
-    font-size: 11px;
-  }
-  .builtin-skin--preview {
-    margin: 0;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .builtin-skin * {
-    animation: none;
-    transition: none;
+  .builtin-skin__copy h2 {
+    font-size: 22px;
   }
 }

@@ -187,21 +187,21 @@ export function AppearanceSection({
                   <i />
                   <i />
                 </span>
+                {id !== 'default' && (
+                  <span className="skin-choice-preview__hero">
+                    <span>
+                      <i />
+                      <i />
+                    </span>
+                    <img
+                      src={id === 'deepseek' ? deepseekThumbnail : naiwaThumbnail}
+                      alt=""
+                      draggable={false}
+                    />
+                  </span>
+                )}
                 <span className="skin-choice-preview__workspace">
                   <span className="skin-choice-preview__tasks">
-                    {id !== 'default' && (
-                      <span className="skin-choice-preview__hero">
-                        <span>
-                          <i />
-                          <i />
-                        </span>
-                        <img
-                          src={id === 'deepseek' ? deepseekThumbnail : naiwaThumbnail}
-                          alt=""
-                          draggable={false}
-                        />
-                      </span>
-                    )}
                     <span className="skin-choice-preview__row" />
                     <span className="skin-choice-preview__row" />
                     <span className="skin-choice-preview__row" />

@@ -52,8 +52,12 @@ export default {
 
   // 設定
   skin: {
-    deepseekScene: '白ごはん海岸',
-    naiwaScene: 'クリームの池',
+    route: 'タスク航路',
+    pondRoute: '水辺の小さなタスク道',
+    instances: 'インスタンス',
+    instruments: 'デバイスと画面',
+    deepseekScene: '白ごはん潜航艇',
+    naiwaScene: '奶蛙の池',
     taskCount: '{{count}} 件のタスクが有効',
     regionLabel: 'スキンの仲間',
     state: {

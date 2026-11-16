@@ -51,8 +51,12 @@ export default {
 
   // 設定
   skin: {
-    deepseekScene: '白飯海岸',
-    naiwaScene: '奶油池塘',
+    route: '任務航線',
+    pondRoute: '沿著水路，慢慢完成',
+    instances: '執行個體導覽',
+    instruments: '裝置與畫面',
+    deepseekScene: '白飯潛航艙',
+    naiwaScene: '奶蛙的池塘',
     taskCount: '{{count}} 項任務已啟用',
     regionLabel: '造型夥伴',
     state: {

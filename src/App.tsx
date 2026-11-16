@@ -18,7 +18,7 @@ import {
   ConnectionPanel,
 } from '@/components';
 import { BackgroundOverlay } from '@/components/BackgroundOverlay';
-import { BuiltinSkinCompanion } from '@/components/skins/BuiltinSkinCompanion';
+import { BuiltinSkinWorkspace } from '@/components/skins/BuiltinSkinWorkspace';
 import { BuiltinSkinShell } from '@/components/skins/BuiltinSkinShell';
 import { isAllowedSettingsHotkey } from '@/components/FormControls';
 import type { BadPathType } from '@/components';
@@ -196,6 +196,7 @@ function AppContent() {
     importConfig,
     createInstance,
     theme,
+    skinId,
     currentPage,
     setCurrentPage,
     projectInterface,
@@ -240,6 +241,7 @@ function AppContent() {
       importConfig: state.importConfig,
       createInstance: state.createInstance,
       theme: state.theme,
+      skinId: state.skinId,
       currentPage: state.currentPage,
       setCurrentPage: state.setCurrentPage,
       projectInterface: state.projectInterface,
@@ -2145,7 +2147,7 @@ function AppContent() {
         )}
 
         {/* 顶部标签栏 */}
-        <TabBar />
+        {(skinId === 'default' || dashboardView) && <TabBar />}
 
         {/* 中控台视图 */}
         {dashboardView ? (
@@ -2157,6 +2159,11 @@ function AppContent() {
               <LazyDashboardView onClose={closeDashboardWithAnimation} />
             </Suspense>
           </div>
+        ) : skinId !== 'default' ? (
+          <BuiltinSkinWorkspace
+            showAddPanel={showAddTaskPanel}
+            onToggleAddPanel={() => setShowAddTaskPanel(!showAddTaskPanel)}
+          />
         ) : isMobile ? (
           /* 移动端竖屏布局：单列纵向堆叠 */
           <div
@@ -2166,7 +2173,6 @@ function AppContent() {
           >
             {/* 可滚动主内容区 */}
             <div data-skin-slot="mobile-scroll" className="flex-1 overflow-y-auto">
-              <BuiltinSkinCompanion />
               {/* 连接设置 */}
               <div className="p-2">
                 <ConnectionPanel />
@@ -2226,7 +2232,6 @@ function AppContent() {
                 minWidth: `min(${MIN_LEFT_PANEL_WIDTH}px, var(--skin-task-min-width, ${MIN_LEFT_PANEL_WIDTH}px))`,
               }}
             >
-              <BuiltinSkinCompanion />
               {/* 任务列表 */}
               <TaskList />
 

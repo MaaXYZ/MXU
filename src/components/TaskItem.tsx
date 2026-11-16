@@ -348,6 +348,7 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
 
   // 获取实例运行状态
   const instance = instances.find((i) => i.id === instanceId);
+  const sceneTaskIndex = instance?.selectedTasks.findIndex((entry) => entry.id === task.id) ?? -1;
   const isInstanceRunning = instance?.isRunning || false;
 
   // 获取任务定义 - 支持 MXU 内置特殊任务与 pretask 前置任务
@@ -833,6 +834,9 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
       <div
         ref={setRefs}
         data-skin-slot="task-item"
+        data-task-status={taskRunStatus}
+        data-task-index={sceneTaskIndex}
+        data-expanded={task.expanded}
         style={style}
         onContextMenu={handleContextMenu}
         className={clsx(
@@ -869,6 +873,9 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
     <div
       ref={setRefs}
       data-skin-slot="task-item"
+      data-task-status={taskRunStatus}
+      data-task-index={sceneTaskIndex}
+      data-expanded={task.expanded}
       style={style}
       onContextMenu={handleContextMenu}
       className={clsx(
@@ -878,6 +885,9 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
         isAnimating && 'animate-task-slide-in',
       )}
     >
+      <span className="skin-task-marker" aria-hidden="true">
+        {String(sceneTaskIndex + 1).padStart(2, '0')}
+      </span>
       {/* 任务状态指示器（左侧竖条） */}
       {taskRunStatus !== 'idle' && (
         <div
@@ -890,7 +900,7 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
       )}
 
       {/* 任务头部 */}
-      <div className="flex items-center gap-2 p-3">
+      <div data-skin-slot="task-item-head" className="flex items-center gap-2 p-3">
         {/* 拖拽手柄 */}
         <div
           {...attributes}

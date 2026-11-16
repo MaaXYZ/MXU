@@ -254,3 +254,142 @@
   background: var(--choice-panel);
   border-left-width: 1px;
 }
+
+/* Match the actual alternate compositions, rather than a generic hero mockup. */
+.skin-choice-preview {
+  position: relative;
+}
+[data-skin-choice='deepseek'] .skin-choice-preview__tabs {
+  position: absolute;
+  left: 4px;
+  top: 13px;
+  width: 18%;
+  height: 45px;
+  flex-direction: column;
+  border: 0;
+}
+[data-skin-choice='deepseek'] .skin-choice-preview__tabs i {
+  width: 100%;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 0;
+}
+[data-skin-choice='deepseek'] .skin-choice-preview__workspace {
+  margin-left: 22%;
+  padding-bottom: 15px;
+}
+[data-skin-choice='deepseek'] .skin-choice-preview__tasks {
+  border: 0;
+  background: transparent;
+  padding-inline: 1px;
+}
+[data-skin-choice='deepseek'] .skin-choice-preview__row {
+  border-radius: 0;
+  border-top: 0;
+  border-right: 0;
+}
+[data-skin-choice='deepseek'] .skin-choice-preview__sidebar {
+  width: 31%;
+}
+[data-skin-choice='deepseek'] .skin-choice-preview__sidebar i:first-child {
+  border-radius: 50%;
+  flex: 2;
+}
+[data-skin-choice='deepseek'] .skin-choice-preview__hero {
+  position: absolute;
+  left: 4px;
+  bottom: 8px;
+  width: 19%;
+  height: 26px;
+  padding: 0;
+  background: var(--choice-panel);
+  border: 2px solid var(--choice-mark);
+  border-radius: 50%;
+}
+[data-skin-choice='deepseek'] .skin-choice-preview__hero > span {
+  display: none;
+}
+[data-skin-choice='deepseek'] .skin-choice-preview__hero img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: 0;
+}
+[data-skin-choice='deepseek'] .skin-choice-preview::after {
+  content: '';
+  position: absolute;
+  left: 26%;
+  right: 4px;
+  bottom: 4px;
+  height: 10px;
+  border-top: 1px solid var(--choice-mark);
+  background: repeating-linear-gradient(transparent 0 3px, var(--choice-line) 3px 4px);
+}
+[data-skin-choice='naiwa'] .skin-choice-preview {
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--choice-hero) 0 32%, var(--choice-bg) 32%);
+}
+[data-skin-choice='naiwa'] .skin-choice-preview__workspace {
+  padding-left: 35%;
+  padding-bottom: 16px;
+}
+[data-skin-choice='naiwa'] .skin-choice-preview__tasks {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+[data-skin-choice='naiwa'] .skin-choice-preview__row {
+  border: 0;
+  border-bottom: 2px solid var(--choice-line);
+  background: var(--choice-panel);
+  width: 83%;
+  border-radius: 5px 13px 5px 5px;
+}
+[data-skin-choice='naiwa'] .skin-choice-preview__row:nth-child(even) {
+  margin-left: 17%;
+}
+[data-skin-choice='naiwa'] .skin-choice-preview__hero {
+  position: absolute;
+  left: 4px;
+  top: 25px;
+  width: 27%;
+  height: 29px;
+  background: var(--choice-panel);
+  border-radius: 50%;
+  padding: 0;
+  justify-content: center;
+}
+[data-skin-choice='naiwa'] .skin-choice-preview__hero > span {
+  display: none;
+}
+[data-skin-choice='naiwa'] .skin-choice-preview__hero img {
+  width: 24px;
+  height: 29px;
+  object-fit: contain;
+  border: 0;
+}
+[data-skin-choice='naiwa'] .skin-choice-preview__sidebar {
+  position: absolute;
+  left: 4px;
+  top: 58px;
+  height: 14px;
+  width: 27%;
+  flex-direction: row;
+  gap: 2px;
+}
+[data-skin-choice='naiwa'] .skin-choice-preview__sidebar i {
+  border-radius: 2px;
+}
+[data-skin-choice='naiwa'] .skin-choice-preview__sidebar i:last-child {
+  display: none;
+}
+[data-skin-choice='naiwa'] .skin-choice-preview::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 4px;
+  height: 9px;
+  background: var(--choice-panel);
+  border-block: 1px dashed var(--choice-mark);
+}

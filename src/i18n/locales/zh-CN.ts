@@ -51,8 +51,12 @@ export default {
   },
 
   skin: {
-    deepseekScene: '白饭海岸',
-    naiwaScene: '奶油池塘',
+    route: '任务航线',
+    pondRoute: '沿着水路，慢慢完成',
+    instances: '实例导航',
+    instruments: '设备与画面',
+    deepseekScene: '白饭潜航舱',
+    naiwaScene: '奶蛙的池塘',
     taskCount: '{{count}} 项任务已启用',
     regionLabel: '皮肤伙伴',
     state: {

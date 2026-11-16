@@ -610,6 +610,7 @@ export function ScreenshotPanel() {
           <div className="p-3">
             {/* 截图区域 */}
             <div
+              data-skin-slot="screenshot-screen"
               className="aspect-video bg-bg-tertiary rounded-md flex items-center justify-center overflow-hidden relative"
               onContextMenu={handleContextMenu}
             >

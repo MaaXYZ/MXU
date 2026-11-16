@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   X,
@@ -21,6 +21,7 @@ import { proxySettingsForUpdateDownload } from '@/services/proxyService';
 import { DownloadProgressBar, useOpenUpdateSettings } from './UpdateInfoCard';
 import clsx from 'clsx';
 import { loggers } from '@/utils/logger';
+import { useAnchoredPanelPosition } from '@/hooks/useAnchoredPanelPosition';
 
 interface UpdatePanelProps {
   onClose: () => void;
@@ -30,7 +31,6 @@ interface UpdatePanelProps {
 export function UpdatePanel({ onClose, anchorRef }: UpdatePanelProps) {
   const { t } = useTranslation();
   const panelRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ top: 0, right: 0 });
 
   const {
     updateInfo,
@@ -44,6 +44,11 @@ export function UpdatePanel({ onClose, anchorRef }: UpdatePanelProps) {
     resetDownloadState,
     setShowInstallConfirmModal,
   } = useAppStore();
+  const position = useAnchoredPanelPosition(
+    anchorRef,
+    panelRef,
+    !!(updateInfo?.hasUpdate || updateInfo?.errorCode),
+  );
 
   // 开始下载
   const startDownload = useCallback(async () => {
@@ -131,17 +136,6 @@ export function UpdatePanel({ onClose, anchorRef }: UpdatePanelProps) {
     onClose(); // 关闭气泡
   }, [openUpdateSettings, onClose]);
 
-  // 计算面板位置
-  useEffect(() => {
-    if (anchorRef.current) {
-      const rect = anchorRef.current.getBoundingClientRect();
-      setPosition({
-        top: rect.bottom + 8,
-        right: window.innerWidth - rect.right,
-      });
-    }
-  }, [anchorRef]);
-
   // 点击外部关闭
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -215,10 +209,14 @@ export function UpdatePanel({ onClose, anchorRef }: UpdatePanelProps) {
     return (
       <div
         ref={panelRef}
+        data-skin-slot="update-popover"
         className="mxu-overlay-surface fixed z-50 w-80 bg-bg-secondary rounded-xl shadow-lg border border-border overflow-hidden animate-in"
         style={{
           top: position.top,
-          right: position.right,
+          left: position.left,
+          maxWidth: 'calc(100vw - 16px)',
+          maxHeight: 'calc(100dvh - 16px)',
+          overflowY: 'auto',
         }}
       >
         {/* 标题栏 */}
@@ -264,10 +262,14 @@ export function UpdatePanel({ onClose, anchorRef }: UpdatePanelProps) {
   return (
     <div
       ref={panelRef}
+      data-skin-slot="update-popover"
       className="mxu-overlay-surface fixed z-50 w-80 bg-bg-secondary rounded-xl shadow-lg border border-border overflow-hidden animate-in"
       style={{
         top: position.top,
-        right: position.right,
+        left: position.left,
+        maxWidth: 'calc(100vw - 16px)',
+        maxHeight: 'calc(100dvh - 16px)',
+        overflowY: 'auto',
       }}
     >
       {/* 标题栏 */}

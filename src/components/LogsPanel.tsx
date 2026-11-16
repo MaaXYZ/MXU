@@ -310,6 +310,7 @@ export function LogsPanel() {
       {/* 日志内容 */}
       <div
         ref={logsContainerRef}
+        data-skin-slot="log-scroll"
         className="flex-1 min-h-0 overflow-y-auto p-2.5 font-mono text-[12px] leading-4 bg-bg-tertiary dark:bg-bg-secondary"
         onScroll={handleLogsScroll}
         onContextMenu={handleContextMenu}

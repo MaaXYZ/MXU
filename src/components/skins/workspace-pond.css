@@ -1,0 +1,932 @@
+/* The pond is an alternate composition: scenic bank on the left, a winding
+ * task path on the right, and a continuous receipt along the bottom. */
+.scene-workspace--naiwa {
+  --pond-water: #a4b97b;
+  --pond-bank: #f5d566;
+  --pond-leaf: #52733b;
+  --pond-ink: #2d412b;
+  --pond-paper: #fff6c8;
+  --pond-line: #b7b578;
+  --pond-soft: #e9e4ba;
+  --pond-shadow: #62713b33;
+  color: var(--pond-ink);
+  background: #f9f3d9;
+}
+
+.dark .scene-workspace--naiwa {
+  --pond-water: #527849;
+  --pond-bank: #9b963e;
+  --pond-leaf: #c5e18f;
+  --pond-ink: #f5edc8;
+  --pond-paper: #405b38;
+  --pond-line: #8da66c;
+  --pond-soft: #596b3d;
+  --pond-shadow: #08170955;
+  background: #122b26;
+}
+
+.scene-workspace--naiwa .scene-decoration {
+  pointer-events: none;
+  user-select: none;
+}
+
+.scene-workspace--naiwa .scene-pond-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  color: var(--pond-leaf);
+}
+
+.scene-workspace--naiwa .scene-pond-bank {
+  fill: var(--pond-bank);
+}
+
+.scene-workspace--naiwa .scene-pond-shore {
+  stroke: var(--pond-line);
+  stroke-width: 3;
+  stroke-dasharray: 4 11;
+}
+
+.scene-workspace--naiwa .scene-lily-pads {
+  fill: var(--pond-water);
+  opacity: 0.5;
+}
+
+.scene-workspace--naiwa .scene-pond-ripples {
+  stroke: var(--pond-line);
+  stroke-width: 2;
+  opacity: 0.65;
+}
+
+.scene-workspace--naiwa .scene-pond-reeds {
+  fill: var(--pond-leaf);
+  opacity: 0.25;
+}
+
+.scene-workspace--naiwa .scene-heading {
+  position: relative;
+  align-self: stretch;
+  padding: 0 118px 0 12px;
+}
+
+.scene-workspace--naiwa .scene-kicker {
+  color: var(--pond-leaf);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  line-height: 1.4;
+}
+
+.scene-workspace--naiwa .scene-heading h1 {
+  margin: 3px 0 0;
+  font-size: clamp(32px, 3.9vw, 54px);
+  line-height: 1;
+  letter-spacing: -0.075em;
+  font-weight: 900;
+  color: var(--pond-ink);
+}
+
+.scene-workspace--naiwa .scene-status {
+  position: absolute;
+  right: 6px;
+  bottom: 9px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border: 1px dashed var(--pond-leaf);
+  border-radius: 2px;
+  color: var(--pond-ink);
+  background: color-mix(in srgb, var(--pond-paper) 68%, transparent);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.scene-workspace--naiwa .scene-status > span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50% 50% 50% 0;
+  background: var(--pond-leaf);
+}
+
+.scene-workspace--naiwa .scene-status[data-task-state='error'] {
+  color: var(--color-error);
+  border-color: currentColor;
+}
+
+.scene-workspace--naiwa .scene-status[data-task-state='error'] > span {
+  background: currentColor;
+}
+
+.scene-workspace--naiwa .scene-navigation {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+  align-self: center;
+}
+
+.scene-workspace--naiwa .scene-navigation__crest {
+  display: none;
+}
+
+.scene-workspace--naiwa [data-skin-slot='tabs'] {
+  height: 44px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.scene-workspace--naiwa [data-skin-slot='tabs-list'] {
+  min-width: 0;
+  gap: 5px;
+  align-items: center;
+}
+
+.scene-workspace--naiwa [data-skin-slot='tabs-project'] {
+  display: none;
+}
+
+.scene-workspace--naiwa [data-skin-slot='tab'] {
+  height: 34px;
+  min-width: 80px;
+  max-width: 130px;
+  margin: 0;
+  padding-inline: 7px;
+  border: 1px solid transparent;
+  border-radius: 2px 13px 2px 2px;
+  background: color-mix(in srgb, var(--pond-paper) 50%, transparent);
+  color: var(--pond-ink);
+  box-shadow: none;
+}
+
+.scene-workspace--naiwa [data-skin-slot='tab'][data-active='true'] {
+  border: 1px dashed var(--pond-leaf);
+  color: var(--pond-ink);
+  background: var(--pond-paper);
+  box-shadow: 0 3px 0 var(--pond-shadow);
+}
+
+.scene-workspace--naiwa [data-skin-slot='tabs-tools'] {
+  gap: 0;
+  padding-inline: 2px 0;
+}
+
+.scene-workspace--naiwa [data-skin-slot='tabs-tools'] button {
+  padding: 5px;
+}
+
+.scene-workspace--naiwa [data-skin-slot='tabs-new'] {
+  width: 25px;
+  min-width: 25px;
+  height: 32px;
+}
+
+.scene-workspace--naiwa .scene-companion {
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 9px;
+}
+
+.scene-workspace--naiwa .scene-companion::before {
+  content: '';
+  position: absolute;
+  width: 91%;
+  height: 42%;
+  left: 4%;
+  bottom: 9px;
+  border: 2px solid color-mix(in srgb, var(--pond-leaf) 30%, transparent);
+  border-radius: 50%;
+  background: var(--pond-water);
+  box-shadow: 0 0 0 11px color-mix(in srgb, var(--pond-water) 30%, transparent);
+  z-index: -1;
+  pointer-events: none;
+}
+
+.scene-workspace--naiwa .scene-companion::after {
+  content: '';
+  position: absolute;
+  width: 42px;
+  height: 24px;
+  right: 5%;
+  bottom: 23px;
+  border-radius: 100% 0 100% 0;
+  background: var(--pond-leaf);
+  box-shadow: -210px -12px 0 -5px var(--pond-leaf);
+  pointer-events: none;
+}
+
+.scene-workspace--naiwa .scene-companion .builtin-skin__interact {
+  position: relative;
+  z-index: 2;
+  min-height: 30px;
+  margin: 0;
+  padding: 5px 13px;
+  border: 1px solid var(--pond-leaf);
+  border-radius: 3px 18px 18px 3px;
+  background: var(--pond-paper);
+  color: var(--pond-ink);
+  font-size: 11px;
+  box-shadow: 0 3px 0 var(--pond-shadow);
+}
+
+.scene-workspace--naiwa .scene-companion .builtin-skin__interact:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--pond-paper) 75%, var(--pond-bank));
+}
+
+.scene-workspace--naiwa .scene-instruments {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+  min-width: 0;
+  padding: 0 8px 0 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  background: transparent;
+  border: 0;
+}
+
+.scene-workspace--naiwa .scene-devices {
+  position: relative;
+  min-width: 0;
+  grid-row: 1;
+}
+
+.scene-workspace--naiwa [data-skin-slot='connection'] {
+  border: 0;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--pond-paper) 90%, transparent);
+  box-shadow: 0 3px 0 var(--pond-shadow);
+  outline: 1px dashed var(--pond-line);
+  outline-offset: -5px;
+}
+
+.scene-workspace--naiwa .scene-monitor {
+  position: relative;
+  align-self: start;
+  min-width: 0;
+  margin: 0 2px 8px;
+  grid-row: 2;
+}
+
+.scene-workspace--naiwa [data-skin-slot='screenshot'] {
+  border: 7px solid var(--pond-soft);
+  border-right-width: 12px;
+  border-bottom-width: 11px;
+  border-radius: 10px 10px 32px 10px;
+  background: var(--pond-paper);
+  box-shadow: 0 5px 0 var(--pond-shadow);
+}
+
+.scene-workspace--naiwa [data-skin-slot='screenshot-screen'] {
+  border: 1px solid var(--pond-line);
+  border-radius: 12px 12px 22px 12px;
+  background:
+    radial-gradient(ellipse at 50% 50%, transparent 55%, var(--pond-shadow)),
+    color-mix(in srgb, var(--pond-water) 22%, var(--pond-paper));
+}
+
+.scene-workspace--naiwa .scene-tasks {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.scene-workspace--naiwa .scene-tasks::after {
+  content: '';
+  position: absolute;
+  right: 1%;
+  top: 43%;
+  width: 48px;
+  height: 48px;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 50% 50%, var(--pond-bank) 0 15%, transparent 16%),
+    radial-gradient(ellipse at 50% 22%, #e9b6a4 0 23%, transparent 24%),
+    radial-gradient(ellipse at 78% 48%, #e9b6a4 0 23%, transparent 24%),
+    radial-gradient(ellipse at 66% 77%, #e9b6a4 0 23%, transparent 24%),
+    radial-gradient(ellipse at 29% 73%, #e9b6a4 0 23%, transparent 24%),
+    radial-gradient(ellipse at 22% 36%, #e9b6a4 0 23%, transparent 24%);
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+.scene-workspace--naiwa .scene-task-heading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 0 0 auto;
+  min-height: 34px;
+  margin: 0 10px 1px 33px;
+  padding: 0 0 7px;
+  border-bottom: 2px solid var(--pond-leaf);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.025em;
+  color: var(--pond-ink);
+}
+
+.scene-workspace--naiwa .scene-task-heading::before {
+  content: '';
+  display: block;
+  width: 18px;
+  height: 11px;
+  border-radius: 100% 0 100% 0;
+  background: var(--pond-leaf);
+}
+
+.scene-workspace--naiwa [data-skin-slot='task-list'] {
+  min-height: 0;
+  padding: 12px 10px 18px 31px;
+  scrollbar-gutter: stable;
+  background: transparent;
+}
+
+.scene-workspace--naiwa [data-skin-slot='task-stack'] {
+  position: relative;
+  min-width: 0;
+}
+
+.scene-workspace--naiwa [data-skin-slot='task-stack']::before {
+  content: '';
+  position: absolute;
+  top: 16px;
+  bottom: 20px;
+  left: 4px;
+  border-left: 3px dotted var(--pond-line);
+  pointer-events: none;
+}
+
+.scene-workspace--naiwa [data-skin-slot='task-item'] {
+  position: relative;
+  min-width: 0;
+  margin-top: 14px;
+  margin-left: 22px;
+  margin-right: 27px;
+  border: 0;
+  border-bottom: 3px solid var(--pond-line);
+  border-radius: 5px 29px 5px 17px;
+  background: var(--pond-paper);
+  box-shadow: 0 4px 0 color-mix(in srgb, var(--pond-shadow) 58%, transparent);
+  overflow: visible;
+}
+
+.scene-workspace--naiwa [data-skin-slot='task-item']:first-child {
+  margin-top: 0;
+}
+
+.scene-workspace--naiwa [data-skin-slot='task-item']:nth-child(even) {
+  margin-left: 48px;
+  margin-right: 0;
+  border-radius: 18px 5px 29px 5px;
+}
+
+.scene-workspace--naiwa [data-skin-slot='task-item'][data-expanded='true'],
+.scene-workspace--naiwa [data-skin-slot='task-item'][data-task-expanded='true'] {
+  margin-left: 22px;
+  margin-right: 0;
+  border-radius: 9px;
+}
+
+.scene-workspace--naiwa [data-skin-slot='task-item-head'] {
+  min-height: 58px;
+  padding: 10px 17px 10px 11px;
+}
+
+.scene-workspace--naiwa .skin-task-marker {
+  position: absolute;
+  top: 13px;
+  left: -37px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 31px;
+  flex: 0 0 auto;
+  border: 1px solid var(--pond-leaf);
+  border-radius: 50% 50% 50% 3px;
+  background: var(--pond-leaf);
+  color: var(--pond-paper);
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 3px 0 var(--pond-shadow);
+  pointer-events: none;
+}
+
+.scene-workspace--naiwa .skin-task-marker::after {
+  content: '';
+  position: absolute;
+  left: 100%;
+  top: 14px;
+  width: 10px;
+  border-top: 2px dotted var(--pond-line);
+}
+
+.scene-workspace--naiwa [data-task-status='running'] {
+  outline: 2px solid var(--pond-leaf);
+  outline-offset: 3px;
+}
+
+.scene-workspace--naiwa [data-task-status='running'] .skin-task-marker {
+  background: var(--pond-bank);
+  color: var(--pond-ink);
+}
+
+.scene-workspace--naiwa [data-task-status='succeeded'] .skin-task-marker {
+  background: var(--pond-bank);
+  color: var(--pond-ink);
+  border-color: var(--pond-leaf);
+}
+
+.scene-workspace--naiwa [data-task-status='failed'] .skin-task-marker,
+.scene-workspace--naiwa [data-task-status='error'] .skin-task-marker {
+  background: var(--color-error);
+  border-color: var(--color-error);
+  color: #fff;
+}
+
+.scene-workspace--naiwa [data-skin-slot='toolbar'] {
+  flex: 0 0 auto;
+  gap: 5px;
+  min-height: 60px;
+  margin: 7px 0 0;
+  padding: 8px 10px;
+  border: 0;
+  border-top: 4px solid var(--pond-leaf);
+  border-radius: 0 0 20px 0;
+  background: var(--pond-soft);
+  box-shadow: 0 4px 0 var(--pond-shadow);
+}
+
+.scene-workspace--naiwa [data-skin-slot='toolbar'] button {
+  white-space: nowrap;
+}
+
+.scene-workspace--naiwa [data-role='start-stop-button'] {
+  min-height: 39px;
+  border-radius: 5px 24px 24px 5px;
+  box-shadow: 0 3px 0 #0002;
+}
+
+.scene-workspace--naiwa .scene-picker {
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
+.scene-workspace--naiwa [data-skin-slot='add-tasks'] {
+  margin: 3px 0 0;
+  border: 1px dashed var(--pond-leaf);
+  border-radius: 2px;
+  background: var(--pond-paper);
+}
+
+.scene-workspace--naiwa [data-skin-slot='add-tasks-scroll'] {
+  --skin-picker-max-height: min(20vh, 160px);
+}
+
+.scene-workspace--naiwa .scene-logbook {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  margin-top: 5px;
+  padding: 5px 16px 3px 21px;
+  background: var(--pond-paper);
+  border-left: 2px dashed var(--pond-line);
+  border-right: 2px dashed var(--pond-line);
+  box-shadow: 0 5px 0 var(--pond-shadow);
+}
+
+.scene-workspace--naiwa .scene-logbook::before,
+.scene-workspace--naiwa .scene-logbook::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 8px;
+  background: linear-gradient(135deg, transparent 5px, var(--pond-paper) 0) 0 0 / 12px 8px repeat-x;
+  pointer-events: none;
+}
+
+.scene-workspace--naiwa .scene-logbook::before {
+  top: -7px;
+}
+
+.scene-workspace--naiwa .scene-logbook::after {
+  bottom: -7px;
+  rotate: 180deg;
+}
+
+.scene-workspace--naiwa [data-skin-slot='logs'] {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.scene-workspace--naiwa [data-skin-slot='log-scroll'] {
+  padding: 3px 4px;
+  background: repeating-linear-gradient(
+    transparent 0 32px,
+    color-mix(in srgb, var(--pond-line) 30%, transparent) 32px 33px
+  );
+  font-size: 11px;
+}
+
+@media (min-width: 768px) {
+  .scene-workspace--naiwa {
+    display: grid;
+    grid-template-columns: minmax(238px, 31%) minmax(0, 1fr);
+    grid-template-rows: 76px 188px minmax(0, 1fr) 136px;
+    gap: 14px 30px;
+    min-height: 0;
+    padding: 15px 26px 18px;
+    overflow: hidden;
+  }
+
+  .scene-workspace--naiwa .scene-navigation {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .scene-workspace--naiwa .scene-heading {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .scene-workspace--naiwa .scene-companion {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .scene-workspace--naiwa .scene-instruments {
+    grid-column: 1;
+    grid-row: 3;
+  }
+  .scene-workspace--naiwa .scene-tasks {
+    grid-column: 2;
+    grid-row: 2 / 4;
+  }
+  .scene-workspace--naiwa .scene-logbook {
+    grid-column: 1 / -1;
+    grid-row: 4;
+  }
+}
+
+/* The wide scene uses a genuine stepping-stone silhouette, rather than six
+ * full-width rows. The route bends between the real ordinal markers; only its
+ * decorative connector is transformed, so vertical drag geometry stays exact. */
+@media (min-width: 1101px) {
+  .scene-workspace--naiwa [data-skin-slot='task-stack']::before {
+    display: none;
+  }
+
+  .scene-workspace--naiwa [data-skin-slot='task-item'] {
+    width: 84%;
+    margin-top: 18px;
+    margin-left: 2%;
+    margin-right: 0;
+    border-radius: 5px 35px 5px 22px;
+  }
+
+  .scene-workspace--naiwa [data-skin-slot='task-item']:first-child {
+    margin-top: 0;
+  }
+
+  .scene-workspace--naiwa [data-skin-slot='task-item']:nth-child(even) {
+    margin-left: 16%;
+    margin-right: 0;
+    border-radius: 24px 5px 35px 5px;
+  }
+
+  .scene-workspace--naiwa [data-skin-slot='task-item']::before {
+    content: '';
+    position: absolute;
+    left: -23px;
+    top: 28px;
+    width: 16.6667%;
+    height: calc(100% + 18px);
+    background: var(--pond-line);
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 80' preserveAspectRatio='none'%3E%3Cpath d='M2 0 C2 43 98 34 98 80' fill='none' stroke='black' stroke-width='2' stroke-dasharray='3 5'/%3E%3C/svg%3E");
+    mask-size: 100% 100%;
+    mask-repeat: no-repeat;
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  .scene-workspace--naiwa [data-skin-slot='task-item']:nth-child(even)::before {
+    left: calc(-23px - 16.6667%);
+    transform: scaleX(-1);
+  }
+
+  .scene-workspace--naiwa [data-skin-slot='task-item']::after {
+    content: '';
+    position: absolute;
+    right: 22px;
+    top: -7px;
+    width: 24px;
+    height: 13px;
+    border-radius: 100% 0 100% 0;
+    background: var(--pond-leaf);
+    opacity: 0.7;
+    pointer-events: none;
+  }
+
+  .scene-workspace--naiwa [data-skin-slot='task-item']:last-child::before,
+  .scene-workspace--naiwa [data-skin-slot='task-item'][data-expanded='true']::before,
+  .scene-workspace--naiwa [data-skin-slot='task-item']:has(+ [data-expanded='true'])::before {
+    display: none;
+  }
+
+  .scene-workspace--naiwa [data-skin-slot='task-item'][data-expanded='true'],
+  .scene-workspace--naiwa [data-skin-slot='task-item'][data-task-expanded='true'] {
+    width: calc(100% - 22px);
+    margin-left: 22px;
+    margin-right: 0;
+    border-radius: 9px;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1000px) {
+  .scene-workspace--naiwa {
+    grid-template-columns: 238px minmax(0, 1fr);
+    gap: 12px 18px;
+    padding-inline: 16px;
+  }
+
+  .scene-workspace--naiwa .scene-heading {
+    padding-right: 0;
+    padding-top: 1px;
+  }
+  .scene-workspace--naiwa .scene-heading h1 {
+    font-size: 34px;
+  }
+  .scene-workspace--naiwa .scene-status {
+    top: auto;
+    right: 5px;
+    bottom: 0;
+    padding: 3px 7px;
+    font-size: 10px;
+  }
+  .scene-workspace--naiwa .scene-kicker {
+    max-width: calc(100% - 90px);
+    font-size: 9px;
+  }
+  .scene-workspace--naiwa [data-skin-slot='task-list'] {
+    padding-left: 25px;
+    padding-right: 1px;
+  }
+  .scene-workspace--naiwa [data-skin-slot='task-item'] {
+    margin-left: 17px;
+    margin-right: 15px;
+  }
+  .scene-workspace--naiwa [data-skin-slot='task-item']:nth-child(even) {
+    margin-left: 32px;
+  }
+  .scene-workspace--naiwa .skin-task-marker {
+    left: -31px;
+    width: 25px;
+    height: 28px;
+  }
+  .scene-workspace--naiwa [data-skin-slot='toolbar-label'] {
+    display: none;
+  }
+  .scene-workspace--naiwa [data-skin-slot='toolbar'] {
+    padding-inline: 6px;
+  }
+  .scene-workspace--naiwa [data-skin-slot='toolbar'] button {
+    padding-inline: 7px;
+  }
+}
+
+@media (min-width: 768px) and (max-height: 640px) {
+  .scene-workspace--naiwa {
+    grid-template-rows: 54px 106px minmax(0, 1fr) 86px;
+    gap: 8px 20px;
+    padding-block: 7px 12px;
+  }
+
+  .scene-workspace--naiwa .scene-heading {
+    padding-right: 100px;
+  }
+  .scene-workspace--naiwa .scene-heading h1 {
+    font-size: 32px;
+  }
+  .scene-workspace--naiwa .scene-status {
+    bottom: 4px;
+    padding: 4px 7px;
+    font-size: 10px;
+  }
+  .scene-workspace--naiwa .scene-companion {
+    padding-bottom: 0;
+  }
+  .scene-workspace--naiwa .scene-companion::before {
+    bottom: 4px;
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--pond-water) 30%, transparent);
+  }
+  .scene-workspace--naiwa .scene-companion::after {
+    bottom: 12px;
+    width: 31px;
+    height: 17px;
+  }
+  .scene-workspace--naiwa .scene-companion .builtin-skin__interact {
+    padding: 3px 8px;
+    min-height: 26px;
+    font-size: 10px;
+  }
+  .scene-workspace--naiwa .scene-instruments {
+    display: flex;
+    flex-direction: column;
+    padding-right: 5px;
+  }
+  .scene-workspace--naiwa .scene-devices {
+    order: 0;
+    flex: 0 0 auto;
+  }
+  .scene-workspace--naiwa .scene-monitor {
+    order: 1;
+    flex: 0 0 auto;
+    margin-top: 12px;
+  }
+  .scene-workspace--naiwa .scene-task-heading {
+    min-height: 28px;
+    font-size: 12px;
+    margin-left: 27px;
+    padding-bottom: 4px;
+  }
+  .scene-workspace--naiwa [data-skin-slot='task-list'] {
+    padding-top: 8px;
+    padding-bottom: 10px;
+  }
+  .scene-workspace--naiwa [data-skin-slot='task-item'] {
+    margin-top: 10px;
+  }
+  .scene-workspace--naiwa [data-skin-slot='task-item-head'] {
+    min-height: 48px;
+    padding-block: 7px;
+  }
+  .scene-workspace--naiwa .skin-task-marker {
+    top: 9px;
+  }
+  .scene-workspace--naiwa [data-skin-slot='toolbar'] {
+    min-height: 50px;
+    padding-block: 5px;
+    margin-top: 3px;
+  }
+  .scene-workspace--naiwa [data-role='start-stop-button'] {
+    min-height: 34px;
+  }
+  .scene-workspace--naiwa [data-skin-slot='add-tasks-scroll'] {
+    --skin-picker-max-height: 62px;
+  }
+  .scene-workspace--naiwa .scene-logbook {
+    padding: 0 9px 0 14px;
+  }
+}
+
+@media (max-width: 767px) {
+  .scene-workspace--naiwa {
+    padding: 14px 14px 25px;
+  }
+  .scene-workspace--naiwa .scene-heading {
+    padding: 2px 105px 9px 8px;
+  }
+  .scene-workspace--naiwa .scene-heading h1 {
+    font-size: 35px;
+  }
+  .scene-workspace--naiwa .scene-kicker {
+    font-size: 9px;
+  }
+  .scene-workspace--naiwa .scene-status {
+    right: 3px;
+    bottom: 14px;
+    padding: 5px 8px;
+    font-size: 10px;
+  }
+  .scene-workspace--naiwa .scene-companion {
+    min-height: 175px;
+    padding-bottom: 0;
+  }
+  .scene-workspace--naiwa .scene-companion::before {
+    width: 80%;
+    left: 10%;
+    bottom: 2px;
+    height: 36%;
+  }
+  .scene-workspace--naiwa .scene-companion::after {
+    right: 12%;
+    bottom: 14px;
+    box-shadow: -210px -8px 0 -7px var(--pond-leaf);
+  }
+  .scene-workspace--naiwa .scene-instruments {
+    display: grid;
+    grid-template-rows: auto auto;
+    gap: 12px;
+    padding: 8px 1px;
+    overflow: visible;
+  }
+  .scene-workspace--naiwa .scene-task-heading {
+    margin: 6px 2px 0 25px;
+    min-height: 34px;
+  }
+  .scene-workspace--naiwa [data-skin-slot='task-list'] {
+    padding: 12px 3px 17px 25px;
+    overflow: visible;
+  }
+  .scene-workspace--naiwa [data-skin-slot='task-item'] {
+    margin-left: 17px;
+    margin-right: 12px;
+  }
+  .scene-workspace--naiwa [data-skin-slot='task-item']:nth-child(even) {
+    margin-left: 30px;
+    margin-right: 0;
+  }
+  .scene-workspace--naiwa [data-skin-slot='task-item-head'] {
+    min-height: 55px;
+    padding-inline: 8px 11px;
+  }
+  .scene-workspace--naiwa .skin-task-marker {
+    left: -31px;
+    width: 25px;
+    height: 28px;
+  }
+  .scene-workspace--naiwa [data-skin-slot='toolbar'] {
+    min-height: 56px;
+    margin: 4px 0 15px;
+    padding: 6px 8px;
+  }
+  .scene-workspace--naiwa .scene-logbook {
+    height: 210px;
+    min-height: 160px;
+    margin-top: 14px;
+    padding-inline: 9px;
+  }
+}
+
+@media (max-width: 767px) and (max-height: 500px) {
+  .scene-workspace--naiwa .scene-companion {
+    min-height: 116px;
+  }
+}
+
+/* Motion is confined to decoration and the state stamp; no task/control moves. */
+.skin-shell[data-skin-motion='full']
+  .scene-workspace--naiwa
+  .scene-status[data-task-state='running']
+  > span {
+  animation: pond-status-pulse 1.8s ease-in-out infinite;
+}
+
+.skin-shell[data-skin-motion='full']
+  .scene-workspace--naiwa:has(.builtin-skin[data-interacting='true'])
+  .scene-companion::before {
+  animation: pond-water-response 1.2s ease-out 2;
+}
+
+@keyframes pond-status-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+@keyframes pond-water-response {
+  50% {
+    transform: scale(1.06);
+    box-shadow: 0 0 0 19px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene-workspace--naiwa .scene-status > span,
+  .scene-workspace--naiwa .scene-companion::before {
+    animation: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .scene-workspace--naiwa .scene-decoration,
+  .scene-workspace--naiwa .scene-companion::before,
+  .scene-workspace--naiwa .scene-companion::after {
+    display: none;
+  }
+  .scene-workspace--naiwa [data-skin-slot='task-item'] {
+    border: 1px solid CanvasText;
+  }
+  .scene-workspace--naiwa .skin-task-marker {
+    background: Canvas;
+    color: CanvasText;
+  }
+}
