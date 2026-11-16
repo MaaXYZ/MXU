@@ -1493,6 +1493,7 @@ function AppContent() {
       if (isTaskKind(kind)) pendingTaskKind = true;
       if (kind === 'tasks-completed') {
         useAppStore.getState().clearAllTaskRunOnce(instanceId);
+        useAppStore.getState().clearScheduleExecution(instanceId);
       }
       if (debounceTimer) clearTimeout(debounceTimer);
       const shouldSyncRunning = pendingTaskKind;
