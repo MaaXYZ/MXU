@@ -1,0 +1,88 @@
+{
+  "schemaVersion": "0.1",
+  "id": "studio.example.little-trouble",
+  "name": {
+    "zh-CN": "捣蛋小怪兽",
+    "en-US": "Little Trouble"
+  },
+  "version": "1.0.0",
+  "mxu": {
+    "skinApi": "0.1"
+  },
+  "capabilities": {
+    "required": ["tokens.v1"],
+    "optional": ["scene.l1", "reservation.edge.v1", "bleed.stage.v1"]
+  },
+  "fallback": {
+    "mode": "tokens-only"
+  },
+  "tokens": {
+    "light": {
+      "--color-accent": "#7357d8"
+    },
+    "dark": {
+      "--color-accent": "#b6a4ff"
+    }
+  },
+  "scene": {
+    "entry": "scene.html",
+    "initialInteractionState": "rest",
+    "interactionStates": ["rest", "mischief"]
+  },
+  "placements": [
+    {
+      "id": "mascot",
+      "element": "mascot",
+      "anchor": "toolbar.primary",
+      "box": "inline-start",
+      "nudge": {
+        "inline": -8,
+        "block": 0
+      },
+      "layer": "ornament-front",
+      "bleed": {
+        "blockStart": 48,
+        "inlineEnd": 16,
+        "blockEnd": 12,
+        "inlineStart": 24
+      },
+      "hitTest": "none"
+    }
+  ],
+  "reservations": [
+    {
+      "id": "mascot-space",
+      "slot": "toolbar.actions",
+      "edge": "inline-start",
+      "size": 112,
+      "maxFraction": 0.28,
+      "when": {
+        "interaction.state": "mischief"
+      }
+    }
+  ],
+  "bindings": [
+    {
+      "event": "host.hotspot.activate",
+      "target": "mascot-poke",
+      "setInteractionState": "mischief"
+    },
+    {
+      "event": "interaction.timeout",
+      "state": "mischief",
+      "afterMs": 2400,
+      "setInteractionState": "rest"
+    }
+  ],
+  "hotspots": [
+    {
+      "id": "mascot-poke",
+      "placement": "mascot",
+      "label": {
+        "zh-CN": "让团子挤一下",
+        "en-US": "Make room for the mascot"
+      },
+      "minTargetSize": 44
+    }
+  ]
+}

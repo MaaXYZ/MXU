@@ -45,7 +45,11 @@ const LazyRecentlyClosedPanel = lazy(async () => {
   return { default: module.RecentlyClosedPanel };
 });
 
-export function TabBar() {
+export function TabBar({
+  orientation = 'horizontal',
+}: {
+  orientation?: 'horizontal' | 'vertical';
+}) {
   const { t } = useTranslation();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -341,7 +345,11 @@ export function TabBar() {
       let newDragOverIndex: number | null = null;
       tabRefs.current.forEach((el, id) => {
         const rect = el.getBoundingClientRect();
-        if (e.clientX >= rect.left && e.clientX <= rect.right) {
+        if (
+          orientation === 'vertical'
+            ? e.clientY >= rect.top && e.clientY <= rect.bottom
+            : e.clientX >= rect.left && e.clientX <= rect.right
+        ) {
           const idx = instances.findIndex((inst) => inst.id === id);
           if (idx !== -1 && idx !== dragState.draggedIndex) {
             newDragOverIndex = idx;
@@ -353,7 +361,7 @@ export function TabBar() {
         setDragState((prev) => ({ ...prev, dragOverIndex: newDragOverIndex }));
       }
     },
-    [dragState.isDragging, dragState.draggedIndex, dragState.dragOverIndex, instances],
+    [dragState.isDragging, dragState.draggedIndex, dragState.dragOverIndex, instances, orientation],
   );
 
   const handleMouseUp = useCallback(() => {
@@ -378,9 +386,17 @@ export function TabBar() {
   }, [dragState.isDragging, handleMouseMove, handleMouseUp]);
 
   return (
-    <div className="flex items-center h-10 bg-bg-secondary border-b border-border select-none">
+    <div
+      data-skin-slot="tabs"
+      data-orientation={orientation}
+      className="flex items-center h-10 bg-bg-secondary border-b border-border select-none"
+    >
       {/* 标签页区域 */}
-      <div id="tab-bar-area" className="flex-1 flex items-center h-full overflow-x-auto">
+      <div
+        id="tab-bar-area"
+        data-skin-slot="tabs-list"
+        className="flex-1 flex items-center h-full overflow-x-auto"
+      >
         {instances.map((instance, index) => {
           const isAnimatingIn = animatingTabIds.includes(instance.id);
           const isClosing = closingTabIds.includes(instance.id);
@@ -388,6 +404,8 @@ export function TabBar() {
           return (
             <div
               key={instance.id}
+              data-skin-slot="tab"
+              data-active={instance.id === activeInstanceId}
               ref={(el) => {
                 if (el) tabRefs.current.set(instance.id, el);
                 else tabRefs.current.delete(instance.id);
@@ -502,6 +520,7 @@ export function TabBar() {
 
         {/* 新建标签按钮 */}
         <button
+          data-skin-slot="tabs-new"
           onClick={handleNewTab}
           className="flex items-center justify-center w-8 h-full hover:bg-bg-hover transition-colors"
           title={t('titleBar.newTab')}
@@ -511,12 +530,15 @@ export function TabBar() {
       </div>
 
       {/* 项目名称（根据协议，label 是 UI 显示名称，title 是窗口标题；移动端隐藏节省空间） */}
-      <div className="hidden md:block px-4 text-sm font-medium text-text-secondary">
+      <div
+        data-skin-slot="tabs-project"
+        className="hidden md:block px-4 text-sm font-medium text-text-secondary"
+      >
         {resolveI18nText(projectInterface?.label, langKey) || projectInterface?.name || 'MXU'}
       </div>
 
       {/* 工具按钮 */}
-      <div className="flex items-center gap-1 px-2">
+      <div data-skin-slot="tabs-tools" className="flex items-center gap-1 px-2">
         {/* 更新通知图标 - 有更新、正在下载或有错误时显示 */}
         {(updateInfo?.hasUpdate || updateInfo?.errorCode || downloadStatus === 'downloading') && (
           <button

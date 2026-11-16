@@ -371,7 +371,7 @@ export function SettingsPage({ onClose }: SettingsPageProps) {
   }, [tocItems]);
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col bg-bg-primary">
+    <div data-skin-slot="settings" className="flex-1 min-h-0 flex flex-col bg-bg-primary">
       {/* 顶部导航 */}
       <div className="flex items-center gap-3 px-4 py-3 bg-bg-secondary border-b border-border">
         {/* 移动端：汉堡菜单按钮 */}

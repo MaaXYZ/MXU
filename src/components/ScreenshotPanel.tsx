@@ -356,7 +356,10 @@ export function ScreenshotPanel() {
   );
 
   return (
-    <div className="bg-bg-secondary rounded-lg ring-1 ring-inset ring-border overflow-hidden">
+    <div
+      data-skin-slot="screenshot"
+      className="bg-bg-secondary rounded-lg ring-1 ring-inset ring-border overflow-hidden"
+    >
       {/* 标题栏（可点击折叠） */}
       <div
         role="button"
@@ -438,6 +441,7 @@ export function ScreenshotPanel() {
           <div className="p-3">
             {/* 截图区域 */}
             <div
+              data-skin-slot="screenshot-screen"
               className="aspect-video bg-bg-tertiary rounded-md flex items-center justify-center overflow-hidden relative"
               onContextMenu={handleContextMenu}
             >

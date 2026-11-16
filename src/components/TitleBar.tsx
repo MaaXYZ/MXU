@@ -120,6 +120,7 @@ export function TitleBar() {
 
   return (
     <div
+      data-skin-slot="titlebar"
       data-tauri-drag-region
       className="h-8 flex items-center justify-between bg-bg-secondary border-b border-border select-none shrink-0"
     >

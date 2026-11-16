@@ -71,6 +71,7 @@ import {
   patchWebUILayout,
 } from '@/services/appearanceStorage';
 import { isTauri } from '@/utils/paths';
+import { normalizeBuiltinSkinId } from '@/skins/types';
 import {
   convertPresetOptionValue,
   generateId,
@@ -237,6 +238,8 @@ export const useAppStore = create<AppState>()(
     // 主题和语言
     theme: 'light',
     accentColor: 'emerald',
+    skinId: 'default',
+    skinReducedMotion: false,
     language: 'system',
     backgroundImage: undefined,
     backgroundOpacity: 50,
@@ -257,6 +260,16 @@ export const useAppStore = create<AppState>()(
       const mode = resolveThemeMode(theme);
       applyTheme(mode, accent);
       if (!isTauri()) patchWebUIAppearance({ accentColor: accent });
+    },
+    setSkinId: (skinId) => {
+      const normalized = normalizeBuiltinSkinId(skinId);
+      set({ skinId: normalized });
+      if (!isTauri()) patchWebUIAppearance({ skinId: normalized });
+    },
+    setSkinReducedMotion: (enabled) => {
+      const normalized = enabled === true;
+      set({ skinReducedMotion: normalized });
+      if (!isTauri()) patchWebUIAppearance({ skinReducedMotion: normalized });
     },
     setLanguage: (lang) => {
       set({ language: lang });
@@ -1497,6 +1510,13 @@ export const useAppStore = create<AppState>()(
       const localLayout = isWebUI ? loadWebUILayout() : null;
       const effectiveTheme = localAppearance?.theme ?? config.settings.theme;
       const effectiveAccentColor = localAppearance?.accentColor ?? configAccentColor;
+      const effectiveSkinId = normalizeBuiltinSkinId(
+        localAppearance ? localAppearance.skinId : config.settings.skinId,
+      );
+      const effectiveSkinReducedMotion =
+        (localAppearance
+          ? localAppearance.skinReducedMotion
+          : config.settings.skinReducedMotion) === true;
       const effectiveLanguage = localAppearance?.language ?? config.settings.language;
       const effectiveBgImage = localAppearance
         ? localAppearance.backgroundImage
@@ -1526,6 +1546,8 @@ export const useAppStore = create<AppState>()(
         activeInstanceId,
         theme: effectiveTheme,
         accentColor: effectiveAccentColor,
+        skinId: effectiveSkinId,
+        skinReducedMotion: effectiveSkinReducedMotion,
         language: effectiveLanguage,
         backgroundImage: effectiveBgImage,
         backgroundOpacity: effectiveBgOpacity,
@@ -2553,6 +2575,8 @@ function generateConfig(): MxuConfig {
         settings: {
           theme: ba?.theme ?? state.theme,
           accentColor: ba?.accentColor ?? state.accentColor,
+          skinId: normalizeBuiltinSkinId(_isWebUI ? ba?.skinId : state.skinId),
+          skinReducedMotion: (_isWebUI ? ba?.skinReducedMotion : state.skinReducedMotion) === true,
           language: ba?.language ?? state.language,
           backgroundImage: ba?.backgroundImage ?? state.backgroundImage,
           backgroundOpacity: ba?.backgroundOpacity ?? state.backgroundOpacity,
@@ -2639,6 +2663,8 @@ useAppStore.subscribe(
     ...(!_isWebUI && {
       theme: state.theme,
       accentColor: state.accentColor,
+      skinId: state.skinId,
+      skinReducedMotion: state.skinReducedMotion,
       language: state.language,
       customAccents: state.customAccents,
       windowSize: state.windowSize,

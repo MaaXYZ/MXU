@@ -2,6 +2,7 @@
 
 import type { ActionConfig, OptionValue } from './interface';
 import type { AccentColor, CustomAccent } from '@/themes/types';
+import type { BuiltinSkinId } from '@/skins/types';
 
 export const DEFAULT_MAX_LOGS_PER_INSTANCE = 500;
 
@@ -136,6 +137,10 @@ export interface HotkeySettings {
 export interface AppSettings {
   theme: 'light' | 'dark' | 'system';
   accentColor?: AccentColor; // 强调色
+  /** 内置皮肤；旧配置或未知标识按 default 处理。 */
+  skinId?: BuiltinSkinId;
+  /** 手动减少皮肤动效；系统的减少动效设置始终优先。 */
+  skinReducedMotion?: boolean;
   language: 'system' | 'zh-CN' | 'zh-TW' | 'en-US' | 'ja-JP' | 'ko-KR';
   backgroundImage?: string; // 背景图片路径
   backgroundOpacity?: number; // 背景图片不透明度 (0-100)
@@ -251,6 +256,8 @@ export const defaultConfig: MxuConfig = {
   settings: {
     theme: 'system',
     accentColor: defaultAccentColor,
+    skinId: 'default',
+    skinReducedMotion: false,
     language: 'system',
     confirmBeforeDelete: false,
     maxLogsPerInstance: DEFAULT_MAX_LOGS_PER_INSTANCE,

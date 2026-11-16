@@ -33,7 +33,7 @@ export function LoadingScreen({
   const { t } = useTranslation();
 
   return (
-    <div className="h-full flex flex-col bg-bg-primary">
+    <div data-skin-slot="app" className="h-full flex flex-col bg-bg-primary relative">
       <TitleBar />
 
       {/* 程序路径问题提示模态框 - 在加载阶段也需要能弹出 */}

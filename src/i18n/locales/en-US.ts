@@ -56,6 +56,26 @@ export default {
   },
 
   // Settings
+  skin: {
+    route: 'Mission route',
+    pondRoute: 'A little path through the day',
+    instances: 'Instances',
+    instruments: 'Devices and screen',
+    deepseekScene: 'The rice submarine',
+    naiwaScene: 'Naiwa’s pond',
+    taskCount: '{{count}} tasks enabled',
+    regionLabel: 'Skin companion',
+    state: {
+      idle: 'Idle',
+      running: 'Running',
+      success: 'Completed',
+      error: 'Failed',
+    },
+    feed: 'Feed rice',
+    poke: 'Play laughter',
+    reducedMotion: 'Motion reduced',
+  },
+
   settings: {
     title: 'Settings',
     appearance: 'Appearance',
@@ -76,6 +96,17 @@ export default {
     themeDark: 'Dark',
     accentColor: 'Accent Color',
     themeSystem: 'System',
+    skin: 'Built-in Skins',
+    skinHint:
+      'Change the entire workspace palette, panels, character scene and motion. Default restores the standard appearance.',
+    skinAssetLicense: 'Asset source and license',
+    skinDefault: 'Default',
+    skinDeepseek: 'Blue Fat Fish',
+    skinNaiwa: 'Naiwa',
+    skinReducedMotion: 'Reduce skin motion',
+    skinReducedMotionHint:
+      'Reduce continuous animation. Your system’s reduced motion preference also applies.',
+    skinPreview: 'Skin preview',
     showOptionPreview: 'Show Option Preview',
     showOptionPreviewHint: 'Display quick preview of options in the task list',
     openLogDir: 'Open Log Directory',

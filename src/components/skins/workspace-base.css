@@ -1,0 +1,331 @@
+/* Stable scene slots keep real business controls mounted while their composition changes. */
+.skin-task-marker {
+  display: none;
+}
+.scene-workspace {
+  position: relative;
+  isolation: isolate;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  overflow: hidden;
+  color: var(--color-text-primary);
+}
+.scene-decoration {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+.scene-decoration * {
+  pointer-events: none;
+}
+.scene-decoration > svg {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+}
+.scene-workspace--deepseek .scene-pond-art,
+.scene-workspace--naiwa .scene-ocean-art {
+  display: none;
+}
+.scene-heading,
+.scene-navigation,
+.scene-tasks,
+.scene-companion,
+.scene-instruments,
+.scene-logbook {
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+.scene-tasks {
+  display: flex;
+  flex-direction: column;
+}
+.scene-tasks [data-skin-slot='task-list'] {
+  min-height: 44px;
+}
+.scene-heading h1 {
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  line-height: 1.1;
+}
+.scene-kicker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.scene-kicker svg {
+  width: 14px;
+  height: 14px;
+}
+.scene-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+}
+.scene-status > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.scene-status[data-task-state='error'] {
+  color: var(--color-error);
+}
+.scene-status[data-task-state='success'] {
+  color: var(--color-success);
+}
+.scene-task-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 8px 14px;
+}
+.scene-task-heading h2 {
+  font-size: 12px;
+  font-weight: 700;
+}
+.scene-task-heading > svg {
+  width: 16px;
+  height: 16px;
+}
+.scene-task-heading > span {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--color-text-secondary);
+}
+.scene-logbook {
+  display: flex;
+  flex-direction: column;
+}
+.scene-logbook [data-skin-slot='logs'] {
+  height: 100%;
+  min-height: 0;
+  border-radius: 0;
+}
+.scene-workspace [data-skin-slot='toolbar'] {
+  flex-shrink: 0;
+  gap: 6px;
+  min-height: 54px;
+}
+.scene-workspace [data-role='start-stop-button'] {
+  min-height: 38px;
+  white-space: nowrap;
+}
+.scene-workspace [data-skin-slot='add-tasks-scroll'] {
+  --skin-picker-max-height: min(18vh, 150px);
+}
+.scene-workspace [data-skin-slot='tabs'][data-orientation='vertical'] {
+  height: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  border: 0;
+}
+.scene-workspace [data-skin-slot='tabs'][data-orientation='vertical'] [data-skin-slot='tabs-list'] {
+  flex-direction: column;
+  height: auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  align-items: stretch;
+}
+.scene-workspace [data-skin-slot='tabs'][data-orientation='vertical'] [data-skin-slot='tab'] {
+  min-width: 0;
+  max-width: none;
+  flex: 0 0 auto;
+  height: 46px;
+}
+.scene-workspace
+  [data-skin-slot='tabs'][data-orientation='vertical']
+  [data-skin-slot='tabs-tools'] {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.scene-workspace [data-skin-slot='tabs'][data-orientation='vertical'] [data-skin-slot='tabs-new'] {
+  flex-shrink: 0;
+  height: 36px;
+  width: 100%;
+}
+.scene-workspace
+  [data-skin-slot='tabs'][data-orientation='vertical']
+  [data-skin-slot='tabs-project'] {
+  display: none;
+}
+.scene-monitor [data-skin-slot='screenshot'] {
+  position: relative;
+}
+.scene-workspace .scene-companion .builtin-skin {
+  width: 100%;
+  height: 100%;
+}
+.scene-workspace [data-task-status='failed'] .skin-task-marker {
+  color: var(--color-error);
+  border-color: currentColor;
+}
+.scene-workspace [data-task-status='succeeded'] .skin-task-marker {
+  color: var(--color-success);
+  border-color: currentColor;
+}
+.scene-workspace [data-skin-slot='task-item'][data-expanded='true'] {
+  margin-inline: 0;
+}
+@media (max-width: 1100px) {
+  .scene-workspace [data-skin-slot='toolbar-label'] {
+    display: none;
+  }
+}
+@media (max-height: 600px) and (min-width: 768px) {
+  .scene-workspace [data-skin-slot='add-tasks-scroll'] {
+    --skin-picker-max-height: 66px;
+  }
+}
+@media (max-width: 767px) {
+  .scene-workspace {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 12px;
+    gap: 14px;
+  }
+  .scene-navigation {
+    order: 0;
+    flex: 0 0 auto;
+  }
+  .scene-heading {
+    order: 1;
+    flex: 0 0 auto;
+  }
+  .scene-companion {
+    order: 2;
+    height: 150px;
+    flex: 0 0 150px;
+  }
+  .scene-tasks {
+    order: 3;
+    flex: 0 0 auto;
+  }
+  .scene-instruments {
+    order: 4;
+    flex: 0 0 auto;
+  }
+  .scene-logbook {
+    order: 5;
+    min-height: 230px;
+    flex: 0 0 230px;
+  }
+  .scene-navigation__crest {
+    display: none;
+  }
+  .scene-navigation [data-skin-slot='tabs'] {
+    height: auto;
+    min-height: 42px;
+  }
+  .scene-navigation [data-skin-slot='tabs-project'] {
+    display: none;
+  }
+  .scene-tasks [data-skin-slot='task-list'] {
+    flex: 0 0 auto;
+    overflow-y: visible;
+    min-height: 150px;
+  }
+  .scene-tasks [data-skin-slot='toolbar'] {
+    margin-top: 10px;
+  }
+  .scene-workspace [data-skin-slot='toolbar-label'] {
+    display: none;
+  }
+  .scene-workspace [data-skin-slot='add-tasks-scroll'] {
+    --skin-picker-max-height: 200px;
+  }
+}
+@media (forced-colors: active) {
+  .scene-decoration {
+    display: none;
+  }
+}
+
+/* Host facts remain readable above every scene-specific paint treatment. */
+.skin-shell .scene-workspace .scene-status[data-task-state='error'] {
+  color: var(--color-error);
+  border-color: var(--color-error);
+}
+.skin-shell .scene-workspace .scene-status[data-task-state='success'] {
+  color: var(--color-success);
+  border-color: var(--color-success);
+}
+.dark .skin-shell .scene-workspace .scene-status[data-task-state='success'] {
+  color: color-mix(in srgb, var(--color-success) 35%, var(--color-text-primary));
+}
+.scene-workspace[data-instruments-expanded='false'] .scene-instruments {
+  visibility: hidden;
+  pointer-events: none;
+}
+@media (min-width: 768px) {
+  .scene-workspace--deepseek[data-instruments-expanded='false'] .scene-tasks,
+  .scene-workspace--deepseek[data-instruments-expanded='false'] .scene-heading {
+    grid-column: 2 / 4;
+  }
+}
+@media (max-width: 767px) {
+  .scene-workspace[data-instruments-expanded='false'] .scene-instruments {
+    display: none;
+  }
+}
+/* A host interaction ripples across the environment, never across input targets. */
+.skin-shell[data-skin-motion='full']
+  .scene-workspace:has(.builtin-skin[data-interacting='true'])
+  .scene-decoration::after {
+  content: '';
+  position: absolute;
+  left: 3%;
+  top: 18%;
+  width: 38%;
+  aspect-ratio: 1.7;
+  border: 3px solid var(--skin-color);
+  border-radius: 50%;
+  opacity: 0;
+  animation: scene-wide-echo 2.4s ease-out;
+}
+.skin-shell[data-skin-motion='full'][data-task-state='running'] .scene-pond-ripples {
+  transform-origin: center;
+  animation: scene-water-breathe 4s ease-in-out infinite;
+}
+.skin-shell[data-skin-motion='full'][data-task-state='running'] .scene-ocean-life {
+  animation: scene-life-swim 10s ease-in-out infinite alternate;
+}
+@keyframes scene-wide-echo {
+  from {
+    transform: scale(0.4);
+    opacity: 0.55;
+  }
+  to {
+    transform: scale(3.4);
+    opacity: 0;
+  }
+}
+@keyframes scene-water-breathe {
+  50% {
+    opacity: 0.45;
+    transform: translateY(-3px);
+  }
+}
+@keyframes scene-life-swim {
+  to {
+    transform: translateX(35px);
+  }
+}
+
+/* Keep a user-supplied background visible through the scenic surfaces. */
+.skin-shell:has(> [data-skin-slot='app'].has-background-image) .scene-workspace {
+  background: color-mix(in srgb, var(--color-bg-primary) 80%, transparent);
+}

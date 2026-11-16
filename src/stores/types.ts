@@ -24,6 +24,7 @@ import type {
   GamescopeInstance,
 } from '@/types/maa';
 import type { AccentColor, CustomAccent } from '@/themes';
+import type { BuiltinSkinId } from '@/skins/types';
 
 /** 单个任务的运行状态 */
 export type TaskRunStatus = 'idle' | 'pending' | 'running' | 'succeeded' | 'failed';
@@ -107,6 +108,8 @@ export interface AppState {
   // 主题和语言
   theme: Theme;
   accentColor: AccentColor;
+  skinId: BuiltinSkinId;
+  skinReducedMotion: boolean;
   language: Language;
   backgroundImage?: string;
   backgroundOpacity: number;
@@ -120,6 +123,8 @@ export interface AppState {
   customAccents: CustomAccent[];
   setTheme: (theme: Theme) => void;
   setAccentColor: (accent: AccentColor) => void;
+  setSkinId: (skinId: BuiltinSkinId) => void;
+  setSkinReducedMotion: (enabled: boolean) => void;
   setLanguage: (lang: Language) => void;
   setBackgroundImage: (path?: string) => void;
   setBackgroundOpacity: (opacity: number) => void;

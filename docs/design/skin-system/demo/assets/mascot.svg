@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 320" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">挤挤，一只喜欢占座的薄荷小怪兽</title>
+  <desc id="desc">两只不对称的小角，圆滚滚身体和伸向右边的手，正在把界面按钮挤开。</desc>
+  <defs>
+    <linearGradient id="body-color" x1="69" y1="100" x2="210" y2="259" gradientUnits="userSpaceOnUse"><stop stop-color="#B7F9A5"/><stop offset=".6" stop-color="#8BE6B4"/><stop offset="1" stop-color="#57C9A7"/></linearGradient>
+    <linearGradient id="belly-color" x1="99" y1="177" x2="177" y2="255" gradientUnits="userSpaceOnUse"><stop stop-color="#DDFBC9"/><stop offset="1" stop-color="#ADECB7"/></linearGradient>
+  </defs>
+  <ellipse cx="146" cy="290" rx="91" ry="15" fill="#172A27" opacity=".1"/>
+  <g id="mascot-body" class="mascot-body" stroke="#193C32" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M89 238C79 249 68 267 73 281C77 292 104 289 114 280L128 252" fill="#7DDBA6"/>
+    <path d="M168 253L172 278C175 290 201 292 210 283C219 273 205 257 199 247" fill="#7DDBA6"/>
+    <path d="M72 162C46 158 32 169 34 181C37 194 61 194 79 185" fill="#9AEBB6"/>
+    <path d="M209 177C225 169 242 173 258 183C267 188 273 197 267 204C262 211 248 207 243 202C235 202 224 204 215 197" fill="#8DE6AE"/>
+    <path d="M241 190L246 201M254 193L259 204" stroke-width="3"/>
+    <path d="M87 104C70 81 65 55 81 46C94 40 110 60 116 82" fill="#FFCC76"/>
+    <path d="M170 85C178 52 195 40 205 49C216 60 204 86 195 99" fill="#FFCC76"/>
+    <path d="M75 63L91 70M185 65L204 69" stroke-width="3" opacity=".45"/>
+    <path d="M60 194C48 160 59 119 82 97C106 74 157 70 189 87C213 100 231 124 233 160C237 185 229 211 218 234C201 269 157 279 119 267C85 257 68 232 60 194Z" fill="url(#body-color)"/>
+    <path d="M78 164C75 139 84 117 103 105" stroke="#DEFED0" stroke-width="7"/>
+    <path d="M117 223C117 207 133 198 155 202C181 205 198 224 192 240C185 257 161 258 141 250C125 244 118 235 117 223Z" fill="url(#belly-color)" stroke="none"/>
+    <path d="M92 139C91 116 103 103 117 107C131 111 136 127 134 146C133 161 122 170 109 165C98 162 93 151 92 139Z" fill="#FFFEF0"/>
+    <path d="M149 130C152 108 169 102 182 110C198 120 197 142 189 157C181 171 164 170 155 157C149 150 148 141 149 130Z" fill="#FFFEF0"/>
+    <ellipse cx="119" cy="141" rx="7" ry="13" fill="#193C32" stroke="none" transform="rotate(-7 119 141)"/>
+    <ellipse cx="179" cy="141" rx="7" ry="13" fill="#193C32" stroke="none" transform="rotate(9 179 141)"/>
+    <circle cx="121" cy="136" r="2.5" fill="white" stroke="none"/><circle cx="181" cy="136" r="2.5" fill="white" stroke="none"/>
+    <path d="M102 180C123 193 161 191 185 174C183 208 162 224 139 219C120 215 108 198 102 180Z" fill="#193C32"/>
+    <path d="M117 186L122 201L136 196L135 188" fill="#FFFEF0" stroke-width="2.5"/>
+    <path d="M159 185L159 197L173 192L174 181" fill="#FFFEF0" stroke-width="2.5"/>
+    <path d="M141 212C151 199 169 201 175 207C166 218 153 220 141 212Z" fill="#F69583" stroke="none"/>
+    <path d="M81 175L91 171M204 172L212 178" stroke="#4FAE82" stroke-width="6"/>
+    <path d="M72 203L79 206M88 218L90 222M204 221L210 218" stroke="#3CAE86" stroke-width="4"/>
+    <path d="M101 245L104 247" stroke="#E0FBC4" stroke-width="7"/>
+  </g>
+  <g id="motion-lines" class="motion-lines" stroke="#193C32" stroke-width="3" stroke-linecap="round">
+    <path d="M35 108L24 99M34 125L18 123M264 159L278 151M270 174L285 171"/>
+    <path d="M230 59L232 49M225 54L237 54" stroke="#EF9973"/>
+  </g>
+</svg>

@@ -51,6 +51,26 @@ export default {
   },
 
   // 설정
+  skin: {
+    route: '작업 항로',
+    pondRoute: '물길을 따라 하나씩',
+    instances: '인스턴스',
+    instruments: '장치와 화면',
+    deepseekScene: '흰쌀밥 잠수정',
+    naiwaScene: '나이와의 연못',
+    taskCount: '활성 작업 {{count}}개',
+    regionLabel: '스킨 친구',
+    state: {
+      idle: '대기 중',
+      running: '실행 중',
+      success: '완료',
+      error: '실행 실패',
+    },
+    feed: '흰밥 주기',
+    poke: '웃음 재생',
+    reducedMotion: '움직임을 줄였습니다',
+  },
+
   settings: {
     title: '설정',
     appearance: '외관',
@@ -71,6 +91,16 @@ export default {
     themeDark: '다크',
     accentColor: '강조 색상',
     themeSystem: '시스템 설정',
+    skin: '기본 제공 스킨',
+    skinHint:
+      '전체 화면의 색상, 패널, 캐릭터 장면과 동작을 함께 변경합니다. 기본값을 선택하면 원래 모습으로 돌아갑니다.',
+    skinAssetLicense: '소재 출처 및 라이선스',
+    skinDefault: '기본값',
+    skinDeepseek: '파란 뚱보 고래',
+    skinNaiwa: '나이와',
+    skinReducedMotion: '스킨 움직임 줄이기',
+    skinReducedMotionHint: '반복되는 움직임을 줄입니다. 시스템의 동작 줄이기 설정도 적용됩니다.',
+    skinPreview: '스킨 미리보기',
     showOptionPreview: '옵션 미리보기 표시',
     showOptionPreviewHint: '작업 목록에 옵션의 빠른 미리보기를 표시합니다',
     openLogDir: '로그 폴더 열기',

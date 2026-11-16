@@ -10,6 +10,8 @@ import {
   useSensors,
   DragEndEvent,
   type Modifier,
+  type CollisionDetection,
+  type KeyboardCoordinateGetter,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -58,6 +60,54 @@ import { loggers } from '@/utils/logger';
 import { toast } from 'sonner';
 import clsx from 'clsx';
 import { getAllMxuSpecialTasks, getAllMxuSpecialTasksOptions } from '@/types/specialTasks.ts';
+
+/** A winding single-column route still orders by Y, regardless of decorative X offsets. */
+const closestVerticalCenter: CollisionDetection = ({
+  collisionRect,
+  droppableRects,
+  droppableContainers,
+}) => {
+  const center = collisionRect.top + collisionRect.height / 2;
+  return droppableContainers
+    .flatMap((container) => {
+      const rect = droppableRects.get(container.id);
+      return rect
+        ? [
+            {
+              id: container.id,
+              data: {
+                droppableContainer: container,
+                value: Math.abs(center - rect.top - rect.height / 2),
+              },
+            },
+          ]
+        : [];
+    })
+    .sort((a, b) => a.data.value - b.data.value);
+};
+
+const verticalKeyboardCoordinates: KeyboardCoordinateGetter = (event, args) => {
+  const { collisionRect, droppableRects } = args.context;
+  if (!collisionRect) return;
+  // Keep the library's container/scroll handling while removing decorative horizontal distance.
+  const verticalRect = (rect: typeof collisionRect) => ({
+    top: rect.top,
+    bottom: rect.bottom,
+    height: rect.height,
+    left: 0,
+    right: collisionRect.width,
+    width: collisionRect.width,
+  });
+  const coordinates = sortableKeyboardCoordinates(event, {
+    ...args,
+    context: {
+      ...args.context,
+      collisionRect: verticalRect(collisionRect),
+      droppableRects: new Map([...droppableRects].map(([id, rect]) => [id, verticalRect(rect)])),
+    },
+  });
+  return coordinates ? { x: args.currentCoordinates.x, y: coordinates.y } : coordinates;
+};
 
 /** 单个预设卡片 */
 function PresetCard({ preset, onApply }: { preset: PresetItem; onApply: () => void }) {
@@ -293,6 +343,7 @@ export function TaskList() {
     selectedController,
     selectedResource,
     skippedPresetInstanceIds,
+    skinId,
   } = useAppStore();
 
   const instance = getActiveInstance();
@@ -344,7 +395,8 @@ export function TaskList() {
       },
     }),
     useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
+      coordinateGetter:
+        skinId === 'naiwa' ? verticalKeyboardCoordinates : sortableKeyboardCoordinates,
     }),
   );
 
@@ -511,7 +563,10 @@ export function TaskList() {
 
   if (!instance) {
     return (
-      <div className="flex-1 flex items-center justify-center text-text-muted">
+      <div
+        data-skin-slot="task-list"
+        className="flex-1 flex items-center justify-center text-text-muted"
+      >
         {t('taskList.noTasks')}
       </div>
     );
@@ -534,7 +589,11 @@ export function TaskList() {
   if (!hasVisibleTasks && !showPreActions) {
     return (
       <>
-        <div className="flex-1 overflow-y-auto" onContextMenu={handleListContextMenu}>
+        <div
+          data-skin-slot="task-list"
+          className="flex-1 overflow-y-auto"
+          onContextMenu={handleListContextMenu}
+        >
           {hasPresets ? (
             <PresetSelector instanceId={instance.id} presets={presets} />
           ) : (
@@ -557,13 +616,14 @@ export function TaskList() {
     return (
       <>
         <div
+          data-skin-slot="task-list"
           className="flex-1 flex flex-col overflow-y-auto p-3 gap-2"
           onContextMenu={handleListContextMenu}
         >
           {showPreActions && (
             <DndContext
               sensors={sensors}
-              collisionDetection={closestCenter}
+              collisionDetection={skinId === 'naiwa' ? closestVerticalCenter : closestCenter}
               onDragEnd={handlePreActionDragEnd}
               modifiers={[restrictHorizontalMovement]}
             >
@@ -571,7 +631,7 @@ export function TaskList() {
                 items={preActions.map((a) => a.id)}
                 strategy={verticalListSortingStrategy}
               >
-                <div className="space-y-2">
+                <div data-skin-slot="task-stack" className="space-y-2">
                   {preActions.map((action, idx) => (
                     <ActionItem
                       key={action.id}
@@ -610,16 +670,17 @@ export function TaskList() {
     <>
       <div
         ref={scrollContainerRef}
+        data-skin-slot="task-list"
         className="flex-1 overflow-y-auto overflow-x-hidden p-3"
         onClick={() => showAddTaskPanel && setShowAddTaskPanel(false)}
         onContextMenu={handleListContextMenu}
       >
-        <div className="space-y-2">
+        <div data-skin-slot="task-groups" className="space-y-2">
           {/* 前置任务（pretask）卡片：位于前置程序之上 */}
           {pretaskTasks.length > 0 && (
             <DndContext
               sensors={sensors}
-              collisionDetection={closestCenter}
+              collisionDetection={skinId === 'naiwa' ? closestVerticalCenter : closestCenter}
               onDragEnd={handleDragEnd}
               modifiers={[restrictHorizontalMovement]}
             >
@@ -627,7 +688,7 @@ export function TaskList() {
                 items={pretaskTasks.map((t) => t.id)}
                 strategy={verticalListSortingStrategy}
               >
-                <div className="space-y-2">
+                <div data-skin-slot="task-stack" className="space-y-2">
                   {pretaskTasks.map((task) => (
                     <TaskItem key={task.id} instanceId={instance.id} task={task} />
                   ))}
@@ -640,7 +701,7 @@ export function TaskList() {
           {showPreActions && (
             <DndContext
               sensors={sensors}
-              collisionDetection={closestCenter}
+              collisionDetection={skinId === 'naiwa' ? closestVerticalCenter : closestCenter}
               onDragEnd={handlePreActionDragEnd}
               modifiers={[restrictHorizontalMovement]}
             >
@@ -670,7 +731,7 @@ export function TaskList() {
           {/* 任务列表 */}
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCenter}
+            collisionDetection={skinId === 'naiwa' ? closestVerticalCenter : closestCenter}
             onDragEnd={handleDragEnd}
             modifiers={[restrictHorizontalMovement]}
           >
@@ -678,7 +739,7 @@ export function TaskList() {
               items={normalTasks.map((t) => t.id)}
               strategy={verticalListSortingStrategy}
             >
-              <div className="space-y-2">
+              <div data-skin-slot="task-stack" className="space-y-2">
                 {normalTasks.map((task) => (
                   <TaskItem key={task.id} instanceId={instance.id} task={task} />
                 ))}

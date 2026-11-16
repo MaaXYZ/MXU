@@ -1,0 +1,166 @@
+/* Actors occupy a reserved bank / hull slot. There is no extra hero card in the app. */
+.builtin-skin {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  color: var(--color-text-primary);
+}
+.builtin-skin__stage {
+  position: relative;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  pointer-events: none;
+}
+.builtin-skin__art {
+  position: absolute;
+  inset: 0;
+  max-width: 220px;
+  margin: auto;
+  pointer-events: none;
+}
+.builtin-skin__art img,
+.builtin-skin__art video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+.builtin-skin__art video {
+  position: absolute;
+  inset: 0;
+}
+.builtin-skin__art--deepseek {
+  isolation: isolate;
+}
+.builtin-skin__art--deepseek img,
+.builtin-skin__art--deepseek video {
+  object-fit: cover;
+}
+.builtin-skin[data-performing='true'] .builtin-skin__art--deepseek {
+  background: #fff;
+  border-radius: 48% 48% 44% 44%;
+  overflow: hidden;
+}
+.builtin-skin__art--naiwa {
+  background: #fff;
+  border-radius: 44% 56% 58% 42% / 62% 40% 60% 38%;
+  overflow: hidden;
+}
+.builtin-skin__plinth {
+  position: absolute;
+  inset: auto 5% 0;
+  height: 22px;
+  border-radius: 50%;
+  background: #105e7038;
+  box-shadow: 0 9px 0 #17677d12;
+}
+.builtin-skin--naiwa .builtin-skin__plinth {
+  background: #426b3e;
+  box-shadow: 0 8px 0 #34582b30;
+  transform: rotate(-5deg);
+}
+.builtin-skin__video {
+  visibility: hidden;
+}
+.builtin-skin__video.is-playing {
+  visibility: visible;
+}
+.builtin-skin__interact {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 5px 12px;
+  margin-top: 5px;
+  border: 1px solid currentColor;
+  color: inherit;
+  background: var(--color-bg-secondary);
+  font-size: 11px;
+  font-weight: 650;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.builtin-skin--naiwa .builtin-skin__interact {
+  border-radius: 48% 48% 40% 40% / 30% 30% 50% 50%;
+  background: #ffed9d;
+  color: #304b2b;
+  border: 2px solid #647848;
+  box-shadow: 0 3px 0 #304b2b2e;
+}
+.builtin-skin__interact:hover:not(:disabled),
+.builtin-skin__interact[aria-pressed='true'] {
+  outline: 2px solid var(--skin-highlight);
+  outline-offset: 2px;
+}
+.builtin-skin__interact:focus-visible {
+  outline: 3px solid var(--color-accent);
+  outline-offset: 3px;
+}
+.builtin-skin__interact:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.builtin-skin--preview {
+  display: grid;
+  grid-template-columns: 1fr 150px;
+  grid-template-rows: 160px 38px;
+  align-items: center;
+  gap: 0 12px;
+  padding: 18px;
+  background: var(--color-bg-primary);
+  border-radius: 12px;
+}
+.builtin-skin--preview .builtin-skin__stage {
+  grid-column: 2;
+  grid-row: 1/3;
+  align-self: stretch;
+  height: 100%;
+}
+.builtin-skin--preview .builtin-skin__copy {
+  grid-column: 1;
+  grid-row: 1;
+}
+.builtin-skin--preview .builtin-skin__interact {
+  grid-column: 1;
+  grid-row: 2;
+  justify-self: start;
+}
+.builtin-skin__eyebrow {
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  margin-bottom: 8px;
+}
+.builtin-skin__copy h2 {
+  font-size: 26px;
+  line-height: 1.15;
+  font-weight: 750;
+  margin-bottom: 12px;
+}
+.builtin-skin__copy > span {
+  font-size: 12px;
+}
+.builtin-skin__copy small {
+  display: block;
+  font-size: 10px;
+  margin-top: 8px;
+}
+@media (max-width: 767px) {
+  .scene-companion .builtin-skin {
+    max-width: 240px;
+    margin: 0 auto;
+  }
+  .builtin-skin--preview {
+    grid-template-columns: 1fr 115px;
+  }
+  .builtin-skin__copy h2 {
+    font-size: 22px;
+  }
+}

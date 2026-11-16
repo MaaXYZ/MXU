@@ -728,7 +728,11 @@ export function AddTaskPanel() {
   }
 
   return (
-    <div id="add-task-panel" className="border-t border-border bg-bg-tertiary">
+    <div
+      id="add-task-panel"
+      data-skin-slot="add-tasks"
+      className="border-t border-border bg-bg-tertiary"
+    >
       {/* 拖拽调整高度的把手 */}
       <div
         role="separator"
@@ -773,7 +777,13 @@ export function AddTaskPanel() {
       </div>
 
       {/* 任务列表（包含特殊任务） */}
-      <div className="overflow-y-auto" style={{ maxHeight: addTaskPanelHeight }}>
+      <div
+        data-skin-slot="add-tasks-scroll"
+        className="overflow-y-auto"
+        style={{
+          maxHeight: `min(${addTaskPanelHeight}px, var(--skin-picker-max-height, ${addTaskPanelHeight}px))`,
+        }}
+      >
         {filteredTasks.length === 0 && !instance ? (
           <div className="p-4 text-center text-sm text-text-muted">
             {t('addTaskPanel.noResults')}
