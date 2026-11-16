@@ -57,6 +57,9 @@ export default {
 
   // Settings
   skin: {
+    deepseekScene: 'Rice & tides',
+    naiwaScene: 'Butter pond',
+    taskCount: '{{count}} tasks enabled',
     regionLabel: 'Skin companion',
     state: {
       idle: 'Idle',
@@ -90,7 +93,8 @@ export default {
     accentColor: 'Accent Color',
     themeSystem: 'System',
     skin: 'Built-in Skins',
-    skinHint: 'Choose a character skin for the task view. Default hides the character.',
+    skinHint:
+      'Change the entire workspace palette, panels, character scene and motion. Default restores the standard appearance.',
     skinAssetLicense: 'Asset source and license',
     skinDefault: 'Default',
     skinDeepseek: 'Blue Fat Fish',

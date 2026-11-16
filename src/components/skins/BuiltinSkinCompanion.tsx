@@ -11,38 +11,10 @@ import naiwaCalm from '@/assets/skins/naiwa-calm.png';
 import naiwaStill from '@/assets/skins/naiwa-still.webp';
 import naiwaClip from '@/assets/skins/naiwa-laugh.mp4';
 import { getSkinTaskState } from './state';
+import { useSkinMotion } from './useSkinMotion';
 import './skins.css';
 
 const INTERACTION_MS = 2400;
-
-function useSkinMotion() {
-  const [systemReduced, setSystemReduced] = useState(
-    () =>
-      typeof window !== 'undefined' &&
-      !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
-  );
-  const [pageVisible, setPageVisible] = useState(
-    () => typeof document === 'undefined' || !document.hidden,
-  );
-  useEffect(() => {
-    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const updateMotion = () => setSystemReduced(media.matches);
-    const updateVisibility = () => setPageVisible(!document.hidden);
-    const hide = () => setPageVisible(false);
-    updateMotion();
-    media.addEventListener('change', updateMotion);
-    document.addEventListener('visibilitychange', updateVisibility);
-    window.addEventListener('pagehide', hide);
-    window.addEventListener('pageshow', updateVisibility);
-    return () => {
-      media.removeEventListener('change', updateMotion);
-      document.removeEventListener('visibilitychange', updateVisibility);
-      window.removeEventListener('pagehide', hide);
-      window.removeEventListener('pageshow', updateVisibility);
-    };
-  }, []);
-  return { systemReduced, pageVisible };
-}
 
 /** Trusted, bundled companions only. This is not a third-party skin renderer. */
 export function BuiltinSkinCompanion({ preview = false }: { preview?: boolean }) {
@@ -66,13 +38,17 @@ function SkinScene({
   preview: boolean;
 }) {
   const { t } = useTranslation();
-  const { activeInstanceId, isRunning, status, userReduced } = useAppStore(
+  const { activeInstanceId, isRunning, status, userReduced, enabledCount } = useAppStore(
     useShallow((state) => ({
       activeInstanceId: state.activeInstanceId,
       isRunning: !!state.instances.find((instance) => instance.id === state.activeInstanceId)
         ?.isRunning,
       status: state.activeInstanceId ? state.instanceTaskStatus[state.activeInstanceId] : null,
       userReduced: state.skinReducedMotion,
+      enabledCount:
+        state.instances
+          .find((instance) => instance.id === state.activeInstanceId)
+          ?.selectedTasks.filter((task) => task.enabled).length ?? 0,
     })),
   );
   const taskState = preview ? 'idle' : getSkinTaskState(isRunning, status);
@@ -161,45 +137,69 @@ function SkinScene({
       data-builtin-skin={skinId}
       data-task-state={taskState}
       data-reduced-motion={reduced}
+      data-scene-motion={!pageVisible ? 'paused' : reduced ? 'reduced' : 'full'}
+      data-interacting={hasInteraction}
     >
-      <div className={`builtin-skin__art builtin-skin__art--${skinId}`} aria-hidden="true">
-        <img
-          src={skinId === 'deepseek' ? deepseekPose : laughing ? naiwaStill : naiwaCalm}
-          alt=""
-          draggable={false}
-        />
-        <video
-          ref={videoRef}
-          src={skinId === 'naiwa' ? naiwaClip : deepseekClip}
-          poster={skinId === 'naiwa' ? naiwaStill : deepseekPose}
-          className={performing ? 'builtin-skin__video is-playing' : 'builtin-skin__video'}
-          muted
-          loop
-          playsInline
-          preload="metadata"
-          onError={() => setVideoFailed(true)}
-        />
+      <div className="builtin-skin__scenery" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+        <svg viewBox="0 0 640 160" preserveAspectRatio="none">
+          <path d="M0 60 Q160 0 320 70 T640 70 V160 H0Z" />
+          <path d="M0 100 Q160 35 320 110 T640 110 V160 H0Z" />
+        </svg>
       </div>
       <div className="builtin-skin__copy">
+        <div className="builtin-skin__eyebrow">
+          <span className="builtin-skin__signal" aria-hidden="true" />
+          {t(skinId === 'deepseek' ? 'settings.skinDeepseek' : 'settings.skinNaiwa')}
+        </div>
+        <h2>{t(skinId === 'deepseek' ? 'skin.deepseekScene' : 'skin.naiwaScene')}</h2>
         <div className="builtin-skin__heading">
-          <strong>
-            {t(skinId === 'deepseek' ? 'settings.skinDeepseek' : 'settings.skinNaiwa')}
-          </strong>
-          <span role="status" aria-live="polite">
+          <span className="builtin-skin__state" role="status" aria-live="polite">
+            <span aria-hidden="true" />
             {t(`skin.state.${taskState}`)}
           </span>
+          {!preview && (
+            <span className="builtin-skin__count">
+              {t('skin.taskCount', { count: enabledCount })}
+            </span>
+          )}
         </div>
+        <button
+          type="button"
+          className="builtin-skin__interact"
+          onClick={interact}
+          aria-pressed={hasInteraction}
+          disabled={!interactionAllowed}
+        >
+          <span aria-hidden="true">{skinId === 'deepseek' ? '+' : '▷'}</span>
+          {t(skinId === 'deepseek' ? 'skin.feed' : 'skin.poke')}
+        </button>
         {reduced && <small>{t('skin.reducedMotion')}</small>}
       </div>
-      <button
-        type="button"
-        className="builtin-skin__interact"
-        onClick={interact}
-        aria-pressed={hasInteraction}
-        disabled={!interactionAllowed}
-      >
-        {t(skinId === 'deepseek' ? 'skin.feed' : 'skin.poke')}
-      </button>
+      <div className="builtin-skin__stage">
+        <span className="builtin-skin__orbit" aria-hidden="true" />
+        <div className={`builtin-skin__art builtin-skin__art--${skinId}`} aria-hidden="true">
+          <img
+            src={skinId === 'deepseek' ? deepseekPose : laughing ? naiwaStill : naiwaCalm}
+            alt=""
+            draggable={false}
+          />
+          <video
+            ref={videoRef}
+            src={skinId === 'naiwa' ? naiwaClip : deepseekClip}
+            poster={skinId === 'naiwa' ? naiwaStill : deepseekPose}
+            className={performing ? 'builtin-skin__video is-playing' : 'builtin-skin__video'}
+            muted
+            loop
+            playsInline
+            preload="metadata"
+            onError={() => setVideoFailed(true)}
+          />
+        </div>
+        <span className="builtin-skin__stage-mark" aria-hidden="true" />
+      </div>
     </section>
   );
 }

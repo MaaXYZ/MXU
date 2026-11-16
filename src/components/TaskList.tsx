@@ -511,7 +511,10 @@ export function TaskList() {
 
   if (!instance) {
     return (
-      <div className="flex-1 flex items-center justify-center text-text-muted">
+      <div
+        data-skin-slot="task-list"
+        className="flex-1 flex items-center justify-center text-text-muted"
+      >
         {t('taskList.noTasks')}
       </div>
     );
@@ -534,7 +537,11 @@ export function TaskList() {
   if (!hasVisibleTasks && !showPreActions) {
     return (
       <>
-        <div className="flex-1 overflow-y-auto" onContextMenu={handleListContextMenu}>
+        <div
+          data-skin-slot="task-list"
+          className="flex-1 overflow-y-auto"
+          onContextMenu={handleListContextMenu}
+        >
           {hasPresets ? (
             <PresetSelector instanceId={instance.id} presets={presets} />
           ) : (
@@ -557,6 +564,7 @@ export function TaskList() {
     return (
       <>
         <div
+          data-skin-slot="task-list"
           className="flex-1 flex flex-col overflow-y-auto p-3 gap-2"
           onContextMenu={handleListContextMenu}
         >
@@ -610,6 +618,7 @@ export function TaskList() {
     <>
       <div
         ref={scrollContainerRef}
+        data-skin-slot="task-list"
         className="flex-1 overflow-y-auto overflow-x-hidden p-3"
         onClick={() => showAddTaskPanel && setShowAddTaskPanel(false)}
         onContextMenu={handleListContextMenu}

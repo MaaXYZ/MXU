@@ -832,6 +832,7 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
     return (
       <div
         ref={setRefs}
+        data-skin-slot="task-item"
         style={style}
         onContextMenu={handleContextMenu}
         className={clsx(
@@ -867,6 +868,7 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
   return (
     <div
       ref={setRefs}
+      data-skin-slot="task-item"
       style={style}
       onContextMenu={handleContextMenu}
       className={clsx(

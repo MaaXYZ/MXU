@@ -51,6 +51,9 @@ export default {
 
   // 設定
   skin: {
+    deepseekScene: '白飯海岸',
+    naiwaScene: '奶油池塘',
+    taskCount: '{{count}} 項任務已啟用',
     regionLabel: '造型夥伴',
     state: {
       idle: '待命中',
@@ -84,7 +87,7 @@ export default {
     accentColor: '強調色',
     themeSystem: '系統',
     skin: '內建造型',
-    skinHint: '選擇任務畫面的角色外觀。選擇預設可隱藏角色。',
+    skinHint: '一起切換整個介面的配色、面板、角色場景與動效。預設可恢復原有外觀。',
     skinAssetLicense: '素材來源與授權',
     skinDefault: '預設',
     skinDeepseek: '藍色大肥魚',

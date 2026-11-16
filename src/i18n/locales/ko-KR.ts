@@ -52,6 +52,9 @@ export default {
 
   // 설정
   skin: {
+    deepseekScene: '흰쌀밥 해변',
+    naiwaScene: '크림 연못',
+    taskCount: '활성 작업 {{count}}개',
     regionLabel: '스킨 친구',
     state: {
       idle: '대기 중',
@@ -85,7 +88,8 @@ export default {
     accentColor: '강조 색상',
     themeSystem: '시스템 설정',
     skin: '기본 제공 스킨',
-    skinHint: '작업 화면의 캐릭터 스킨을 선택합니다. 기본값을 선택하면 캐릭터가 숨겨집니다.',
+    skinHint:
+      '전체 화면의 색상, 패널, 캐릭터 장면과 동작을 함께 변경합니다. 기본값을 선택하면 원래 모습으로 돌아갑니다.',
     skinAssetLicense: '소재 출처 및 라이선스',
     skinDefault: '기본값',
     skinDeepseek: '파란 뚱보 고래',

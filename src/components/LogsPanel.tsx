@@ -227,6 +227,7 @@ export function LogsPanel() {
   return (
     <div
       id="logs-panel"
+      data-skin-slot="logs"
       className={clsx(
         'flex flex-col bg-bg-secondary rounded-lg ring-1 ring-inset ring-border overflow-hidden',
         // 2.5rem = TabBar h-10；若 TabBar 高度变更需同步更新
@@ -341,6 +342,7 @@ export function LogsPanel() {
                 {log.html ? (
                   // 富文本内容（focus 消息支持 Markdown/HTML）
                   <div
+                    data-log-type={log.type}
                     className={clsx(
                       'py-1.5 px-2 rounded-md flex items-start gap-3',
                       getLogColor(log.type),
@@ -356,6 +358,7 @@ export function LogsPanel() {
                   </div>
                 ) : (
                   <div
+                    data-log-type={log.type}
                     className={clsx(
                       'py-1.5 px-2 rounded-md flex items-start gap-3',
                       getLogColor(log.type),

@@ -1539,6 +1539,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
 
   return (
     <div
+      data-skin-slot="toolbar"
       className={clsx(
         'flex items-center justify-between px-3 py-2 bg-bg-secondary border-t border-border',
         className,
@@ -1559,7 +1560,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
           title={allEnabled ? t('taskList.deselectAll') : t('taskList.selectAll')}
         >
           {allEnabled ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
-          <span className="hidden sm:inline">
+          <span data-skin-slot="toolbar-label" className="hidden sm:inline">
             {allEnabled ? t('taskList.deselectAll') : t('taskList.selectAll')}
           </span>
         </button>
@@ -1581,7 +1582,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
           ) : (
             <ChevronsUpDown className="w-4 h-4" />
           )}
-          <span className="hidden sm:inline">
+          <span data-skin-slot="toolbar-label" className="hidden sm:inline">
             {anyExpanded ? t('taskList.collapseAll') : t('taskList.expandAll')}
           </span>
         </button>
@@ -1589,6 +1590,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
         {/* 添加任务 */}
         <button
           id="add-task-button"
+          data-skin-tone={showAddPanel ? 'accent' : undefined}
           onClick={onToggleAddPanel}
           className={clsx(
             'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm transition-colors',
@@ -1599,7 +1601,9 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
           title={t('taskList.addTask')}
         >
           <Plus className="w-4 h-4" />
-          <span className="hidden sm:inline">{t('taskList.addTask')}</span>
+          <span data-skin-slot="toolbar-label" className="hidden sm:inline">
+            {t('taskList.addTask')}
+          </span>
         </button>
       </div>
 

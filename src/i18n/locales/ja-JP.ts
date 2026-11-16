@@ -52,6 +52,9 @@ export default {
 
   // 設定
   skin: {
+    deepseekScene: '白ごはん海岸',
+    naiwaScene: 'クリームの池',
+    taskCount: '{{count}} 件のタスクが有効',
     regionLabel: 'スキンの仲間',
     state: {
       idle: '待機中',
@@ -85,7 +88,8 @@ export default {
     accentColor: 'アクセントカラー',
     themeSystem: 'システムに従う',
     skin: '内蔵スキン',
-    skinHint: 'タスク画面のキャラクタースキンを選択します。「デフォルト」で非表示になります。',
+    skinHint:
+      '画面全体の配色、パネル、キャラクターシーン、アニメーションを切り替えます。デフォルトで元の外観に戻せます。',
     skinAssetLicense: '素材の出典とライセンス',
     skinDefault: 'デフォルト',
     skinDeepseek: '青い太っちょクジラ',

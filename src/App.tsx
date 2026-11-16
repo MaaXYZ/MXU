@@ -19,6 +19,7 @@ import {
 } from '@/components';
 import { BackgroundOverlay } from '@/components/BackgroundOverlay';
 import { BuiltinSkinCompanion } from '@/components/skins/BuiltinSkinCompanion';
+import { BuiltinSkinShell } from '@/components/skins/BuiltinSkinShell';
 import { isAllowedSettingsHotkey } from '@/components/FormControls';
 import type { BadPathType } from '@/components';
 import {
@@ -155,7 +156,7 @@ const LazyVersionWarningModal = lazy(async () => {
   return { default: module.VersionWarningModal };
 });
 
-function App() {
+function AppContent() {
   const [loadingState, setLoadingState] = useState<LoadingState>('loading');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [versionWarning, setVersionWarning] = useState<{ current: string; minimum: string } | null>(
@@ -1994,6 +1995,7 @@ function App() {
   if (currentPage === 'settings') {
     return (
       <div
+        data-skin-slot="app"
         className={`h-full flex flex-col bg-bg-primary relative ${backgroundImageDataUrl ? 'has-background-image' : ''}`}
       >
         <BackgroundOverlay imageDataUrl={backgroundImageDataUrl} opacity={backgroundOpacity} />
@@ -2077,6 +2079,7 @@ function App() {
   // 主页面
   return (
     <div
+      data-skin-slot="app"
       className={`h-full flex flex-col bg-bg-primary relative ${backgroundImageDataUrl ? 'has-background-image' : ''}`}
     >
       <BackgroundOverlay imageDataUrl={backgroundImageDataUrl} opacity={backgroundOpacity} />
@@ -2156,9 +2159,14 @@ function App() {
           </div>
         ) : isMobile ? (
           /* 移动端竖屏布局：单列纵向堆叠 */
-          <div key="main-view-mobile" className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div
+            key="main-view-mobile"
+            data-skin-slot="workspace"
+            className="flex-1 flex flex-col min-h-0 overflow-hidden"
+          >
             {/* 可滚动主内容区 */}
-            <div className="flex-1 overflow-y-auto">
+            <div data-skin-slot="mobile-scroll" className="flex-1 overflow-y-auto">
+              <BuiltinSkinCompanion />
               {/* 连接设置 */}
               <div className="p-2">
                 <ConnectionPanel />
@@ -2183,7 +2191,6 @@ function App() {
               </div>
 
               {/* 工具栏（任务列表下方） */}
-              <BuiltinSkinCompanion />
               <Toolbar
                 showAddPanel={showAddTaskPanel}
                 onToggleAddPanel={() => setShowAddTaskPanel(!showAddTaskPanel)}
@@ -2210,12 +2217,16 @@ function App() {
           </div>
         ) : (
           /* 桌面端横向分栏布局 */
-          <div key="main-view" className="flex-1 flex overflow-hidden">
+          <div key="main-view" data-skin-slot="workspace" className="flex-1 flex overflow-hidden">
             {/* 左侧任务列表区 */}
             <div
+              data-skin-slot="task-panel"
               className="flex-1 flex flex-col border-r border-border"
-              style={{ minWidth: MIN_LEFT_PANEL_WIDTH }}
+              style={{
+                minWidth: `min(${MIN_LEFT_PANEL_WIDTH}px, var(--skin-task-min-width, ${MIN_LEFT_PANEL_WIDTH}px))`,
+              }}
             >
+              <BuiltinSkinCompanion />
               {/* 任务列表 */}
               <TaskList />
 
@@ -2230,7 +2241,6 @@ function App() {
               </div>
 
               {/* 底部工具栏 */}
-              <BuiltinSkinCompanion />
               <Toolbar
                 showAddPanel={showAddTaskPanel}
                 onToggleAddPanel={() => setShowAddTaskPanel(!showAddTaskPanel)}
@@ -2250,6 +2260,7 @@ function App() {
             {/* 右侧信息面板 */}
             {!rightPanelCollapsed && (
               <div
+                data-skin-slot="sidebar"
                 className={`flex flex-col p-3 bg-bg-primary overflow-x-hidden border-l border-transparent ${sidePanelExpanded ? 'gap-3 overflow-y-auto' : 'overflow-hidden'}`}
                 style={{
                   width: rightPanelWidth,
@@ -2284,4 +2295,10 @@ function App() {
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <BuiltinSkinShell>
+      <AppContent />
+    </BuiltinSkinShell>
+  );
+}

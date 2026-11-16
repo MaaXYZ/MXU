@@ -20,6 +20,7 @@ import { BuiltinSkinCompanion } from '@/components/skins/BuiltinSkinCompanion';
 import deepseekThumbnail from '@/assets/skins/deepseek.png';
 import naiwaThumbnail from '@/assets/skins/naiwa-calm.png';
 import deepseekLicense from '@/assets/skins/LICENSE.deepseek.txt?raw';
+import '@/components/skins/choices.css';
 
 interface AppearanceSectionProps {
   onOpenCreateAccentModal: () => void;
@@ -166,6 +167,7 @@ export function AppearanceSection({
             <button
               key={id}
               type="button"
+              data-skin-choice={id}
               aria-pressed={skinId === id}
               onClick={() => setSkinId(id)}
               className={clsx(
@@ -175,19 +177,44 @@ export function AppearanceSection({
                   : 'border-border bg-bg-tertiary text-text-secondary hover:bg-bg-hover',
               )}
             >
-              <span className="flex h-20 w-full items-center justify-center" aria-hidden="true">
-                {id === 'default' ? (
-                  <Palette className="h-10 w-10 text-text-muted" />
-                ) : (
-                  <img
-                    src={id === 'deepseek' ? deepseekThumbnail : naiwaThumbnail}
-                    alt=""
-                    className={clsx(
-                      'pointer-events-none h-full max-w-full',
-                      id === 'deepseek' ? 'w-20 object-cover' : 'object-contain',
+              <span className="skin-choice-preview" aria-hidden="true">
+                <span className="skin-choice-preview__title">
+                  <i />
+                  <i />
+                  <i />
+                </span>
+                <span className="skin-choice-preview__tabs">
+                  <i />
+                  <i />
+                </span>
+                <span className="skin-choice-preview__workspace">
+                  <span className="skin-choice-preview__tasks">
+                    {id !== 'default' && (
+                      <span className="skin-choice-preview__hero">
+                        <span>
+                          <i />
+                          <i />
+                        </span>
+                        <img
+                          src={id === 'deepseek' ? deepseekThumbnail : naiwaThumbnail}
+                          alt=""
+                          draggable={false}
+                        />
+                      </span>
                     )}
-                  />
-                )}
+                    <span className="skin-choice-preview__row" />
+                    <span className="skin-choice-preview__row" />
+                    <span className="skin-choice-preview__row" />
+                    <span className="skin-choice-preview__toolbar">
+                      <i />
+                    </span>
+                  </span>
+                  <span className="skin-choice-preview__sidebar">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                </span>
               </span>
               <span className="text-center">
                 {t(

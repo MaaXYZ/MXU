@@ -525,7 +525,10 @@ export function ScreenshotPanel() {
   ]);
 
   return (
-    <div className="bg-bg-secondary rounded-lg ring-1 ring-inset ring-border overflow-hidden">
+    <div
+      data-skin-slot="screenshot"
+      className="bg-bg-secondary rounded-lg ring-1 ring-inset ring-border overflow-hidden"
+    >
       {/* 标题栏（可点击折叠） */}
       <div
         role="button"

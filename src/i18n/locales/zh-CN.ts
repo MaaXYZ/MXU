@@ -51,6 +51,9 @@ export default {
   },
 
   skin: {
+    deepseekScene: '白饭海岸',
+    naiwaScene: '奶油池塘',
+    taskCount: '{{count}} 项任务已启用',
     regionLabel: '皮肤伙伴',
     state: {
       idle: '待机中',
@@ -84,7 +87,7 @@ export default {
     themeDark: '深色',
     themeSystem: '系统',
     skin: '内置皮肤',
-    skinHint: '选择任务界面的角色皮肤。选择默认可隐藏角色。',
+    skinHint: '整套界面的配色、面板、角色场景与动效一起切换。默认可恢复原有外观。',
     skinAssetLicense: '素材来源与许可',
     skinDefault: '默认',
     skinDeepseek: '蓝色大肥鱼',

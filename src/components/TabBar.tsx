@@ -378,7 +378,10 @@ export function TabBar() {
   }, [dragState.isDragging, handleMouseMove, handleMouseUp]);
 
   return (
-    <div className="flex items-center h-10 bg-bg-secondary border-b border-border select-none">
+    <div
+      data-skin-slot="tabs"
+      className="flex items-center h-10 bg-bg-secondary border-b border-border select-none"
+    >
       {/* 标签页区域 */}
       <div id="tab-bar-area" className="flex-1 flex items-center h-full overflow-x-auto">
         {instances.map((instance, index) => {
@@ -388,6 +391,8 @@ export function TabBar() {
           return (
             <div
               key={instance.id}
+              data-skin-slot="tab"
+              data-active={instance.id === activeInstanceId}
               ref={(el) => {
                 if (el) tabRefs.current.set(instance.id, el);
                 else tabRefs.current.delete(instance.id);
