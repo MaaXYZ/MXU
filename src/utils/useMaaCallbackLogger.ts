@@ -12,7 +12,8 @@ import { maaService, type MaaCallbackDetails } from '@/services/maaService';
 import { useAppStore, type LogType } from '@/stores/appStore';
 import { loggers } from '@/utils/logger';
 import i18n, { getInterfaceLangKey } from '@/i18n';
-import { getMxuSpecialTask } from '@/types/specialTasks';
+import { getMxuSpecialTask, MXU_POWER_ENTRY } from '@/types/specialTasks';
+import { flushPendingRuntimeLogs } from '@/utils/runtimeLogPersistence';
 import { isTauri } from '@/utils/paths';
 import { isDesktopWindowControllerType, getLinuxDeviceName } from '@/utils/controller';
 import * as wsService from '@/services/wsService';
@@ -507,6 +508,10 @@ function handleCallback(
           name: taskName || details.entry || '',
         }),
       });
+      // 电源操作（如关机）会直接结束进程，提前写入日志避免丢失
+      if (details.entry === MXU_POWER_ENTRY) {
+        flushPendingRuntimeLogs();
+      }
       break;
     }
 

@@ -62,6 +62,13 @@ function flushPersistedLogsWrite(): void {
   }
 }
 
+/** 立即写入尚在防抖/空闲等待中的运行日志，用于关机等进程即将结束的场景 */
+export function flushPendingRuntimeLogs(): void {
+  if (pendingPersistedLogsPayload === null) return;
+  clearPendingPersistedLogsWrite();
+  flushPersistedLogsWrite();
+}
+
 function schedulePersistedLogsWrite(payload: PersistedRuntimeLogs): void {
   pendingPersistedLogsPayload = JSON.stringify(payload);
   clearPendingPersistedLogsWrite();
