@@ -3,14 +3,12 @@ import { useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   DndContext,
-  closestCenter,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
   DragEndEvent,
   type Modifier,
-  type CollisionDetection,
   type KeyboardCoordinateGetter,
 } from '@dnd-kit/core';
 import {
@@ -60,31 +58,7 @@ import { loggers } from '@/utils/logger';
 import { toast } from 'sonner';
 import clsx from 'clsx';
 import { getAllMxuSpecialTasks, getAllMxuSpecialTasksOptions } from '@/types/specialTasks.ts';
-
-/** A winding single-column route still orders by Y, regardless of decorative X offsets. */
-const closestVerticalCenter: CollisionDetection = ({
-  collisionRect,
-  droppableRects,
-  droppableContainers,
-}) => {
-  const center = collisionRect.top + collisionRect.height / 2;
-  return droppableContainers
-    .flatMap((container) => {
-      const rect = droppableRects.get(container.id);
-      return rect
-        ? [
-            {
-              id: container.id,
-              data: {
-                droppableContainer: container,
-                value: Math.abs(center - rect.top - rect.height / 2),
-              },
-            },
-          ]
-        : [];
-    })
-    .sort((a, b) => a.data.value - b.data.value);
-};
+import { taskCollisionDetection, verticalTaskCollisionDetection } from '@/utils/taskSorting';
 
 const verticalKeyboardCoordinates: KeyboardCoordinateGetter = (event, args) => {
   const { collisionRect, droppableRects } = args.context;
@@ -623,7 +597,9 @@ export function TaskList() {
           {showPreActions && (
             <DndContext
               sensors={sensors}
-              collisionDetection={skinId === 'naiwa' ? closestVerticalCenter : closestCenter}
+              collisionDetection={
+                skinId === 'naiwa' ? verticalTaskCollisionDetection : taskCollisionDetection
+              }
               onDragEnd={handlePreActionDragEnd}
               modifiers={[restrictHorizontalMovement]}
             >
@@ -680,7 +656,9 @@ export function TaskList() {
           {pretaskTasks.length > 0 && (
             <DndContext
               sensors={sensors}
-              collisionDetection={skinId === 'naiwa' ? closestVerticalCenter : closestCenter}
+              collisionDetection={
+                skinId === 'naiwa' ? verticalTaskCollisionDetection : taskCollisionDetection
+              }
               onDragEnd={handleDragEnd}
               modifiers={[restrictHorizontalMovement]}
             >
@@ -701,7 +679,9 @@ export function TaskList() {
           {showPreActions && (
             <DndContext
               sensors={sensors}
-              collisionDetection={skinId === 'naiwa' ? closestVerticalCenter : closestCenter}
+              collisionDetection={
+                skinId === 'naiwa' ? verticalTaskCollisionDetection : taskCollisionDetection
+              }
               onDragEnd={handlePreActionDragEnd}
               modifiers={[restrictHorizontalMovement]}
             >
@@ -731,7 +711,9 @@ export function TaskList() {
           {/* 任务列表 */}
           <DndContext
             sensors={sensors}
-            collisionDetection={skinId === 'naiwa' ? closestVerticalCenter : closestCenter}
+            collisionDetection={
+              skinId === 'naiwa' ? verticalTaskCollisionDetection : taskCollisionDetection
+            }
             onDragEnd={handleDragEnd}
             modifiers={[restrictHorizontalMovement]}
           >
