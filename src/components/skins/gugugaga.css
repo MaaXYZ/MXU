@@ -1,0 +1,301 @@
+/* Gugugaga: decorates the standard layout instead of rearranging it.
+ * Host accent and semantic status colours stay untouched; decorations never take pointer events. */
+:is(.skin-shell, body)[data-mxu-skin='gugugaga'] {
+  --color-bg-primary: #eaf1f8;
+  --color-bg-secondary: #ffffff;
+  --color-bg-tertiary: #f2f6fa;
+  --color-bg-hover: #e6edf5;
+  --color-bg-active: #d9e4ef;
+  --color-text-primary: #22272f;
+  --color-text-secondary: #4c5563;
+  --color-text-tertiary: #636c7b;
+  --color-text-muted: #727c8b;
+  --color-border: #d8e1ea;
+  --color-border-strong: #aebccb;
+  --shadow-sm: 0 1px 2px #5b738d14;
+  --shadow-md: 0 1px 2px #5b738d14, 0 8px 22px #5b738d14;
+  --shadow-lg: 0 18px 48px #5b738d26;
+  --skin-color: #f4aa2a;
+  --skin-highlight: #ffd76a;
+  --skin-ink: #5a3500;
+  --skin-hero-bg: #fff7e6;
+  --skin-panel: #fffffff2;
+  --skin-panel-edge: #ffffff;
+  --skin-scene-line: #c9d8e7;
+  --skin-scene-glow: #ffdc8a;
+  --gugugaga-snow: #ffffff;
+  --gugugaga-mound: #e3ecf5;
+  --gugugaga-outline: none;
+}
+
+html.dark :is(.skin-shell, body)[data-mxu-skin='gugugaga'] {
+  --color-bg-primary: #121923;
+  --color-bg-secondary: #1f2733;
+  --color-bg-tertiary: #273040;
+  --color-bg-hover: #2f3949;
+  --color-bg-active: #384355;
+  --color-text-primary: #eef2f7;
+  --color-text-secondary: #b9c2ce;
+  --color-text-tertiary: #a3adba;
+  --color-text-muted: #95a0ae;
+  --color-border: #323d4d;
+  --color-border-strong: #4d5a6d;
+  --shadow-sm: 0 2px 6px #0003;
+  --shadow-md: 0 8px 22px #0005;
+  --shadow-lg: 0 18px 60px #0006;
+  --skin-color: #ffb547;
+  --skin-highlight: #ffd37a;
+  --skin-ink: #ffe1a8;
+  --skin-hero-bg: #273040;
+  --skin-panel: #1f2733f2;
+  --skin-panel-edge: #3a4659;
+  --skin-scene-line: #2a3546;
+  --skin-scene-glow: #2fd3a7;
+  --gugugaga-snow: #3a4a60;
+  --gugugaga-mound: #263345;
+  /* Black plush outfit needs a light rim on dark surfaces. */
+  --gugugaga-outline: drop-shadow(0 0 1.5px #ffffffb0) drop-shadow(0 0 8px #ffd27a33);
+}
+
+/* ---------- Atmosphere: snowy morning / polar night ---------- */
+
+[data-mxu-skin='gugugaga'] > .skin-atmosphere {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1280 120' preserveAspectRatio='none'%3E%3Cpath d='M0 70 Q200 30 420 66 T860 58 T1280 50 V120 H0Z' fill='%23ffffff' fill-opacity='.7'/%3E%3Cpath d='M0 96 Q260 62 560 92 T1280 84 V120 H0Z' fill='%23ffffff' fill-opacity='.9'/%3E%3C/svg%3E")
+      bottom / 100% 120px no-repeat,
+    radial-gradient(ellipse 45% 35% at 90% -5%, #ffdc8a55, transparent 70%),
+    linear-gradient(180deg, #f3f7fb 0%, #e6eef7 60%, #dde8f3 100%);
+}
+
+[data-mxu-skin='gugugaga'] > .skin-atmosphere::after {
+  inset: 0;
+  background-image: radial-gradient(#c8d7e6 1.6px, transparent 1.8px);
+  background-size: 26px 26px;
+  opacity: 0.45;
+  mask-image: linear-gradient(180deg, #000, transparent 30%);
+}
+
+html.dark [data-mxu-skin='gugugaga'] > .skin-atmosphere {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1280 120' preserveAspectRatio='none'%3E%3Cpath d='M0 70 Q200 30 420 66 T860 58 T1280 50 V120 H0Z' fill='%23223042' fill-opacity='.4'/%3E%3Cpath d='M0 96 Q260 62 560 92 T1280 84 V120 H0Z' fill='%2326354a' fill-opacity='.6'/%3E%3C/svg%3E")
+      bottom / 100% 120px no-repeat,
+    linear-gradient(180deg, #0f1520 0%, #141b27 55%, #182131 100%);
+}
+
+/* Aurora */
+html.dark [data-mxu-skin='gugugaga'] > .skin-atmosphere::before {
+  inset: -80px -40px auto;
+  height: 300px;
+  filter: blur(46px);
+  background:
+    radial-gradient(ellipse 30% 45% at 20% 50%, #2fd3a755, transparent 70%),
+    radial-gradient(ellipse 35% 40% at 55% 30%, #3aa6ff40, transparent 70%),
+    radial-gradient(ellipse 25% 40% at 85% 60%, #a77bff35, transparent 70%);
+}
+
+html.dark [data-mxu-skin='gugugaga'] > .skin-atmosphere::after {
+  background-image: radial-gradient(#ffffff 1px, transparent 1.4px);
+  background-size: 37px 41px;
+  opacity: 0.25;
+}
+
+[data-mxu-skin='gugugaga'] .skin-atmosphere__orb,
+[data-mxu-skin='gugugaga'] .skin-atmosphere__waves {
+  display: none;
+}
+
+/* ---------- Standard layout surfaces ---------- */
+
+.skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='titlebar'] {
+  background: color-mix(in srgb, var(--color-bg-secondary) 80%, transparent);
+}
+
+.skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='tabs'] {
+  position: relative;
+  z-index: 2;
+  background: transparent;
+  border-bottom-color: transparent;
+}
+
+.skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='tabs-list'] {
+  gap: 6px;
+  padding-inline: 10px;
+}
+
+.skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='tab'] {
+  height: 30px;
+  border-radius: 999px;
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+  background: color-mix(in srgb, var(--color-bg-secondary) 70%, transparent);
+  box-shadow: var(--shadow-sm);
+}
+
+.skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='tab']:hover {
+  background: var(--color-bg-secondary);
+}
+
+.skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='tab'][data-active='true'] {
+  background: color-mix(in srgb, var(--color-accent) 16%, var(--color-bg-secondary));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, transparent),
+    0 4px 12px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+.skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='tabs-new'] {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+}
+
+.skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='sidebar'] {
+  background: transparent;
+}
+
+.skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='task-panel'] {
+  margin: 4px 0 12px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--color-bg-secondary) 45%, transparent);
+}
+
+.skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='task-panel'] [data-skin-slot='toolbar'] {
+  background: transparent;
+  border-radius: 0 0 20px 20px;
+}
+
+.skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='task-item'] {
+  border-radius: 14px;
+  box-shadow: var(--shadow-md);
+}
+
+.skin-shell[data-mxu-skin='gugugaga']
+  :is([data-skin-slot='connection'], [data-skin-slot='screenshot'], [data-skin-slot='logs']) {
+  border-radius: 16px;
+  box-shadow:
+    inset 0 0 0 1px var(--color-border),
+    var(--shadow-md);
+}
+
+.skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='start-button'] {
+  border-radius: 999px;
+  padding-inline: 20px;
+}
+
+/* ---------- Characters ---------- */
+
+/* Peeking over the tab bar, beside the project name. Space is reserved so tabs never sit under it. */
+.skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='tabs-project'] {
+  position: relative;
+  margin-left: 70px;
+}
+
+.skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='tabs-project']::before {
+  content: '';
+  position: absolute;
+  right: calc(100% + 2px);
+  bottom: -14px;
+  width: 64px;
+  height: 52px;
+  background: url('../../assets/skins/gugugaga-peek.webp') center bottom / contain no-repeat;
+  filter: var(--gugugaga-outline);
+  pointer-events: none;
+}
+
+/* With the custom title bar the character can lean into it. */
+.skin-shell[data-mxu-skin='gugugaga']:has([data-skin-slot='titlebar'])
+  [data-skin-slot='tabs-project'] {
+  margin-left: 96px;
+}
+
+.skin-shell[data-mxu-skin='gugugaga']:has([data-skin-slot='titlebar'])
+  [data-skin-slot='tabs-project']::before {
+  width: 92px;
+  height: 76px;
+}
+
+/* Beside the start button; the pose follows the active instance's task state. */
+.skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='start-button'] {
+  position: relative;
+  margin-right: 60px;
+}
+
+.skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='start-button']::after {
+  content: '';
+  position: absolute;
+  left: calc(100% + 2px);
+  bottom: -10px;
+  width: 58px;
+  height: 74px;
+  background:
+    var(--gugugaga-pose, url('../../assets/skins/gugugaga-idle.webp')) center bottom 4px / auto 66px
+      no-repeat,
+    radial-gradient(ellipse 27px 6px at 50% calc(100% - 6px), var(--gugugaga-snow) 55%, transparent)
+      no-repeat;
+  filter: var(--gugugaga-outline);
+  pointer-events: none;
+}
+
+.skin-shell[data-mxu-skin='gugugaga'][data-task-state='running'] {
+  --gugugaga-pose: url('../../assets/skins/gugugaga-cheer.webp');
+}
+
+.skin-shell[data-mxu-skin='gugugaga'][data-task-state='success'] {
+  --gugugaga-pose: url('../../assets/skins/gugugaga-laugh.webp');
+}
+
+.skin-shell[data-mxu-skin='gugugaga'][data-task-state='error'] {
+  --gugugaga-pose: url('../../assets/skins/gugugaga-sad.webp');
+}
+
+/* Sitting in the log corner. Log content keeps clear of it when scrolled to the end. */
+.skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='logs'] {
+  position: relative;
+}
+
+.skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='log-scroll'] {
+  padding-bottom: 84px;
+}
+
+.skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='logs']::after {
+  content: '';
+  position: absolute;
+  right: 8px;
+  bottom: 4px;
+  width: 76px;
+  height: 84px;
+  background:
+    url('../../assets/skins/gugugaga-sit.webp') center bottom 6px / auto 76px no-repeat,
+    radial-gradient(ellipse 36px 7px at 50% calc(100% - 7px), var(--gugugaga-snow) 55%, transparent)
+      no-repeat;
+  filter: var(--gugugaga-outline);
+  pointer-events: none;
+}
+
+/* Settings preview */
+.builtin-skin--gugugaga .builtin-skin__plinth {
+  background: radial-gradient(ellipse at 50% 35%, var(--gugugaga-snow), var(--gugugaga-mound) 70%);
+  box-shadow: none;
+}
+
+.builtin-skin__art--gugugaga {
+  filter: var(--gugugaga-outline);
+}
+
+@media (max-width: 639px) {
+  .skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='start-button'] {
+    margin-right: 0;
+  }
+
+  .skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='start-button']::after {
+    display: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='tabs-project']::before,
+  .skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='start-button']::after,
+  .skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='logs']::after {
+    display: none;
+  }
+}

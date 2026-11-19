@@ -57,6 +57,7 @@ export default {
     instruments: '裝置與畫面',
     deepseekScene: '白飯潛航艙',
     naiwaScene: '奶蛙的池塘',
+    gugugagaScene: '咕咕嘎嘎雪原',
     taskCount: '{{count}} 項任務已啟用',
     regionLabel: '造型夥伴',
     state: {
@@ -67,6 +68,7 @@ export default {
     },
     feed: '餵白飯',
     poke: '播放大笑',
+    cheer: '舉手打氣',
     reducedMotion: '已減少動態效果',
   },
 
@@ -96,6 +98,7 @@ export default {
     skinDefault: '預設',
     skinDeepseek: '藍色大肥魚',
     skinNaiwa: '奶蛙',
+    skinGugugaga: '咕咕嘎嘎',
     skinReducedMotion: '減少造型動態效果',
     skinReducedMotionHint: '減少連續動作，同時遵循系統的減少動態效果設定。',
     skinPreview: '造型預覽',

@@ -36,6 +36,15 @@
   border-radius: 11px;
 }
 
+[data-skin-choice='gugugaga'] .skin-choice-preview {
+  --choice-bg: #e3ecf5;
+  --choice-panel: #ffffff;
+  --choice-line: #c3d1df;
+  --choice-mark: #f4aa2a;
+  --choice-hero: #fff3d6;
+  border-radius: 10px;
+}
+
 .dark [data-skin-choice='default'] .skin-choice-preview {
   --choice-bg: #1d2530;
   --choice-panel: #303d4b;
@@ -58,6 +67,14 @@
   --choice-line: #7c895d;
   --choice-mark: #bcd196;
   --choice-hero: #7a783a;
+}
+
+.dark [data-skin-choice='gugugaga'] .skin-choice-preview {
+  --choice-bg: #141b27;
+  --choice-panel: #1f2733;
+  --choice-line: #3a4659;
+  --choice-mark: #ffb547;
+  --choice-hero: #273040;
 }
 
 .skin-choice-preview__title {

@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeBuiltinSkinId } from '../src/skins/types.ts';
+import {
+  BUILTIN_SKIN_IDS,
+  normalizeBuiltinSkinId,
+  usesSceneWorkspace,
+} from '../src/skins/types.ts';
 import { getSkinTaskState } from '../src/components/skins/state.ts';
 import type { TaskStatus } from '../src/types/maa.ts';
 import enUS from '../src/i18n/locales/en-US.ts';
@@ -10,8 +14,7 @@ import jaJP from '../src/i18n/locales/ja-JP.ts';
 import koKR from '../src/i18n/locales/ko-KR.ts';
 
 test('skin IDs accept only bundled choices and old or unrecognized values use the default interface', () => {
-  for (const id of ['default', 'deepseek', 'naiwa'] as const)
-    assert.equal(normalizeBuiltinSkinId(id), id);
+  for (const id of BUILTIN_SKIN_IDS) assert.equal(normalizeBuiltinSkinId(id), id);
   for (const value of [
     undefined,
     null,
@@ -27,6 +30,13 @@ test('skin IDs accept only bundled choices and old or unrecognized values use th
   ]) {
     assert.equal(normalizeBuiltinSkinId(value), 'default');
   }
+});
+
+test('only scene skins replace the standard workspace layout', () => {
+  assert.deepEqual(
+    BUILTIN_SKIN_IDS.filter((id) => usesSceneWorkspace(id)),
+    ['deepseek', 'naiwa'],
+  );
 });
 
 test('skin task feedback honors active runs before old outcomes and never invents pause or cancellation facts', () => {
@@ -72,15 +82,20 @@ test('skin controls and factual task labels are translated without invented char
     assert.deepEqual(Object.keys(messages).sort(), Object.keys(expected).sort(), language);
     assert.equal(Object.hasOwn(translation.skin, 'deepseek'), false, language);
     assert.equal(Object.hasOwn(translation.skin, 'naiwa'), false, language);
+    assert.equal(Object.hasOwn(translation.skin, 'gugugaga'), false, language);
     const settings = Object.fromEntries(
       Object.entries(translation.settings).filter(([key]) => key.startsWith('skin')),
     );
     assert.deepEqual(Object.keys(settings).sort(), settingKeys, language);
     flattenStrings(settings);
+    for (const id of BUILTIN_SKIN_IDS) {
+      const key = `skin${id[0].toUpperCase()}${id.slice(1)}`;
+      assert.ok(settings[key], `${language} needs settings.${key}`);
+    }
     for (const state of ['idle', 'running', 'success', 'error']) {
       assert.ok(messages[`state.${state}`], `${language} needs an accessible ${state} label`);
     }
-    for (const key of ['feed', 'poke', 'regionLabel', 'reducedMotion'])
+    for (const key of ['feed', 'poke', 'cheer', 'regionLabel', 'reducedMotion'])
       assert.ok(messages[key], `${language} needs ${key}`);
   }
 });
