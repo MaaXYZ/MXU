@@ -180,29 +180,44 @@ pub fn run() {
                 }
             }
 
-            // 启动时异步清理 cache/old 目录（更新残留的旧文件），不阻塞应用启动
-            // 路径与更新时移入旧文件的位置一致（macOS 上数据目录与程序目录不同）
-            if let Ok(old_dir) = commands::update::get_old_dir() {
-                if old_dir.exists() {
-                    std::thread::spawn(move || {
-                        // 与全量更新互斥：更新期间 cache/old 中是回滚备份
-                        let _guard = commands::update::OLD_DIR_LOCK
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner());
+            // 启动时异步清理 cache/old 目录（安装目录旧文件与数据目录的更新包归档），
+            // 不阻塞应用启动
+            let mut old_dirs: Vec<_> = [
+                commands::update::get_old_dir(),
+                commands::update::get_data_old_dir(),
+            ]
+            .into_iter()
+            .flatten()
+            .filter(|dir| dir.exists())
+            .collect();
+            old_dirs.sort();
+            old_dirs.dedup();
+            if !old_dirs.is_empty() {
+                std::thread::spawn(move || {
+                    // 与全量更新互斥：更新期间安装目录 cache/old 中是回滚备份
+                    let _guard = commands::update::OLD_DIR_LOCK
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
+                    for old_dir in old_dirs {
                         let (deleted, failed) = commands::cleanup_dir_contents(&old_dir);
                         if deleted > 0 || failed > 0 {
                             if failed == 0 {
-                                log::info!("Cleaned up cache/old: {} items deleted", deleted);
+                                log::info!(
+                                    "Cleaned up {}: {} items deleted",
+                                    old_dir.display(),
+                                    deleted
+                                );
                             } else {
                                 log::warn!(
-                                    "Cleaned up cache/old: {} deleted, {} failed",
+                                    "Cleaned up {}: {} deleted, {} failed",
+                                    old_dir.display(),
                                     deleted,
                                     failed
                                 );
                             }
                         }
-                    });
-                }
+                    }
+                });
             }
 
             // 启动时自动加载 MaaFramework DLL
@@ -318,7 +333,7 @@ pub fn run() {
             commands::update::apply_full_update,
             commands::update::cleanup_extract_dir,
             commands::update::fallback_update,
-            commands::update::move_file_to_old,
+            commands::update::move_update_package_to_old,
             commands::update::cleanup_update_artifacts,
             commands::update::current_exe_exists,
             // 下载命令
