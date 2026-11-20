@@ -470,6 +470,8 @@ export default {
     connectionFailed: '接続に失敗しました',
     connectionSuperseded:
       'インスタンスが削除されたか、新しい接続が要求されたため、元の接続要求はキャンセルされました。',
+    dllBlockedHint:
+      'ログやダイアログに「0xc000012f」または「Windows 上で実行するように指定されていません」と表示される場合、Windows のスマート アプリ コントロールが MaaWin32ControlUnit.dll をブロックしています。「Windows セキュリティ → アプリとブラウザーの制御 → スマート アプリ コントロール」で無効にしてから再試行してください。無効でも失敗する場合は、最新の Microsoft Visual C++ 再頒布可能パッケージをインストールしてください。',
     refreshDevices: 'デバイスを更新',
     refreshWindows: 'ウィンドウを更新',
     refresh: 'デバイスを更新',
