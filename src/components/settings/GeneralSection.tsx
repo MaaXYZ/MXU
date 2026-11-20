@@ -10,6 +10,7 @@ import {
   HeartHandshake,
   ListChecks,
   Maximize2,
+  Minimize2,
   Play,
   Power,
   Rocket,
@@ -47,6 +48,8 @@ export function GeneralSection() {
     autoStartRemovedInstanceName,
     autoClearLogsOnLaunch,
     setAutoClearLogsOnLaunch,
+    minimizeOnLaunch,
+    setMinimizeOnLaunch,
     helpImproveSoftware,
     setHelpImproveSoftware,
     projectInterface,
@@ -357,6 +360,26 @@ export function GeneralSection() {
           />
         </div>
       </div>
+
+      {/* 启动后最小化 */}
+      <DesktopOnlyWrapper>
+        <div className="bg-bg-secondary rounded-xl p-4 border border-border">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Minimize2 className="w-5 h-5 text-accent" />
+              <div>
+                <span className="font-medium text-text-primary">
+                  {t('settings.minimizeOnLaunch')}
+                </span>
+                <p className="text-xs text-text-muted mt-0.5">
+                  {t('settings.minimizeOnLaunchHint')}
+                </p>
+              </div>
+            </div>
+            <SwitchButton value={minimizeOnLaunch} onChange={(v) => setMinimizeOnLaunch(v)} />
+          </div>
+        </div>
+      </DesktopOnlyWrapper>
 
       {/* ⑦ 删除确认 */}
       <div className="bg-bg-secondary rounded-xl p-4 border border-border">

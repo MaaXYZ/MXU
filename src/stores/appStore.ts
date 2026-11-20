@@ -246,6 +246,7 @@ export const useAppStore = create<AppState>()(
     confirmBeforeDelete: false,
     maxLogsPerInstance: DEFAULT_MAX_LOGS_PER_INSTANCE,
     autoClearLogsOnLaunch: false,
+    minimizeOnLaunch: false,
     helpImproveSoftware: true,
     customAccents: [],
     setTheme: (theme) => {
@@ -295,6 +296,9 @@ export const useAppStore = create<AppState>()(
     },
     setAutoClearLogsOnLaunch: (enabled) => {
       set({ autoClearLogsOnLaunch: enabled });
+    },
+    setMinimizeOnLaunch: (enabled) => {
+      set({ minimizeOnLaunch: enabled });
     },
     setHelpImproveSoftware: (enabled) => {
       // 调试 / 开发版本强制关闭，忽略开启请求
@@ -1554,6 +1558,7 @@ export const useAppStore = create<AppState>()(
         confirmBeforeDelete: config.settings.confirmBeforeDelete ?? false,
         maxLogsPerInstance: config.settings.maxLogsPerInstance ?? DEFAULT_MAX_LOGS_PER_INSTANCE,
         autoClearLogsOnLaunch: config.settings.autoClearLogsOnLaunch ?? false,
+        minimizeOnLaunch: config.settings.minimizeOnLaunch ?? false,
         scheduledUpdateCheckEnabled: config.settings.scheduledUpdateCheckEnabled === true,
         scheduledUpdateCheckTime: normalizeScheduledUpdateCheckTime(
           config.settings.scheduledUpdateCheckTime,
@@ -2583,6 +2588,7 @@ function generateConfig(): MxuConfig {
           confirmBeforeDelete: state.confirmBeforeDelete,
           maxLogsPerInstance: state.maxLogsPerInstance,
           autoClearLogsOnLaunch: state.autoClearLogsOnLaunch,
+          minimizeOnLaunch: state.minimizeOnLaunch,
           scheduledUpdateCheckEnabled: state.scheduledUpdateCheckEnabled,
           scheduledUpdateCheckTime: state.scheduledUpdateCheckTime,
           helpImproveSoftware: state.helpImproveSoftware,
@@ -2681,6 +2687,7 @@ useAppStore.subscribe(
     confirmBeforeDelete: state.confirmBeforeDelete,
     maxLogsPerInstance: state.maxLogsPerInstance,
     autoClearLogsOnLaunch: state.autoClearLogsOnLaunch,
+    minimizeOnLaunch: state.minimizeOnLaunch,
     helpImproveSoftware: state.helpImproveSoftware,
     mirrorChyanSettings: state.mirrorChyanSettings,
     scheduledUpdateCheckEnabled: state.scheduledUpdateCheckEnabled,

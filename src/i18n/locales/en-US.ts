@@ -174,6 +174,9 @@ export default {
     autoClearLogsOnLaunch: 'Auto-clear Runtime Logs',
     autoClearLogsOnLaunchHint:
       'Automatically clear runtime logs and debug files every time the project is launched',
+    minimizeOnLaunch: 'Minimize on Launch',
+    minimizeOnLaunchHint:
+      'Minimize the main window to the taskbar on manual launch; automatic runs are unaffected',
   },
 
   // Special tasks
