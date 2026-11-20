@@ -1,6 +1,7 @@
 import { PiIcon } from './PiContent';
 import { useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useShallow } from 'zustand/react/shallow';
 import {
   DndContext,
   KeyboardSensor,
@@ -294,7 +295,23 @@ export function TaskList() {
     selectedController,
     selectedResource,
     skippedPresetInstanceIds,
-  } = useAppStore();
+  } = useAppStore(
+    useShallow((state) => ({
+      getActiveInstance: state.getActiveInstance,
+      reorderTasks: state.reorderTasks,
+      reorderPreActions: state.reorderPreActions,
+      selectAllTasks: state.selectAllTasks,
+      collapseAllTasks: state.collapseAllTasks,
+      setShowAddTaskPanel: state.setShowAddTaskPanel,
+      showAddTaskPanel: state.showAddTaskPanel,
+      lastAddedTaskId: state.lastAddedTaskId,
+      clearLastAddedTaskId: state.clearLastAddedTaskId,
+      projectInterface: state.projectInterface,
+      selectedController: state.selectedController,
+      selectedResource: state.selectedResource,
+      skippedPresetInstanceIds: state.skippedPresetInstanceIds,
+    })),
+  );
 
   const instance = getActiveInstance();
   const isInstanceRunning = instance?.isRunning || false;

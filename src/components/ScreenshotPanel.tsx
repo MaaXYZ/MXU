@@ -1,6 +1,7 @@
 import { BuiltinSkinDecor } from './skins/BuiltinSkinDecor';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useShallow } from 'zustand/react/shallow';
 import {
   Maximize2,
   X,
@@ -52,7 +53,19 @@ export function ScreenshotPanel() {
     screenshotPanelExpanded,
     setScreenshotPanelExpanded,
     screenshotFrameRate,
-  } = useAppStore();
+  } = useAppStore(
+    useShallow((state) => ({
+      activeInstanceId: state.activeInstanceId,
+      instanceConnectionStatus: state.instanceConnectionStatus,
+      instanceResourceLoaded: state.instanceResourceLoaded,
+      sidePanelExpanded: state.sidePanelExpanded,
+      instanceScreenshotStreaming: state.instanceScreenshotStreaming,
+      setInstanceScreenshotStreaming: state.setInstanceScreenshotStreaming,
+      screenshotPanelExpanded: state.screenshotPanelExpanded,
+      setScreenshotPanelExpanded: state.setScreenshotPanelExpanded,
+      screenshotFrameRate: state.screenshotFrameRate,
+    })),
+  );
 
   // 在移动端单列布局中，截图面板始终可见，不受 sidePanelExpanded 影响
   const isPanelVisible = isMobile || sidePanelExpanded;
