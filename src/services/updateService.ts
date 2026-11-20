@@ -387,6 +387,7 @@ export async function checkUpdate(options: CheckUpdateOptions): Promise<UpdateIn
   const hasUpdate = compareVersions(version_name, currentVersion) > 0;
 
   log.info(`更新检查完成: 最新版本=${version_name}, 有更新=${hasUpdate}`);
+  log.info(`更新说明: ${release_note ? `${release_note.length} 字符` : '空'}`);
 
   // 从下载 URL 中提取文件名
   const filename = downloadUrl ? extractFilenameFromUrl(downloadUrl) : undefined;

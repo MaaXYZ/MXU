@@ -182,6 +182,17 @@ export interface CachedFetchResult {
   etag?: string;
 }
 
+/** 日志只保留 origin + path，去掉凭据、查询参数和换行，避免泄漏签名或伪造日志行 */
+function sanitizeUrlForLog(url: string): string {
+  const trimmed = url.replace(/[\r\n\t]/g, '');
+  try {
+    const parsed = new URL(trimmed);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return trimmed.split(/[?#]/)[0];
+  }
+}
+
 /**
  * 带 ETag 缓存的 fetch 请求
  *
@@ -208,6 +219,10 @@ export async function cachedFetch(
     log.debug(`使用缓存 ETag 请求: ${url}`);
   }
 
+  log.info(
+    `remote content: request ${sanitizeUrlForLog(url)}${cacheEntry?.etag ? ' (conditional)' : ''}`,
+  );
+
   try {
     // 根据环境选择 fetch 方法
     let response: Response;
@@ -222,7 +237,7 @@ export async function cachedFetch(
     if (response.status === 304 && cacheEntry) {
       const cachedData = await readCacheData(cacheEntry.filename);
       if (cachedData !== null) {
-        log.debug(`使用缓存数据: ${url}`);
+        log.info(`remote content: 304 cache ${sanitizeUrlForLog(url)}`);
         return {
           data: cachedData,
           fromCache: true,
@@ -252,6 +267,7 @@ export async function cachedFetch(
     // 获取新数据
     const data = await response.text();
     const newEtag = response.headers.get('etag');
+    log.info(`remote content: updated ${sanitizeUrlForLog(url)} (${data.length} chars)`);
 
     // 如果有 ETag，保存到缓存
     if (newEtag) {
