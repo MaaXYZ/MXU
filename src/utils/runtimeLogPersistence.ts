@@ -4,6 +4,13 @@ import { DEFAULT_MAX_LOGS_PER_INSTANCE } from '@/types/config';
 const RUNTIME_LOG_STORAGE_KEY = 'mxu.runtime-logs.v1';
 const STORAGE_VERSION = 1;
 const STORAGE_WRITE_DEBOUNCE_MS = 250;
+// 运行日志与配置草稿共用 localStorage：单条日志内嵌的图片 data URL 很容易到数 MiB，
+// 这里限制持久化总容量和单条 html 体积，避免占满配额后草稿写入失败。
+const MAX_PERSISTED_LOGS_CHARS = 2_000_000;
+const MAX_PERSISTED_HTML_CHARS = 64 * 1024;
+const MAX_PERSISTED_MESSAGE_CHARS = 64 * 1024;
+// 预留 version/savedAt/logs 等外层字段的空间，保证整个 JSON 不超过总预算
+const PERSISTED_LOGS_BUDGET = MAX_PERSISTED_LOGS_CHARS - 1024;
 
 let pendingPersistedLogsPayload: string | null = null;
 let pendingPersistedLogsTimeout: ReturnType<typeof window.setTimeout> | null = null;
@@ -128,6 +135,72 @@ function sanitizeRuntimeLogs(
   );
 }
 
+function toPersistedEntry(entry: LogEntry): PersistedLogEntry {
+  return {
+    id: entry.id,
+    timestamp: entry.timestamp.toISOString(),
+    type: entry.type,
+    message:
+      entry.message.length > MAX_PERSISTED_MESSAGE_CHARS
+        ? `${entry.message.slice(0, MAX_PERSISTED_MESSAGE_CHARS)}…`
+        : entry.message,
+    html: entry.html && entry.html.length <= MAX_PERSISTED_HTML_CHARS ? entry.html : undefined,
+  };
+}
+
+function buildPersistedLogs(
+  logs: Record<string, readonly LogEntry[]>,
+  maxLogsPerInstance: number,
+): Record<string, PersistedLogEntry[]> {
+  const sanitized = sanitizeRuntimeLogs(logs, maxLogsPerInstance);
+  const groups = Object.entries(sanitized).map(([instanceId, entries]) => ({
+    instanceId,
+    entries: entries.map(toPersistedEntry),
+  }));
+
+  // 用实际序列化长度衡量，JSON 转义（引号、换行、控制字符）不会被低估
+  const sized = groups.flatMap(({ instanceId, entries }) =>
+    entries.map((entry, index) => ({
+      instanceId,
+      entry,
+      index,
+      size: JSON.stringify(entry).length + 1,
+    })),
+  );
+  const total = sized.reduce((sum, item) => sum + item.size, 0) + groups.length * 32;
+  if (total <= PERSISTED_LOGS_BUDGET) {
+    return Object.fromEntries(groups.map(({ instanceId, entries }) => [instanceId, entries]));
+  }
+
+  // 超预算时优先保留最新日志；时间戳相同时后写入的更新
+  sized.sort((a, b) => {
+    const diff = Date.parse(b.entry.timestamp) - Date.parse(a.entry.timestamp);
+    return diff !== 0 ? diff : b.index - a.index;
+  });
+
+  const kept = new Map<string, { entry: PersistedLogEntry; index: number }[]>();
+  let used = 0;
+  for (const { instanceId, entry, index, size } of sized) {
+    if (used > 0 && used + size > PERSISTED_LOGS_BUDGET) break;
+    used += size;
+    const entries = kept.get(instanceId);
+    if (entries) entries.push({ entry, index });
+    else kept.set(instanceId, [{ entry, index }]);
+  }
+
+  return Object.fromEntries(
+    [...kept.entries()].map(([instanceId, items]) => [
+      instanceId,
+      items
+        .sort((a, b) => {
+          const diff = Date.parse(a.entry.timestamp) - Date.parse(b.entry.timestamp);
+          return diff !== 0 ? diff : a.index - b.index;
+        })
+        .map((item) => item.entry),
+    ]),
+  );
+}
+
 export function loadPersistedRuntimeLogs(maxLogsPerInstance: number): Record<string, LogEntry[]> {
   if (!canUseLocalStorage()) return {};
 
@@ -160,8 +233,8 @@ export function persistRuntimeLogs(
 ): void {
   if (!canUseLocalStorage()) return;
 
-  const sanitized = sanitizeRuntimeLogs(logs, maxLogsPerInstance);
-  if (Object.keys(sanitized).length === 0) {
+  const persisted = buildPersistedLogs(logs, maxLogsPerInstance);
+  if (Object.keys(persisted).length === 0) {
     clearPersistedRuntimeLogs();
     return;
   }
@@ -169,18 +242,7 @@ export function persistRuntimeLogs(
   const payload: PersistedRuntimeLogs = {
     version: STORAGE_VERSION,
     savedAt: new Date().toISOString(),
-    logs: Object.fromEntries(
-      Object.entries(sanitized).map(([instanceId, entries]) => [
-        instanceId,
-        entries.map((entry) => ({
-          id: entry.id,
-          timestamp: entry.timestamp.toISOString(),
-          type: entry.type,
-          message: entry.message,
-          html: entry.html,
-        })),
-      ]),
-    ),
+    logs: persisted,
   };
 
   schedulePersistedLogsWrite(payload);
