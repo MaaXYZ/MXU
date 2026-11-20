@@ -140,9 +140,9 @@ export function LogsPanel() {
         const restoredPersistentLogs = loadPersistedRuntimeLogs(targetLimit);
         const mergedLogs = mergeRuntimeLogs(
           targetLimit,
+          restoredPersistentLogs,
           store.instanceLogs,
           restoredBackendLogs,
-          restoredPersistentLogs,
         );
 
         useAppStore.setState({ instanceLogs: mergedLogs });
