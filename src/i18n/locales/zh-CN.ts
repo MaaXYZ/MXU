@@ -160,6 +160,8 @@ export default {
     resetWindowLayoutHint: '将窗口大小恢复为默认值，并居中显示',
     autoClearLogsOnLaunch: '自动清理运行日志',
     autoClearLogsOnLaunchHint: '每次启动项目时，自动清理运行日志与调试文件',
+    minimizeOnLaunch: '启动后最小化',
+    minimizeOnLaunchHint: '手动启动时直接把主窗口最小化到任务栏，不影响自动执行',
   },
 
   // 特殊任务

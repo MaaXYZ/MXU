@@ -860,7 +860,18 @@ function AppContent() {
       }
 
       if (!isAutoStart) {
-        showWindow();
+        if (useAppStore.getState().minimizeOnLaunch && isTauri()) {
+          await showWindow();
+          try {
+            const { getCurrentWindow } = await import('@tauri-apps/api/window');
+            await getCurrentWindow().minimize();
+            log.info('启动后最小化：主窗口已最小化');
+          } catch (err) {
+            log.warn('启动后最小化失败:', err);
+          }
+        } else {
+          showWindow();
+        }
       } else if (isTauri()) {
         try {
           const { getCurrentWindow } = await import('@tauri-apps/api/window');

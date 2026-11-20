@@ -164,6 +164,9 @@ export default {
     resetWindowLayoutHint: '창 크기를 기본값으로 복원하고 화면 중앙에 배치합니다',
     autoClearLogsOnLaunch: '로그 자동 지우기',
     autoClearLogsOnLaunchHint: '프로젝트를 시작할 때 런타임 로그와 디버그 파일을 자동으로 지웁니다',
+    minimizeOnLaunch: '시작 후 최소화',
+    minimizeOnLaunchHint:
+      '수동 실행 시 메인 창을 작업 표시줄로 최소화합니다. 자동 실행에는 영향이 없습니다',
   },
 
   // 특수 작업

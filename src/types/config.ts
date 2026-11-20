@@ -149,6 +149,8 @@ export interface AppSettings {
   /** 每个实例最多保留的日志条数（超出自动丢弃最旧的） */
   maxLogsPerInstance?: number;
   autoClearLogsOnLaunch?: boolean;
+  /** 非自启动场景下，启动后直接把主窗口最小化 */
+  minimizeOnLaunch?: boolean;
   scheduledUpdateCheckEnabled?: boolean; // 是否每天定时检查更新，默认关闭
   scheduledUpdateCheckTime?: string; // 每天检查更新的本地时间（HH:mm），默认 08:00
   windowSize?: WindowSize;
@@ -262,6 +264,7 @@ export const defaultConfig: MxuConfig = {
     confirmBeforeDelete: false,
     maxLogsPerInstance: DEFAULT_MAX_LOGS_PER_INSTANCE,
     autoClearLogsOnLaunch: false,
+    minimizeOnLaunch: false,
     scheduledUpdateCheckEnabled: false,
     scheduledUpdateCheckTime: defaultScheduledUpdateCheckTime,
     windowSize: defaultWindowSize,

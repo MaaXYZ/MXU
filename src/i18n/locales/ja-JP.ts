@@ -167,6 +167,9 @@ export default {
     autoClearLogsOnLaunch: '実行ログの自動クリア',
     autoClearLogsOnLaunchHint:
       'プロジェクトの起動時に実行ログとデバッグファイルを自動でクリアします',
+    minimizeOnLaunch: '起動時に最小化',
+    minimizeOnLaunchHint:
+      '手動起動時にメインウィンドウをタスクバーへ最小化します。自動実行には影響しません',
   },
 
   // 特殊タスク
