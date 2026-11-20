@@ -248,13 +248,9 @@ html.dark [data-mxu-skin='gugugaga'] > .skin-atmosphere::after {
   --gugugaga-pose: url('../../assets/skins/gugugaga-sad.webp');
 }
 
-/* Sitting in the log corner. Log content keeps clear of it when scrolled to the end. */
+/* Sitting in the log corner, over the log content. */
 .skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='logs'] {
   position: relative;
-}
-
-.skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='log-scroll'] {
-  padding-bottom: 84px;
 }
 
 .skin-shell[data-mxu-skin='gugugaga'] [data-skin-slot='logs']::after {
