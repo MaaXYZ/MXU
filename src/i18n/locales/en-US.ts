@@ -57,14 +57,7 @@ export default {
 
   // Settings
   skin: {
-    route: 'Mission route',
-    pondRoute: 'A little path through the day',
-    instances: 'Instances',
-    instruments: 'Devices and screen',
-    deepseekScene: 'The rice submarine',
-    naiwaScene: 'Naiwa’s pond',
     gugugagaScene: 'Gugugaga’s snowfield',
-    taskCount: '{{count}} tasks enabled',
     regionLabel: 'Skin companion',
     state: {
       idle: 'Idle',
@@ -100,7 +93,7 @@ export default {
     themeSystem: 'System',
     skin: 'Built-in Skins',
     skinHint:
-      'Change the entire workspace palette, panels, character scene and motion. Default restores the standard appearance.',
+      'Choose a color palette and character stickers for your workspace. Try the character’s action in the preview.',
     skinAssetLicense: 'Asset source and license',
     skinDefault: 'Default',
     skinDeepseek: 'Blue Fat Fish',

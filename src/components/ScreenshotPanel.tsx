@@ -1,3 +1,4 @@
+import { BuiltinSkinDecor } from './skins/BuiltinSkinDecor';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -462,6 +463,7 @@ export function ScreenshotPanel() {
                 </>
               ) : (
                 <div className="flex flex-col items-center gap-2 text-text-muted">
+                  <BuiltinSkinDecor slot="screenshot" />
                   <Monitor className="w-10 h-10 opacity-30" />
                   {captureFailed ? (
                     <span className="text-xs text-error">{t('screenshot.streamFailed')}</span>

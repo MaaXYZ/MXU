@@ -1,10 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  BUILTIN_SKIN_IDS,
-  normalizeBuiltinSkinId,
-  usesSceneWorkspace,
-} from '../src/skins/types.ts';
+import { BUILTIN_SKIN_IDS, normalizeBuiltinSkinId } from '../src/skins/types.ts';
 import { getSkinTaskState } from '../src/components/skins/state.ts';
 import type { TaskStatus } from '../src/types/maa.ts';
 import enUS from '../src/i18n/locales/en-US.ts';
@@ -30,13 +26,6 @@ test('skin IDs accept only bundled choices and old or unrecognized values use th
   ]) {
     assert.equal(normalizeBuiltinSkinId(value), 'default');
   }
-});
-
-test('only scene skins replace the standard workspace layout', () => {
-  assert.deepEqual(
-    BUILTIN_SKIN_IDS.filter((id) => usesSceneWorkspace(id)),
-    ['deepseek', 'naiwa'],
-  );
 });
 
 test('skin task feedback honors active runs before old outcomes and never invents pause or cancellation facts', () => {

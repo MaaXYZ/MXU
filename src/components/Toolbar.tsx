@@ -59,6 +59,7 @@ import { resolveI18nText } from '@/services/contentResolver';
 import { getInterfaceLangKey } from '@/i18n';
 import { PermissionModal } from './toolbar/PermissionModal';
 import { ScheduleButton } from './toolbar/ScheduleButton';
+import { BuiltinSkinCompanion } from './skins/BuiltinSkinCompanion';
 import {
   startGlobalCallbackListener,
   waitForCtrlResult,
@@ -158,6 +159,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
   const { t } = useTranslation();
   const {
     getActiveInstance,
+    currentPage,
     selectAllTasks,
     collapseAllTasks,
     updateInstance,
@@ -1609,6 +1611,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
 
       {/* 右侧执行按钮组 */}
       <div className="flex items-center gap-2 relative">
+        {currentPage === 'main' && <BuiltinSkinCompanion />}
         {/* 定时执行按钮和状态气泡 */}
         <ScheduleButton
           enabledCount={instance?.schedulePolicies?.filter((p) => p.enabled).length || 0}

@@ -18,7 +18,7 @@ import { SortableAccentTile } from './SortableAccentTile';
 import { isTauri } from '@/utils/windowUtils';
 import { BuiltinSkinCompanion } from '@/components/skins/BuiltinSkinCompanion';
 import deepseekThumbnail from '@/assets/skins/deepseek.png';
-import naiwaThumbnail from '@/assets/skins/naiwa-calm.png';
+import naiwaThumbnail from '@/assets/skins/naiwa-idle.webp';
 import gugugagaThumbnail from '@/assets/skins/gugugaga-idle.webp';
 import deepseekLicense from '@/assets/skins/LICENSE.deepseek.txt?raw';
 import '@/components/skins/choices.css';
@@ -202,7 +202,7 @@ export function AppearanceSection({
                   <i />
                   <i />
                 </span>
-                {id !== 'default' && (
+                {id === 'gugugaga' && (
                   <span className="skin-choice-preview__hero">
                     <span>
                       <i />
@@ -216,6 +216,14 @@ export function AppearanceSection({
                     <span className="skin-choice-preview__row" />
                     <span className="skin-choice-preview__row" />
                     <span className="skin-choice-preview__row" />
+                    {(id === 'deepseek' || id === 'naiwa') && (
+                      <img
+                        className="skin-choice-preview__sticker"
+                        src={SKIN_THUMBNAILS[id]}
+                        alt=""
+                        draggable={false}
+                      />
+                    )}
                     <span className="skin-choice-preview__toolbar">
                       <i />
                     </span>

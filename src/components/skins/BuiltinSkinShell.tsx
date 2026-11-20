@@ -45,16 +45,7 @@ export function BuiltinSkinShell({ children }: { children: ReactNode }) {
       data-task-state={taskState}
     >
       {skinId !== 'default' && (
-        <div className="skin-atmosphere" data-skin-ambient aria-hidden="true">
-          <div className="skin-atmosphere__orb" />
-          <div className="skin-atmosphere__orb" />
-          <div className="skin-atmosphere__orb" />
-          <svg className="skin-atmosphere__waves" viewBox="0 0 1440 320" preserveAspectRatio="none">
-            <path d="M0 130 Q360 0 720 130 T1440 130 V320 H0Z" />
-            <path d="M0 190 Q360 70 720 190 T1440 190 V320 H0Z" />
-            <path d="M0 250 Q360 140 720 250 T1440 250 V320 H0Z" />
-          </svg>
-        </div>
+        <div className="skin-atmosphere" data-skin-ambient aria-hidden="true" />
       )}
       {children}
     </div>

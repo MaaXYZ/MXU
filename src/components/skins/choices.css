@@ -1,4 +1,4 @@
-/* Static miniatures communicate that each choice changes the whole workspace. */
+/* The character stickers sit inside the standard task panel. */
 .skin-choice-preview {
   --choice-bg: #edf0f3;
   --choice-panel: #fff;
@@ -28,11 +28,10 @@
 }
 
 [data-skin-choice='naiwa'] .skin-choice-preview {
-  --choice-bg: #efe3ac;
-  --choice-panel: #fffced;
-  --choice-line: #acb27b;
-  --choice-mark: #668748;
-  --choice-hero: #f5d976;
+  --choice-bg: #fff1cb;
+  --choice-panel: #fffaf0;
+  --choice-line: #dbbd86;
+  --choice-mark: #b86d24;
   border-radius: 11px;
 }
 
@@ -62,11 +61,10 @@
 }
 
 .dark [data-skin-choice='naiwa'] .skin-choice-preview {
-  --choice-bg: #273324;
-  --choice-panel: #3d4c34;
-  --choice-line: #7c895d;
-  --choice-mark: #bcd196;
-  --choice-hero: #7a783a;
+  --choice-bg: #322b21;
+  --choice-panel: #433728;
+  --choice-line: #806448;
+  --choice-mark: #f4b457;
 }
 
 .dark [data-skin-choice='gugugaga'] .skin-choice-preview {
@@ -226,40 +224,6 @@
   flex: 2;
 }
 
-[data-skin-choice='naiwa'] .skin-choice-preview__tabs {
-  border: 0;
-  height: 8px;
-}
-
-[data-skin-choice='naiwa'] .skin-choice-preview__tabs i {
-  border-radius: 8px;
-}
-
-[data-skin-choice='naiwa'] .skin-choice-preview__tasks,
-[data-skin-choice='naiwa'] .skin-choice-preview__sidebar i {
-  border-radius: 8px;
-}
-
-[data-skin-choice='naiwa'] .skin-choice-preview__hero {
-  border-radius: 5px 10px 5px 5px;
-}
-
-[data-skin-choice='naiwa'] .skin-choice-preview__hero::before {
-  right: 2px;
-  bottom: -6px;
-  width: 31px;
-  height: 17px;
-  background: var(--choice-mark);
-  border-radius: 60% 40% 50% 50%;
-  transform: rotate(-20deg);
-  opacity: 0.22;
-}
-
-[data-skin-choice='naiwa'] .skin-choice-preview__row {
-  border-left-width: 1px;
-  border-radius: 4px;
-}
-
 [data-skin-choice='default'] .skin-choice-preview__tasks {
   border: 0;
   border-radius: 0;
@@ -272,141 +236,32 @@
   border-left-width: 1px;
 }
 
-/* Match the actual alternate compositions, rather than a generic hero mockup. */
-.skin-choice-preview {
+.skin-choice-preview__tasks:has(.skin-choice-preview__sticker) {
   position: relative;
-}
-[data-skin-choice='deepseek'] .skin-choice-preview__tabs {
-  position: absolute;
-  left: 4px;
-  top: 13px;
-  width: 18%;
-  height: 45px;
-  flex-direction: column;
-  border: 0;
-}
-[data-skin-choice='deepseek'] .skin-choice-preview__tabs i {
-  width: 100%;
-  height: 8px;
-  flex: 0 0 8px;
-  border-radius: 0;
-}
-[data-skin-choice='deepseek'] .skin-choice-preview__workspace {
-  margin-left: 22%;
-  padding-bottom: 15px;
-}
-[data-skin-choice='deepseek'] .skin-choice-preview__tasks {
-  border: 0;
-  background: transparent;
-  padding-inline: 1px;
-}
-[data-skin-choice='deepseek'] .skin-choice-preview__row {
-  border-radius: 0;
-  border-top: 0;
-  border-right: 0;
-}
-[data-skin-choice='deepseek'] .skin-choice-preview__sidebar {
-  width: 31%;
-}
-[data-skin-choice='deepseek'] .skin-choice-preview__sidebar i:first-child {
-  border-radius: 50%;
-  flex: 2;
-}
-[data-skin-choice='deepseek'] .skin-choice-preview__hero {
-  position: absolute;
-  left: 4px;
-  bottom: 8px;
-  width: 19%;
-  height: 26px;
-  padding: 0;
-  background: var(--choice-panel);
-  border: 2px solid var(--choice-mark);
-  border-radius: 50%;
-}
-[data-skin-choice='deepseek'] .skin-choice-preview__hero > span {
-  display: none;
-}
-[data-skin-choice='deepseek'] .skin-choice-preview__hero img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border: 0;
-}
-[data-skin-choice='deepseek'] .skin-choice-preview::after {
-  content: '';
-  position: absolute;
-  left: 26%;
-  right: 4px;
-  bottom: 4px;
-  height: 10px;
-  border-top: 1px solid var(--choice-mark);
-  background: repeating-linear-gradient(transparent 0 3px, var(--choice-line) 3px 4px);
-}
-[data-skin-choice='naiwa'] .skin-choice-preview {
-  border-radius: 5px;
-  background: linear-gradient(90deg, var(--choice-hero) 0 32%, var(--choice-bg) 32%);
-}
-[data-skin-choice='naiwa'] .skin-choice-preview__workspace {
-  padding-left: 35%;
-  padding-bottom: 16px;
-}
-[data-skin-choice='naiwa'] .skin-choice-preview__tasks {
-  padding: 0;
+  padding: 2px;
   border: 0;
   background: transparent;
 }
-[data-skin-choice='naiwa'] .skin-choice-preview__row {
-  border: 0;
-  border-bottom: 2px solid var(--choice-line);
+
+.skin-choice-preview__tasks:has(.skin-choice-preview__sticker) .skin-choice-preview__row {
+  flex: 0 0 6px;
   background: var(--choice-panel);
-  width: 83%;
-  border-radius: 5px 13px 5px 5px;
 }
-[data-skin-choice='naiwa'] .skin-choice-preview__row:nth-child(even) {
-  margin-left: 17%;
-}
-[data-skin-choice='naiwa'] .skin-choice-preview__hero {
+
+.skin-choice-preview__sticker {
   position: absolute;
-  left: 4px;
-  top: 25px;
-  width: 27%;
-  height: 29px;
-  background: var(--choice-panel);
-  border-radius: 50%;
-  padding: 0;
-  justify-content: center;
-}
-[data-skin-choice='naiwa'] .skin-choice-preview__hero > span {
-  display: none;
-}
-[data-skin-choice='naiwa'] .skin-choice-preview__hero img {
-  width: 24px;
-  height: 29px;
+  right: 2%;
+  bottom: 7px;
+  height: 38px;
+  width: 43px;
+  max-width: 65%;
   object-fit: contain;
-  border: 0;
 }
-[data-skin-choice='naiwa'] .skin-choice-preview__sidebar {
-  position: absolute;
-  left: 4px;
-  top: 58px;
-  height: 14px;
-  width: 27%;
-  flex-direction: row;
-  gap: 2px;
+
+.skin-choice-preview__sticker + .skin-choice-preview__toolbar {
+  margin-top: auto;
 }
-[data-skin-choice='naiwa'] .skin-choice-preview__sidebar i {
-  border-radius: 2px;
-}
-[data-skin-choice='naiwa'] .skin-choice-preview__sidebar i:last-child {
-  display: none;
-}
-[data-skin-choice='naiwa'] .skin-choice-preview::after {
-  content: '';
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  bottom: 4px;
-  height: 9px;
-  background: var(--choice-panel);
-  border-block: 1px dashed var(--choice-mark);
+
+[data-skin-choice='deepseek'] .skin-choice-preview__sticker {
+  object-fit: cover;
 }

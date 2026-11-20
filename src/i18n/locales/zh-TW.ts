@@ -51,14 +51,7 @@ export default {
 
   // 設定
   skin: {
-    route: '任務航線',
-    pondRoute: '沿著水路，慢慢完成',
-    instances: '執行個體導覽',
-    instruments: '裝置與畫面',
-    deepseekScene: '白飯潛航艙',
-    naiwaScene: '奶蛙的池塘',
     gugugagaScene: '咕咕嘎嘎雪原',
-    taskCount: '{{count}} 項任務已啟用',
     regionLabel: '造型夥伴',
     state: {
       idle: '待命中',
@@ -93,7 +86,7 @@ export default {
     accentColor: '強調色',
     themeSystem: '系統',
     skin: '內建造型',
-    skinHint: '一起切換整個介面的配色、面板、角色場景與動效。預設可恢復原有外觀。',
+    skinHint: '選擇工作區的配色和角色貼圖，也可以在這裡試試角色的動作。',
     skinAssetLicense: '素材來源與授權',
     skinDefault: '預設',
     skinDeepseek: '藍色大肥魚',

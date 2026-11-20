@@ -1,0 +1,228 @@
+:is(body, .skin-shell)[data-mxu-skin='naiwa'] {
+  --color-bg-primary: #f7edcf;
+  --color-bg-secondary: #fffdf3;
+  --color-bg-tertiary: #f4ead1;
+  --color-bg-hover: #f4e6c2;
+  --color-bg-active: #ecdaa6;
+  --color-text-primary: #383022;
+  --color-text-secondary: #5f4d35;
+  --color-text-tertiary: #715d40;
+  --color-text-muted: #766446;
+  --color-border: #decea5;
+  --color-border-strong: #bdaa7d;
+  --shadow-sm: 0 2px 0 #70501d12;
+  --shadow-md: 0 2px 0 #70501d14, 0 4px 14px #61401c0b;
+  --shadow-lg: 0 9px 30px #65451f25;
+  --naiwa-ink: #77512b;
+  --naiwa-gold: #edb142;
+  --naiwa-butter: #ffdf87;
+  --naiwa-paper: #fff8df;
+  --naiwa-dot: #bb8c3942;
+  --naiwa-rattle: #b67b24;
+  --naiwa-shadow: #a1702532;
+}
+
+html.dark :is(body, .skin-shell)[data-mxu-skin='naiwa'] {
+  --color-bg-primary: #242019;
+  --color-bg-secondary: #302b22;
+  --color-bg-tertiary: #3a3225;
+  --color-bg-hover: #493c2c;
+  --color-bg-active: #54442c;
+  --color-text-primary: #fff4d9;
+  --color-text-secondary: #e0cfad;
+  --color-text-tertiary: #c4b490;
+  --color-text-muted: #b7a782;
+  --color-border: #574a34;
+  --color-border-strong: #817052;
+  --shadow-sm: 0 2px 0 #100c0840;
+  --shadow-md: 0 2px 0 #100c0833, 0 4px 14px #100c0829;
+  --shadow-lg: 0 9px 30px #100c087d;
+  --naiwa-ink: #ae8955;
+  --naiwa-gold: #bf8b39;
+  --naiwa-butter: #6a512b;
+  --naiwa-paper: #332d22;
+  --naiwa-dot: #b7925245;
+  --naiwa-rattle: #e4ad54;
+  --naiwa-shadow: #120c0570;
+}
+
+.skin-shell[data-mxu-skin='naiwa'] > .skin-atmosphere {
+  background:
+    radial-gradient(
+      ellipse at 88% 0%,
+      color-mix(in srgb, var(--naiwa-gold) 20%, transparent),
+      transparent 56%
+    ),
+    var(--color-bg-primary);
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='tabs'] {
+  background-color: var(--color-bg-tertiary);
+  background-image: radial-gradient(var(--naiwa-dot) 0.8px, transparent 1px);
+  background-size: 6px 6px;
+  border-bottom-color: var(--color-border-strong);
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='tabs-list'] {
+  gap: 4px;
+  padding-inline: 6px;
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='tab'] {
+  height: 30px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background-color: var(--color-bg-secondary);
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='tab'][data-active='true'] {
+  border-color: var(--color-border-strong);
+  background-color: var(--naiwa-butter);
+  box-shadow: inset 0 -2px var(--color-accent);
+}
+
+html.dark .skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='tab'][data-active='true'] {
+  color: color-mix(in srgb, var(--color-accent) 15%, var(--color-text-primary));
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='task-panel'] {
+  margin: 10px 0 10px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 15px;
+  background-color: var(--mxu-bg-secondary, var(--naiwa-paper));
+  box-shadow: var(--shadow-sm);
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='task-item'] {
+  border-color: var(--color-border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='toolbar'] {
+  border-top: 1px solid var(--color-border);
+  border-radius: 0 0 15px 15px;
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='sidebar'] {
+  background-color: transparent;
+}
+
+.skin-shell[data-mxu-skin='naiwa']
+  :is([data-skin-slot='connection'], [data-skin-slot='screenshot'], [data-skin-slot='logs']) {
+  border-radius: 12px;
+  box-shadow:
+    inset 0 0 0 1px var(--color-border),
+    var(--shadow-sm);
+}
+
+.skin-shell[data-mxu-skin='naiwa']
+  :is([data-skin-slot='connection'], [data-skin-slot='screenshot'], [data-skin-slot='logs'])
+  > :first-child {
+  background-image: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--naiwa-gold) 17%, transparent),
+    transparent 75%
+  );
+}
+
+.naiwa-reel {
+  container: naiwa-reel / size;
+}
+
+.naiwa-reel__art {
+  position: absolute;
+  right: clamp(4px, 4%, 42px);
+  bottom: min(4%, 14px);
+  width: min(80%, 330px);
+  height: min(90%, 208px);
+}
+
+.naiwa-reel__shadow {
+  fill: var(--naiwa-shadow);
+}
+
+.naiwa-reel__stock {
+  fill: #80582e;
+}
+
+.naiwa-reel__holes {
+  fill: none;
+  stroke: #ffda80;
+  stroke-width: 3;
+  stroke-dasharray: 5 5;
+  stroke-linecap: round;
+}
+
+.naiwa-reel__frames {
+  fill: #ffe6a7;
+}
+
+.naiwa-reel__hero,
+.naiwa-outtake img {
+  filter: drop-shadow(1px 0 0 #fff4d4) drop-shadow(-1px 0 0 #fff4d4) drop-shadow(0 1.5px 0 #fff4d4);
+}
+
+.naiwa-reel__rattle {
+  fill: none;
+  stroke: var(--naiwa-rattle);
+  stroke-linecap: round;
+  stroke-width: 2.4;
+}
+
+@container naiwa-reel (max-height: 66px) {
+  .naiwa-reel__art {
+    display: none;
+  }
+}
+
+.naiwa-outtake {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  container: naiwa-outtake / inline-size;
+}
+
+.naiwa-outtake img {
+  position: absolute;
+  left: 3%;
+  bottom: 5%;
+  width: min(23%, 77px);
+  height: auto;
+  rotate: -6deg;
+}
+
+@container naiwa-outtake (max-width: 220px) {
+  .naiwa-outtake img {
+    display: none;
+  }
+}
+
+.naiwa-laugh-marks {
+  flex: none;
+  width: 20px;
+  height: 17px;
+  fill: var(--naiwa-gold);
+  stroke: var(--naiwa-ink);
+  stroke-width: 0.8;
+}
+
+@media (max-width: 800px) {
+  .skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='task-panel'] {
+    margin-inline: 0;
+  }
+}
+
+@media (max-width: 767px) {
+  .skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='toolbar'] {
+    border-radius: 0;
+  }
+}
+
+@media (forced-colors: active) {
+  .naiwa-reel,
+  .naiwa-outtake,
+  .naiwa-laugh-marks {
+    display: none;
+  }
+}

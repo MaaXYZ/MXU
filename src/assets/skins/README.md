@@ -1,6 +1,6 @@
 # 内置角色素材
 
-## 白饭鲸鱼娘
+## 蓝色大肥鱼（白饭鲸鱼娘）
 
 直接使用 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) 在提交 `33938a355f422525886c3facd883d7179c58ebf4` 已公开的社区视频。本次不生成或重绘鲸鱼娘；透明 PNG 仅从同源视频抽帧。
 
@@ -13,7 +13,7 @@
 
 动画素材：**PC2005-cloud**；原型「溟月」：**上善无形**；DeepSeek 女仆鲸鱼娘设计：**ZipZipPipe**。按来源 [README 许可说明](https://github.com/PC2005-cloud/dsh-pet/blob/33938a355f422525886c3facd883d7179c58ebf4/README.md#许可) 使用 CC BY-NC-SA 4.0，保留署名、非商业、相同方式共享条件。来源仓库的代码 MIT 许可不替代素材许可。随附来源与许可摘要见 [LICENSE.deepseek.txt](LICENSE.deepseek.txt)。
 
-原视频为 VP9 alpha。为避免透明 WebM 不受支持时出现黑底，随包动态素材转为白底 H.264；播放失败、格式不支持或减少动效时使用同源静态帧。不承诺所有原生 WebView 都已通过验证。
+工作区的定时按钮旁和设置预览都可以投喂白饭。视频使用白底 H.264，减少动效或播放失败时显示同源静态帧。
 
 ## 奶蛙
 
@@ -21,9 +21,16 @@
 - `naiwa-still.webp`：[Naiwa Hub 奶蛙大笑条目](https://naiwahub.com/zh/memes/ghn-naiwa-wallpaper-1c05a2a8af20)提供的海报。
 - `naiwa-laugh.mp4`：同一条目的本地视频，移除音轨并剪去开头 2.6 秒，保留 12.8 秒大笑动作。
 
-社区原片和海报的收录页注明创作者及素材权利尚未核实；公开访问不代表开源授权，不将这些媒体归入代码许可。完整来源记录见 [皮肤说明](../../../docs/design/skin-system/meme-skins.md)。
+工作区定时按钮旁的头像和设置预览都可以播放大笑。下列贴纸均从同一角色的现有画面中去除白底和地面投影、裁边并转为透明 WebP。减少动效或播放失败时，头像与预览显示相应静帧。
 
-最终两套不包含本次生成或重绘的角色图，不添加对白或额外剧情。运行时只使用随包本地资源，界面文字仅表达任务事实与操作提示。
+| 贴纸 | 本地取材 | 姿态 |
+| --- | --- | --- |
+| `naiwa-idle.webp` | `naiwa-calm.png` | 闭口站立 |
+| `naiwa-grin.webp` | `naiwa-laugh.mp4` 的 8.9 秒 | 仰头大笑 |
+| `naiwa-clutch.webp` | 同一视频的 5.05 秒 | 捂头笑 |
+| `naiwa-roll.webp` | 同一视频的 12.2 秒 | 笑倒在地 |
+
+社区原片和海报的收录页注明创作者及素材权利尚未核实。角色、视频和从中截取的贴纸沿用原素材的权利归属，独立于 MXU 的代码许可。[社区原片](https://github.com/Nailong-Studio/NaiWa-Wallpaper/blob/036afc4f4930c90e78c0a8e26d4a2da6606c95e2/videos/%E5%A5%B6%E8%9B%99-%E5%A4%A7%E7%AC%91.mp4) · [皮肤说明](../../../docs/design/skin-system/meme-skins.md)
 
 ## 咕咕嘎嘎
 
