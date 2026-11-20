@@ -64,6 +64,7 @@ export function LogsPanel() {
   const canShowMoreLogs =
     visibleLogLimit === DEFAULT_VISIBLE_LOG_LIMIT &&
     visibleLogs.length === DEFAULT_VISIBLE_LOG_LIMIT;
+  const lastLogId = logs[logs.length - 1]?.id;
 
   useEffect(() => {
     setVisibleLogLimit(DEFAULT_VISIBLE_LOG_LIMIT);
@@ -75,7 +76,7 @@ export function LogsPanel() {
     if (!isFollowingTailRef.current) return;
 
     logsEndRef.current?.scrollIntoView({ block: 'end' });
-  }, [logs.length, visibleLogLimit]);
+  }, [lastLogId, visibleLogLimit]);
 
   const handleLogsScroll = useCallback(() => {
     const el = logsContainerRef.current;
