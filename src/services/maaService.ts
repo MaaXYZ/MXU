@@ -23,7 +23,10 @@ import i18n from '@/i18n';
 import { apiDelete, apiGet, apiPost, apiPut, getApiBase } from '@/utils/backendApi';
 import * as wsService from '@/services/wsService';
 import { dispatchMaaCallback, type MaaCallbackHandler } from '@/utils/maaCallbackRouting';
-import { ControllerConnectionSupersededError } from '@/utils/controllerErrors';
+import {
+  ControllerConnectionSupersededError,
+  appendWindowsDllHint,
+} from '@/utils/controllerErrors';
 import { getLogSecrets } from '@/utils/logSecrets';
 
 const log = loggers.maa;
@@ -62,6 +65,11 @@ export function localizeControllerError(error: unknown): unknown {
   }
   if (message.includes('LINUX_MAAFW_VERSION_REQUIRED')) {
     return new Error(i18n.t('controller.linuxVersionRequired'));
+  }
+  // Win32/Gamepad 依赖 MaaWin32ControlUnit.dll；命中 DLL 加载失败特征时补一条可操作提示。
+  const withDllHint = appendWindowsDllHint(message, i18n.t('controller.dllBlockedHint'));
+  if (withDllHint !== message) {
+    return new Error(withDllHint);
   }
   return error;
 }

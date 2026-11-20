@@ -452,6 +452,8 @@ export default {
     disconnected: '未连接',
     connectionFailed: '连接失败',
     connectionSuperseded: '实例已移除或已发起新的连接，原连接请求已取消。',
+    dllBlockedHint:
+      '如果日志或弹窗出现「0xc000012f」或「没有被指定在 Windows 上运行」，说明 Windows 智能应用控制拦截了 MaaWin32ControlUnit.dll：请在「Windows 安全中心 → 应用和浏览器控制 → 智能应用控制」中关闭后重试；若已关闭仍失败，请安装最新的 Microsoft Visual C++ 运行库。',
     refreshDevices: '刷新设备',
     refreshWindows: '刷新窗口',
     refresh: '刷新设备',
