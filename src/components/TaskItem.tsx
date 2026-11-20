@@ -32,6 +32,7 @@ import { isPretaskName, getPretaskItem, buildPretaskDef } from '@/types/pretasks
 import { getInterfaceLangKey } from '@/i18n';
 import clsx from 'clsx';
 import { loggers } from '@/utils/logger';
+import { formatTaskClock, getTaskDurationParts } from '@/utils/taskTiming';
 import { isPasswordInput } from '@/utils/passwordOptionValues';
 
 /** 选项预览标签组件 */
@@ -335,6 +336,7 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
     getActiveInstance,
     showOptionPreview,
     instanceTaskRunStatus,
+    instanceTaskTimings,
     instances,
     findMaaTaskIdBySelectedTaskId,
     basePath,
@@ -345,6 +347,11 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
 
   // 获取任务运行状态
   const taskRunStatus: TaskRunStatus = instanceTaskRunStatus[instanceId]?.[task.id] || 'idle';
+  const taskTiming = instanceTaskTimings[instanceId]?.[task.id];
+  const taskDuration =
+    taskTiming?.finishedAt !== undefined
+      ? getTaskDurationParts(taskTiming.finishedAt - taskTiming.startedAt)
+      : undefined;
 
   // 获取实例运行状态
   const instance = instances.find((i) => i.id === instanceId);
@@ -973,6 +980,28 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
                   <span className="min-w-0 truncate text-xs text-text-muted">
                     ({originalLabel})
                   </span>
+                )}
+                {taskTiming?.finishedAt !== undefined && taskDuration && (
+                  <Tooltip
+                    content={t('taskItem.durationTooltip', {
+                      start: formatTaskClock(taskTiming.startedAt),
+                      end: formatTaskClock(taskTiming.finishedAt),
+                    })}
+                  >
+                    <span className="shrink-0 text-xs text-text-muted tabular-nums">
+                      {taskDuration.hours > 0
+                        ? t('taskItem.durationHm', {
+                            hours: taskDuration.hours,
+                            minutes: String(taskDuration.minutes).padStart(2, '0'),
+                          })
+                        : taskDuration.minutes > 0
+                          ? t('taskItem.durationMs', {
+                              minutes: taskDuration.minutes,
+                              seconds: String(taskDuration.seconds).padStart(2, '0'),
+                            })
+                          : t('taskItem.durationS', { seconds: taskDuration.seconds })}
+                    </span>
+                  </Tooltip>
                 )}
               </div>
 
