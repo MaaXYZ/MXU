@@ -452,6 +452,8 @@ function AppContent() {
   // 自动任务已分发但尚未完成启动时，也要阻止下载完成触发自动安装。
   // 否则小体积更新可能在 500ms 的任务分发延迟或连接准备期间先完成下载。
   const autoTaskLaunchPendingRef = useRef(false);
+  // --quit-after-run 下任务结束会退出进程，此时不应再弹出自动安装，否则两个监听会互相竞争
+  const quitAfterRunRef = useRef(false);
   // 尝试自动安装更新（无任务运行中时触发）
   const tryAutoInstallUpdate = useCallback(() => {
     const state = useAppStore.getState();
@@ -459,6 +461,10 @@ function AppContent() {
     if (state.installStatus !== 'idle') return;
     if (state.autoInstallPending) return;
     if (autoTaskLaunchPendingRef.current) return;
+    if (quitAfterRunRef.current) {
+      log.info('自动安装更新：已启用 --quit-after-run，跳过自动安装');
+      return;
+    }
     if (state.instances.some((i) => i.isRunning)) return;
     // 本次运行中安装失败过则不再自动重试，避免反复失败；手动安装和下次启动不受影响
     if (hasInstallFailedInSession()) {
@@ -871,6 +877,17 @@ function AppContent() {
         }
       }
 
+      // 尽早确定 --quit-after-run，避免更新检查/下载先完成时与自动安装抢跑
+      let hasQuitAfterRunFlag = false;
+      if (isTauri()) {
+        try {
+          hasQuitAfterRunFlag = await invoke<boolean>('has_quit_after_run_flag');
+          quitAfterRunRef.current = hasQuitAfterRunFlag;
+        } catch (err) {
+          log.warn('读取 --quit-after-run 参数失败:', err);
+        }
+      }
+
       // 从后端恢复 MAA 运行时状态（连接状态、资源加载状态、设备缓存等）
       try {
         const backendStates = await maaService.getAllStates();
@@ -1046,8 +1063,9 @@ function AppContent() {
               useAppStore.getState().setActiveInstance(targetInstanceId);
 
               // 检查 -q/--quit-after-run 参数：任务完成后关闭自身
-              const shouldQuit = await invoke<boolean>('has_quit_after_run_flag');
+              const shouldQuit = hasQuitAfterRunFlag;
               if (shouldQuit) {
+                quitAfterRunRef.current = true;
                 log.info('命令行 --quit-after-run 参数：任务完成后将关闭自身');
                 const unsub = useAppStore.subscribe(
                   (state) => state.instances.find((i) => i.id === targetInstanceId)?.isRunning,
@@ -1076,8 +1094,13 @@ function AppContent() {
         autoStartTasksPending = false;
         autoTaskLaunchPendingRef.current = true;
         setTimeout(() => {
-          dispatchAutoStartTasks(() => {
+          dispatchAutoStartTasks((started) => {
             autoTaskLaunchPendingRef.current = false;
+            if (!started && quitAfterRunRef.current) {
+              log.info('自动执行启动失败，--quit-after-run 直接退出');
+              import('@tauri-apps/plugin-process').then(({ exit }) => exit(0));
+              return;
+            }
             // 启动失败时任务不会产生 running -> idle 状态变化，需要在这里补一次安装检查；
             // 启动成功时仍处于运行态，本次检查会直接返回，并在任务结束后再次触发。
             tryAutoInstallUpdate();
@@ -1154,6 +1177,12 @@ function AppContent() {
       if (!isDebugVersion(result.interface.version)) {
         const pendingUpdate = await getPendingUpdateInfo(result.interface.version);
         if (pendingUpdate) {
+          if (quitAfterRunRef.current) {
+            // 自启动 + -q 时窗口可能是隐藏的，弹窗无法关闭会卡住任务，更新留到下次启动
+            log.info('--quit-after-run：跳过待安装更新弹窗，继续执行任务');
+            dispatchPendingAutoStartTasks();
+            return;
+          }
           log.info('检测到待安装更新:', pendingUpdate.versionName);
           // 恢复更新状态
           setUpdateInfo({
@@ -1582,7 +1611,7 @@ function AppContent() {
   useEffect(() => {
     if (currentPage === 'main') {
       // 下载完成：弹出安装模态框
-      if (downloadStatus === 'completed') {
+      if (downloadStatus === 'completed' && !quitAfterRunRef.current) {
         setShowInstallConfirmModal(true);
       }
       // 有更新、有错误或正在下载：弹出更新气泡
@@ -1601,7 +1630,7 @@ function AppContent() {
 
   // 下载完成时，强制弹出安装模态框
   useEffect(() => {
-    if (downloadStatus === 'completed') {
+    if (downloadStatus === 'completed' && !quitAfterRunRef.current) {
       setShowInstallConfirmModal(true);
     }
   }, [downloadStatus, setShowInstallConfirmModal]);
