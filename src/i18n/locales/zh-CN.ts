@@ -51,14 +51,9 @@ export default {
   },
 
   skin: {
-    route: '任务航线',
-    pondRoute: '沿着水路，慢慢完成',
-    instances: '实例导航',
-    instruments: '设备与画面',
     deepseekScene: '白饭潜航舱',
     naiwaScene: '奶蛙的池塘',
     gugugagaScene: '咕咕嘎嘎雪原',
-    taskCount: '{{count}} 项任务已启用',
     regionLabel: '皮肤伙伴',
     state: {
       idle: '待机中',

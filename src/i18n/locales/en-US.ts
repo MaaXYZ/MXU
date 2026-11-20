@@ -57,14 +57,9 @@ export default {
 
   // Settings
   skin: {
-    route: 'Mission route',
-    pondRoute: 'A little path through the day',
-    instances: 'Instances',
-    instruments: 'Devices and screen',
     deepseekScene: 'The rice submarine',
     naiwaScene: 'Naiwa’s pond',
     gugugagaScene: 'Gugugaga’s snowfield',
-    taskCount: '{{count}} tasks enabled',
     regionLabel: 'Skin companion',
     state: {
       idle: 'Idle',

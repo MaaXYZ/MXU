@@ -1,0 +1,130 @@
+/* Warm banks and lily-green water within the standard workspace. */
+.skin-shell[data-mxu-skin='naiwa'] {
+  --pond-bank: #f7e6af;
+  --pond-water: #dbe6c5;
+  --pond-leaf: #8da66b;
+  --pond-ripple: #a3b788;
+  --pond-light: #fff8dd;
+  --skin-panel-radius: 16px;
+  --skin-task-radius: 12px;
+}
+
+html.dark .skin-shell[data-mxu-skin='naiwa'] {
+  --pond-bank: #45442d;
+  --pond-water: #22372c;
+  --pond-leaf: #658450;
+  --pond-ripple: #5a7958;
+  --pond-light: #484b32;
+}
+
+.skin-shell[data-mxu-skin='naiwa'] > .skin-atmosphere {
+  background:
+    radial-gradient(ellipse at 12% 0%, var(--pond-light), transparent 52%),
+    linear-gradient(145deg, var(--pond-bank), var(--color-bg-primary) 46%, var(--pond-water));
+}
+
+.skin-shell[data-mxu-skin='naiwa'] > .skin-atmosphere::after {
+  inset: 0;
+  background-image: radial-gradient(var(--pond-ripple) 1px, transparent 1px);
+  background-size: 19px 19px;
+  opacity: 0.24;
+  mask-image: linear-gradient(115deg, transparent 28%, #000);
+}
+
+.skin-shell[data-mxu-skin='naiwa'] .skin-atmosphere__orb {
+  aspect-ratio: 1.45;
+  border: 1px solid var(--pond-ripple);
+  border-radius: 55% 44% 52% 46%;
+  background: conic-gradient(from -34deg, transparent 34deg, var(--pond-leaf) 34deg);
+  opacity: 0.18;
+  rotate: -14deg;
+}
+
+.skin-shell[data-mxu-skin='naiwa'] .skin-atmosphere__orb:nth-child(1) {
+  inset: auto auto 12% 6%;
+  width: 94px;
+}
+
+.skin-shell[data-mxu-skin='naiwa'] .skin-atmosphere__orb:nth-child(2) {
+  inset: auto 8% 22% auto;
+  width: 74px;
+  rotate: 19deg;
+}
+
+.skin-shell[data-mxu-skin='naiwa'] .skin-atmosphere__orb:nth-child(3) {
+  inset: auto auto 3% 52%;
+  width: 58px;
+}
+
+.skin-shell[data-mxu-skin='naiwa'] .skin-atmosphere__waves {
+  bottom: -26px;
+  height: 30%;
+  stroke: var(--pond-ripple);
+  stroke-width: 2;
+  opacity: 0.36;
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='task-panel'] {
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--color-bg-secondary) 66%, transparent),
+    color-mix(in srgb, var(--pond-water) 24%, transparent) 85%
+  );
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='toolbar'] {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-bg-secondary) 85%, var(--pond-bank)),
+    color-mix(in srgb, var(--color-bg-secondary) 78%, var(--pond-water))
+  );
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='log-scroll'] {
+  background-image: linear-gradient(
+    155deg,
+    var(--color-bg-secondary) 12%,
+    color-mix(in srgb, var(--color-bg-tertiary) 62%, var(--pond-water))
+  );
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='screenshot-screen']:not(:has(> img)) {
+  background:
+    radial-gradient(
+      ellipse at 94% 98%,
+      transparent 39%,
+      color-mix(in srgb, var(--pond-ripple) 25%, transparent) 40% 41%,
+      transparent 42% 52%,
+      color-mix(in srgb, var(--pond-ripple) 18%, transparent) 53% 54%,
+      transparent 55%
+    ),
+    linear-gradient(145deg, var(--color-bg-secondary), var(--pond-water));
+}
+
+/* The small portrait stays inside the unused corner of the empty screenshot. */
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='screenshot-screen']:not(:has(> img))::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 34px;
+  height: 34px;
+  border-radius: 47% 53% 53% 47%;
+  background: var(--pond-portrait, url('../../assets/skins/naiwa-calm.png'))
+    var(--pond-portrait-position, 44% 10%) / 96px auto no-repeat;
+  box-shadow:
+    0 0 0 2px var(--pond-light),
+    0 2px 5px color-mix(in srgb, var(--color-text-primary) 24%, transparent);
+  pointer-events: none;
+}
+
+.skin-shell[data-mxu-skin='naiwa'][data-task-state='success'] {
+  --pond-portrait: url('../../assets/skins/naiwa-still.webp');
+  --pond-portrait-position: 68% 13%;
+}
+
+@media (forced-colors: active) {
+  .skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='screenshot-screen']::after {
+    display: none;
+  }
+}

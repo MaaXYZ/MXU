@@ -1,0 +1,55 @@
+/* Style the host slots without changing their sizing or arrangement. */
+.skin-shell:is([data-mxu-skin='deepseek'], [data-mxu-skin='naiwa']) {
+  --skin-panel-radius: 14px;
+  --skin-task-radius: 12px;
+}
+
+.skin-shell:is([data-mxu-skin='deepseek'], [data-mxu-skin='naiwa'])
+  :is([data-skin-slot='titlebar'], [data-skin-slot='tabs']) {
+  background-color: color-mix(in srgb, var(--color-bg-secondary) 76%, transparent);
+}
+
+.skin-shell:is([data-mxu-skin='deepseek'], [data-mxu-skin='naiwa']) [data-skin-slot='tab'] {
+  border-radius: 9px 9px 0 0;
+}
+
+.skin-shell:is([data-mxu-skin='deepseek'], [data-mxu-skin='naiwa'])
+  [data-skin-slot='tab'][data-active='true'] {
+  background-color: color-mix(in srgb, var(--color-accent) 12%, var(--color-bg-secondary));
+}
+
+.dark
+  .skin-shell:is([data-mxu-skin='deepseek'], [data-mxu-skin='naiwa'])
+  [data-skin-slot='tab'][data-active='true'] {
+  color: color-mix(in srgb, var(--color-accent) 42%, var(--color-text-primary));
+}
+
+.skin-shell:is([data-mxu-skin='deepseek'], [data-mxu-skin='naiwa']) [data-skin-slot='sidebar'] {
+  background: transparent;
+}
+
+.skin-shell:is([data-mxu-skin='deepseek'], [data-mxu-skin='naiwa']) [data-skin-slot='task-item'] {
+  border-radius: var(--skin-task-radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.skin-shell:is([data-mxu-skin='deepseek'], [data-mxu-skin='naiwa'])
+  :is([data-skin-slot='connection'], [data-skin-slot='screenshot'], [data-skin-slot='logs']) {
+  border-radius: var(--skin-panel-radius);
+  box-shadow:
+    inset 0 0 0 1px var(--color-border),
+    var(--shadow-md);
+}
+
+.skin-shell:is([data-mxu-skin='deepseek'], [data-mxu-skin='naiwa'])
+  [data-skin-slot='start-button'] {
+  border-radius: 999px;
+}
+
+@media (forced-colors: active) {
+  .skin-shell:is([data-mxu-skin='deepseek'], [data-mxu-skin='naiwa'])
+    :is([data-skin-slot='connection'], [data-skin-slot='screenshot'], [data-skin-slot='logs']) {
+    outline: 1px solid ButtonBorder;
+    outline-offset: -1px;
+  }
+}

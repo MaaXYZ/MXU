@@ -52,14 +52,9 @@ export default {
 
   // 設定
   skin: {
-    route: 'タスク航路',
-    pondRoute: '水辺の小さなタスク道',
-    instances: 'インスタンス',
-    instruments: 'デバイスと画面',
     deepseekScene: '白ごはん潜航艇',
     naiwaScene: '奶蛙の池',
     gugugagaScene: 'グーグーガーガの雪原',
-    taskCount: '{{count}} 件のタスクが有効',
     regionLabel: 'スキンの仲間',
     state: {
       idle: '待機中',

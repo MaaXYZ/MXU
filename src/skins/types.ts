@@ -13,8 +13,3 @@ export const BUILTIN_SKIN_IDS: readonly BuiltinSkinId[] = [
 export function normalizeBuiltinSkinId(value: unknown): BuiltinSkinId {
   return value === 'deepseek' || value === 'naiwa' || value === 'gugugaga' ? value : 'default';
 }
-
-/** Scene skins rearrange the workspace; other skins decorate the standard layout. */
-export function usesSceneWorkspace(skinId: BuiltinSkinId): boolean {
-  return skinId === 'deepseek' || skinId === 'naiwa';
-}

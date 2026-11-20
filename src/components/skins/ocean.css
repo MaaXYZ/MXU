@@ -1,0 +1,143 @@
+.skin-shell[data-mxu-skin='deepseek'] {
+  --skin-panel-radius: 14px;
+  --skin-task-radius: 10px;
+  --ocean-surface: #f4fbff;
+  --ocean-depth: #b9dcef;
+  --ocean-light: #e4fbffb0;
+  --ocean-wash: #51acd526;
+  --ocean-ring: #4f92af45;
+  --ocean-porthole: #e3f4fd;
+  --ocean-mascot: url('../../assets/skins/deepseek-calm.png');
+}
+
+html.dark .skin-shell[data-mxu-skin='deepseek'] {
+  --ocean-surface: #12364c;
+  --ocean-depth: #071827;
+  --ocean-light: #4fcde32e;
+  --ocean-wash: #46c1e21a;
+  --ocean-ring: #85d8ee40;
+  --ocean-porthole: #18445a;
+}
+
+.skin-shell[data-mxu-skin='deepseek'][data-task-state='running'],
+.skin-shell[data-mxu-skin='deepseek'][data-task-state='success'] {
+  --ocean-mascot: url('../../assets/skins/deepseek.png');
+}
+
+.skin-shell[data-mxu-skin='deepseek'][data-task-state='error'] {
+  --ocean-mascot: url('../../assets/skins/deepseek-error.png');
+}
+
+.skin-shell[data-mxu-skin='deepseek'] > .skin-atmosphere {
+  background:
+    radial-gradient(ellipse at 75% -8%, var(--ocean-light), transparent 56%),
+    linear-gradient(120deg, transparent 37%, var(--ocean-light) 56%, transparent 64%),
+    linear-gradient(164deg, var(--ocean-surface), var(--ocean-depth));
+}
+
+.skin-shell[data-mxu-skin='deepseek'] > .skin-atmosphere::before {
+  inset: auto -30% -36% 22%;
+  height: 74%;
+  border: 1px solid var(--ocean-ring);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 31px var(--ocean-wash),
+    0 0 0 32px var(--ocean-ring),
+    0 0 0 65px var(--ocean-wash),
+    0 0 0 66px var(--ocean-ring);
+  transform: rotate(-12deg);
+  opacity: 0.42;
+}
+
+.skin-shell[data-mxu-skin='deepseek'] > .skin-atmosphere::after {
+  inset: 0;
+  background-image: radial-gradient(var(--ocean-ring) 1px, transparent 1.5px);
+  background-size: 29px 31px;
+  mask-image: linear-gradient(140deg, transparent 12%, #000 64%, transparent 96%);
+  opacity: 0.52;
+}
+
+.skin-shell[data-mxu-skin='deepseek'] .skin-atmosphere__orb {
+  border: 1px solid var(--ocean-ring);
+  background: linear-gradient(140deg, var(--ocean-light), transparent 68%);
+  box-shadow: inset 1px 1px 0 var(--ocean-light);
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='task-panel'] {
+  background-image: radial-gradient(ellipse at 100% 100%, var(--ocean-wash), transparent 65%);
+}
+
+.skin-shell[data-mxu-skin='deepseek']
+  :is([data-skin-slot='connection'], [data-skin-slot='screenshot'], [data-skin-slot='logs'])
+  > :first-child {
+  background-image: linear-gradient(110deg, var(--ocean-wash), transparent 58%);
+}
+
+/* Reuse the screen's decorative placeholder without covering a live screenshot. */
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='screenshot-screen']:not(:has(> img)) {
+  background-image: repeating-radial-gradient(
+    circle at 50% 44%,
+    var(--ocean-ring) 0 1px,
+    transparent 1px 27px
+  );
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='screenshot-screen'] > div:has(> svg) {
+  position: relative;
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='screenshot-screen'] > div > svg:first-child {
+  visibility: hidden;
+}
+
+.skin-shell[data-mxu-skin='deepseek']
+  [data-skin-slot='screenshot-screen']
+  > div:has(> svg)::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: calc(50% - 20px);
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--ocean-ring);
+  border-radius: 50%;
+  background: var(--ocean-mascot) center / 89px auto no-repeat var(--ocean-porthole);
+  box-shadow: 0 0 0 4px var(--ocean-wash);
+  pointer-events: none;
+}
+
+/* The porthole sits in the unused log corner and clears when log lines arrive. */
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='log-scroll']:not(:has(> [data-log-type])) {
+  background-image:
+    var(--ocean-mascot),
+    radial-gradient(circle, var(--ocean-porthole) 62%, var(--ocean-ring) 63% 68%, transparent 70%),
+    radial-gradient(circle, transparent 67%, var(--ocean-ring) 68% 69%, transparent 70%);
+  background-size:
+    107px 60px,
+    60px 60px,
+    68px 68px;
+  background-position:
+    right -13px bottom 8px,
+    right 10px bottom 8px,
+    right 6px bottom 4px;
+  background-repeat: no-repeat;
+}
+
+@media (forced-colors: active) {
+  .skin-shell[data-mxu-skin='deepseek']
+    [data-skin-slot='screenshot-screen']
+    > div
+    > svg:first-child {
+    visibility: visible;
+  }
+
+  .skin-shell[data-mxu-skin='deepseek']
+    [data-skin-slot='screenshot-screen']
+    > div:has(> svg)::before {
+    display: none;
+  }
+
+  .skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='log-scroll'] {
+    --ocean-mascot: none;
+  }
+}

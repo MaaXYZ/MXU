@@ -1,20 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '@/stores/appStore';
 import type { BuiltinSkinId } from '@/skins/types';
 import deepseekArt from '@/assets/skins/deepseek.png';
 import deepseekCalm from '@/assets/skins/deepseek-calm.png';
-import deepseekError from '@/assets/skins/deepseek-error.png';
 import deepseekClip from '@/assets/skins/deepseek-eat.mp4';
 import naiwaCalm from '@/assets/skins/naiwa-calm.png';
 import naiwaStill from '@/assets/skins/naiwa-still.webp';
 import naiwaClip from '@/assets/skins/naiwa-laugh.mp4';
 import gugugagaIdle from '@/assets/skins/gugugaga-idle.webp';
 import gugugagaCheer from '@/assets/skins/gugugaga-cheer.webp';
-import gugugagaLaugh from '@/assets/skins/gugugaga-laugh.webp';
-import gugugagaSad from '@/assets/skins/gugugaga-sad.webp';
-import { getSkinTaskState } from './state';
 import { useSkinMotion } from './useSkinMotion';
 import './skins.css';
 
@@ -32,45 +27,16 @@ const SKIN_SCENE_KEYS = {
   gugugaga: 'skin.gugugagaScene',
 } as const;
 
-const GUGUGAGA_POSES = {
-  idle: gugugagaIdle,
-  running: gugugagaCheer,
-  success: gugugagaLaugh,
-  error: gugugagaSad,
-} as const;
-
-/** Trusted, bundled companions only. This is not a third-party skin renderer. */
-export function BuiltinSkinCompanion({ preview = false }: { preview?: boolean }) {
+/** The appearance settings preview the bundled character and its interaction. */
+export function BuiltinSkinCompanion() {
   const skinId = useAppStore((state) => state.skinId);
-  const instanceId = useAppStore((state) => state.activeInstanceId);
   if (skinId === 'default') return null;
-  return (
-    <SkinScene
-      key={`${skinId}:${preview ? 'preview' : instanceId}`}
-      skinId={skinId}
-      preview={preview}
-    />
-  );
+  return <CompanionPreview key={skinId} skinId={skinId} />;
 }
 
-function SkinScene({
-  skinId,
-  preview,
-}: {
-  skinId: Exclude<BuiltinSkinId, 'default'>;
-  preview: boolean;
-}) {
+function CompanionPreview({ skinId }: { skinId: Exclude<BuiltinSkinId, 'default'> }) {
   const { t } = useTranslation();
-  const { activeInstanceId, isRunning, status, userReduced } = useAppStore(
-    useShallow((state) => ({
-      activeInstanceId: state.activeInstanceId,
-      isRunning: !!state.instances.find((instance) => instance.id === state.activeInstanceId)
-        ?.isRunning,
-      status: state.activeInstanceId ? state.instanceTaskStatus[state.activeInstanceId] : null,
-      userReduced: state.skinReducedMotion,
-    })),
-  );
-  const taskState = preview ? 'idle' : getSkinTaskState(isRunning, status);
+  const userReduced = useAppStore((state) => state.skinReducedMotion);
   const { systemReduced, pageVisible } = useSkinMotion();
   const reduced = userReduced || systemReduced;
   const [interacting, setInteracting] = useState(false);
@@ -80,27 +46,19 @@ function SkinScene({
   const videoRef = useRef<HTMLVideoElement>(null);
   const playbackRevision = useRef(0);
   const wantsPlayback = useRef(false);
-  const interactionAllowed = taskState === 'idle' || taskState === 'running';
-  const hasInteraction = interacting && interactionAllowed;
-  const laughing = skinId === 'naiwa' && (hasInteraction || taskState === 'success');
-  const eating =
-    skinId === 'deepseek' && (hasInteraction || taskState === 'running' || taskState === 'success');
   const clip = skinId === 'naiwa' ? naiwaClip : skinId === 'deepseek' ? deepseekClip : null;
-  const performing = (laughing || eating) && !!clip && !reduced && pageVisible && !videoFailed;
+  const performing = interacting && !!clip && !reduced && pageVisible && !videoFailed;
   wantsPlayback.current = performing;
 
-  // Instance changes and terminal results retire the old interaction without changing any task.
+  // Leaving the preview or hiding the page ends the interaction.
   useEffect(() => {
     setInteracting(false);
-    interactionRevision.current++;
-    if (timer.current !== null) clearTimeout(timer.current);
-    timer.current = null;
     return () => {
       interactionRevision.current++;
       if (timer.current !== null) clearTimeout(timer.current);
       timer.current = null;
     };
-  }, [activeInstanceId, taskState, pageVisible]);
+  }, [pageVisible]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -128,16 +86,15 @@ function SkinScene({
       }
     } else {
       video.pause();
-      if (taskState === 'idle' || taskState === 'error' || !pageVisible) video.currentTime = 0;
+      video.currentTime = 0;
     }
     return () => {
       playbackRevision.current++;
       video.pause();
     };
-  }, [performing, activeInstanceId, taskState, pageVisible]);
+  }, [performing, pageVisible]);
 
   function interact() {
-    if (!interactionAllowed) return;
     if (timer.current !== null) clearTimeout(timer.current);
     const revision = ++interactionRevision.current;
     setInteracting(true);
@@ -148,35 +105,36 @@ function SkinScene({
     }, INTERACTION_MS);
   }
 
-  const deepseekPose = taskState === 'error' ? deepseekError : eating ? deepseekArt : deepseekCalm;
   const pose =
     skinId === 'deepseek'
-      ? deepseekPose
+      ? interacting
+        ? deepseekArt
+        : deepseekCalm
       : skinId === 'naiwa'
-        ? laughing
+        ? interacting
           ? naiwaStill
           : naiwaCalm
-        : GUGUGAGA_POSES[hasInteraction ? 'running' : taskState];
+        : interacting
+          ? gugugagaCheer
+          : gugugagaIdle;
 
   return (
     <section
-      className={`builtin-skin builtin-skin--${skinId}${preview ? ' builtin-skin--preview' : ''}`}
+      className={`builtin-skin builtin-skin--${skinId}`}
       aria-label={t('skin.regionLabel')}
       data-builtin-skin={skinId}
-      data-task-state={taskState}
+      data-task-state="idle"
       data-reduced-motion={reduced}
       data-scene-motion={!pageVisible ? 'paused' : reduced ? 'reduced' : 'full'}
-      data-interacting={hasInteraction}
+      data-interacting={interacting}
       data-performing={performing}
     >
-      {preview && (
-        <div className="builtin-skin__copy">
-          <div className="builtin-skin__eyebrow">{t(SKIN_LABEL_KEYS[skinId])}</div>
-          <h2>{t(SKIN_SCENE_KEYS[skinId])}</h2>
-          <span>{t(`skin.state.${taskState}`)}</span>
-          {reduced && <small>{t('skin.reducedMotion')}</small>}
-        </div>
-      )}
+      <div className="builtin-skin__copy">
+        <div className="builtin-skin__eyebrow">{t(SKIN_LABEL_KEYS[skinId])}</div>
+        <h2>{t(SKIN_SCENE_KEYS[skinId])}</h2>
+        <span>{t('skin.state.idle')}</span>
+        {reduced && <small>{t('skin.reducedMotion')}</small>}
+      </div>
       <div className="builtin-skin__stage">
         <span className="builtin-skin__plinth" aria-hidden="true" />
         <div className={`builtin-skin__art builtin-skin__art--${skinId}`} aria-hidden="true">
@@ -185,7 +143,7 @@ function SkinScene({
             <video
               ref={videoRef}
               src={clip}
-              poster={skinId === 'naiwa' ? naiwaStill : deepseekPose}
+              poster={skinId === 'naiwa' ? naiwaStill : deepseekArt}
               className={performing ? 'builtin-skin__video is-playing' : 'builtin-skin__video'}
               muted
               loop
@@ -200,8 +158,7 @@ function SkinScene({
         type="button"
         className="builtin-skin__interact"
         onClick={interact}
-        aria-pressed={hasInteraction}
-        disabled={!interactionAllowed}
+        aria-pressed={interacting}
       >
         <span aria-hidden="true">{skinId === 'deepseek' ? '+' : '▷'}</span>
         {t(skinId === 'deepseek' ? 'skin.feed' : skinId === 'naiwa' ? 'skin.poke' : 'skin.cheer')}

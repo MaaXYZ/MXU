@@ -202,7 +202,7 @@ export function AppearanceSection({
                   <i />
                   <i />
                 </span>
-                {id !== 'default' && (
+                {id === 'gugugaga' && (
                   <span className="skin-choice-preview__hero">
                     <span>
                       <i />
@@ -222,7 +222,11 @@ export function AppearanceSection({
                   </span>
                   <span className="skin-choice-preview__sidebar">
                     <i />
-                    <i />
+                    <i>
+                      {(id === 'deepseek' || id === 'naiwa') && (
+                        <img src={SKIN_THUMBNAILS[id]} alt="" draggable={false} />
+                      )}
+                    </i>
                     <i />
                   </span>
                 </span>
@@ -259,7 +263,7 @@ export function AppearanceSection({
             <p className="mb-2 text-xs font-medium text-text-secondary">
               {t('settings.skinPreview')}
             </p>
-            <BuiltinSkinCompanion preview />
+            <BuiltinSkinCompanion />
           </div>
         )}
       </div>

@@ -4,9 +4,12 @@ import { useAppStore } from '@/stores/appStore';
 import { getSkinTaskState } from './state';
 import { useSkinMotion } from './useSkinMotion';
 import './shell.css';
+import './workspace.css';
+import './ocean.css';
+import './pond.css';
 import './gugugaga.css';
 
-/** Trusted bundled presentation. No scene code can issue business commands. */
+/** Applies the bundled skin around the shared application layout. */
 export function BuiltinSkinShell({ children }: { children: ReactNode }) {
   const { skinId, reduced, running, status } = useAppStore(
     useShallow((state) => ({

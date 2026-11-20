@@ -1,18 +1,21 @@
-/* Actors occupy a reserved bank / hull slot. There is no extra hero card in the app. */
+/* Character preview in appearance settings. */
 .builtin-skin {
   position: relative;
   min-width: 0;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 150px;
+  grid-template-rows: 160px 38px;
   align-items: center;
-  justify-content: flex-end;
+  gap: 0 12px;
+  padding: 18px;
+  background: var(--color-bg-primary);
+  border-radius: 12px;
   color: var(--color-text-primary);
 }
 .builtin-skin__stage {
   position: relative;
   width: 100%;
-  flex: 1;
   min-height: 0;
   pointer-events: none;
 }
@@ -95,7 +98,7 @@
   border: 2px solid #647848;
   box-shadow: 0 3px 0 #304b2b2e;
 }
-.builtin-skin__interact:hover:not(:disabled),
+.builtin-skin__interact:hover,
 .builtin-skin__interact[aria-pressed='true'] {
   outline: 2px solid var(--skin-highlight);
   outline-offset: 2px;
@@ -104,31 +107,17 @@
   outline: 3px solid var(--color-accent);
   outline-offset: 3px;
 }
-.builtin-skin__interact:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-.builtin-skin--preview {
-  display: grid;
-  grid-template-columns: 1fr 150px;
-  grid-template-rows: 160px 38px;
-  align-items: center;
-  gap: 0 12px;
-  padding: 18px;
-  background: var(--color-bg-primary);
-  border-radius: 12px;
-}
-.builtin-skin--preview .builtin-skin__stage {
+.builtin-skin .builtin-skin__stage {
   grid-column: 2;
   grid-row: 1/3;
   align-self: stretch;
   height: 100%;
 }
-.builtin-skin--preview .builtin-skin__copy {
+.builtin-skin .builtin-skin__copy {
   grid-column: 1;
   grid-row: 1;
 }
-.builtin-skin--preview .builtin-skin__interact {
+.builtin-skin .builtin-skin__interact {
   grid-column: 1;
   grid-row: 2;
   justify-self: start;
@@ -153,11 +142,7 @@
   margin-top: 8px;
 }
 @media (max-width: 767px) {
-  .scene-companion .builtin-skin {
-    max-width: 240px;
-    margin: 0 auto;
-  }
-  .builtin-skin--preview {
+  .builtin-skin {
     grid-template-columns: 1fr 115px;
   }
   .builtin-skin__copy h2 {

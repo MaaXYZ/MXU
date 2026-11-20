@@ -45,11 +45,7 @@ const LazyRecentlyClosedPanel = lazy(async () => {
   return { default: module.RecentlyClosedPanel };
 });
 
-export function TabBar({
-  orientation = 'horizontal',
-}: {
-  orientation?: 'horizontal' | 'vertical';
-}) {
+export function TabBar() {
   const { t } = useTranslation();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -345,11 +341,7 @@ export function TabBar({
       let newDragOverIndex: number | null = null;
       tabRefs.current.forEach((el, id) => {
         const rect = el.getBoundingClientRect();
-        if (
-          orientation === 'vertical'
-            ? e.clientY >= rect.top && e.clientY <= rect.bottom
-            : e.clientX >= rect.left && e.clientX <= rect.right
-        ) {
+        if (e.clientX >= rect.left && e.clientX <= rect.right) {
           const idx = instances.findIndex((inst) => inst.id === id);
           if (idx !== -1 && idx !== dragState.draggedIndex) {
             newDragOverIndex = idx;
@@ -361,7 +353,7 @@ export function TabBar({
         setDragState((prev) => ({ ...prev, dragOverIndex: newDragOverIndex }));
       }
     },
-    [dragState.isDragging, dragState.draggedIndex, dragState.dragOverIndex, instances, orientation],
+    [dragState.isDragging, dragState.draggedIndex, dragState.dragOverIndex, instances],
   );
 
   const handleMouseUp = useCallback(() => {
@@ -388,7 +380,7 @@ export function TabBar({
   return (
     <div
       data-skin-slot="tabs"
-      data-orientation={orientation}
+      data-orientation="horizontal"
       className="flex items-center h-10 bg-bg-secondary border-b border-border select-none"
     >
       {/* 标签页区域 */}

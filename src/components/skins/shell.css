@@ -1,4 +1,4 @@
-/* Trusted built-in scenes. Tokens live below html's inline theme variables so
+/* Trusted built-in skin palettes. Tokens live below html's inline theme variables so
  * the host remains the only owner of accent and semantic status colours. */
 :is(.skin-shell, body)[data-mxu-skin='deepseek'] {
   --color-bg-primary: #e7f3ff;
@@ -9,7 +9,7 @@
   --color-text-primary: #163950;
   --color-text-secondary: #40657c;
   --color-text-tertiary: #526e84;
-  --color-text-muted: #617c8e;
+  --color-text-muted: #506a7d;
   --color-border: #bfd8ed;
   --color-border-strong: #8eafca;
   --shadow-sm: 0 2px 5px #1b5c8510;
@@ -34,7 +34,7 @@
   --color-text-primary: #324b34;
   --color-text-secondary: #526451;
   --color-text-tertiary: #677361;
-  --color-text-muted: #737c68;
+  --color-text-muted: #5d6753;
   --color-border: #d4d6b8;
   --color-border-strong: #a9b68c;
   --shadow-sm: 0 3px 0 #6d805416;
@@ -132,46 +132,11 @@ html.dark :is(.skin-shell, body)[data-mxu-skin='naiwa'] {
   position: absolute;
 }
 
-[data-mxu-skin='deepseek'] > .skin-atmosphere {
-  background:
-    radial-gradient(ellipse at 86% 12%, #7acbec26, transparent 48%),
-    linear-gradient(130deg, transparent 32%, #9cd5ef12 60%, #4caad51c);
-}
-
-[data-mxu-skin='deepseek'] > .skin-atmosphere::before {
-  width: 66vw;
-  aspect-ratio: 1;
-  right: -34vw;
-  top: -25vw;
-  border: 1px solid var(--skin-scene-line);
-  border-radius: 50%;
-  box-shadow:
-    0 0 0 46px #9ed7ed10,
-    0 0 0 47px var(--skin-scene-line),
-    0 0 0 94px #9ed7ed0a,
-    0 0 0 95px var(--skin-scene-line);
-  opacity: 0.45;
-}
-
-[data-mxu-skin='deepseek'] > .skin-atmosphere::after {
-  inset: 0;
-  background-image: linear-gradient(var(--skin-scene-line) 1px, transparent 1px);
-  background-size: 100% 56px;
-  opacity: 0.08;
-  mask-image: linear-gradient(transparent 10%, #000);
-}
-
 .skin-atmosphere__orb {
   position: absolute;
   width: 36px;
   aspect-ratio: 1;
   border-radius: 50%;
-}
-
-[data-mxu-skin='deepseek'] .skin-atmosphere__orb {
-  border: 1px solid var(--skin-scene-line);
-  background: linear-gradient(140deg, #fff3, #fff0 65%);
-  box-shadow: inset 2px 3px 0 #fff2;
 }
 
 .skin-atmosphere__orb:nth-child(1) {
@@ -210,66 +175,6 @@ html.dark :is(.skin-shell, body)[data-mxu-skin='naiwa'] {
 
 .skin-atmosphere__waves path:nth-child(3) {
   opacity: 0.35;
-}
-
-[data-mxu-skin='naiwa'] > .skin-atmosphere {
-  background:
-    radial-gradient(ellipse at 10% 4%, #f3d95735, transparent 52%),
-    radial-gradient(ellipse at 95% 88%, #a3b87530, transparent 50%);
-}
-
-[data-mxu-skin='naiwa'] > .skin-atmosphere::before {
-  width: 490px;
-  height: 350px;
-  right: -155px;
-  top: -210px;
-  border: 38px solid var(--skin-scene-glow);
-  border-radius: 44% 56% 53% 47%;
-  transform: rotate(-18deg);
-  opacity: 0.35;
-}
-
-[data-mxu-skin='naiwa'] > .skin-atmosphere::after {
-  inset: 0;
-  background-image: radial-gradient(var(--skin-scene-line) 1.2px, transparent 1.2px);
-  background-size: 18px 18px;
-  opacity: 0.22;
-  mask-image: linear-gradient(90deg, #000, transparent 50%, #000);
-}
-
-[data-mxu-skin='naiwa'] .skin-atmosphere__orb {
-  width: 100px;
-  border-radius: 65% 35% 48% 52%;
-  background: var(--skin-scene-line);
-  opacity: 0.22;
-  transform: rotate(-25deg);
-}
-
-[data-mxu-skin='naiwa'] .skin-atmosphere__orb:nth-child(1) {
-  left: -42px;
-  top: 43%;
-  width: 135px;
-}
-
-[data-mxu-skin='naiwa'] .skin-atmosphere__orb:nth-child(2) {
-  right: -18px;
-  top: 52%;
-  width: 70px;
-}
-
-[data-mxu-skin='naiwa'] .skin-atmosphere__orb:nth-child(3) {
-  width: 150px;
-  left: 47%;
-  bottom: -105px;
-  background: var(--skin-scene-glow);
-  opacity: 0.35;
-}
-
-[data-mxu-skin='naiwa'] .skin-atmosphere__waves {
-  height: 19%;
-  bottom: -25px;
-  stroke-width: 3;
-  opacity: 0.24;
 }
 
 .skin-shell[data-task-state='running'] .skin-atmosphere__orb {

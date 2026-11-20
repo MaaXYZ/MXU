@@ -9,7 +9,6 @@ import {
   useSensors,
   DragEndEvent,
   type Modifier,
-  type KeyboardCoordinateGetter,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -58,30 +57,7 @@ import { loggers } from '@/utils/logger';
 import { toast } from 'sonner';
 import clsx from 'clsx';
 import { getAllMxuSpecialTasks, getAllMxuSpecialTasksOptions } from '@/types/specialTasks.ts';
-import { taskCollisionDetection, verticalTaskCollisionDetection } from '@/utils/taskSorting';
-
-const verticalKeyboardCoordinates: KeyboardCoordinateGetter = (event, args) => {
-  const { collisionRect, droppableRects } = args.context;
-  if (!collisionRect) return;
-  // Keep the library's container/scroll handling while removing decorative horizontal distance.
-  const verticalRect = (rect: typeof collisionRect) => ({
-    top: rect.top,
-    bottom: rect.bottom,
-    height: rect.height,
-    left: 0,
-    right: collisionRect.width,
-    width: collisionRect.width,
-  });
-  const coordinates = sortableKeyboardCoordinates(event, {
-    ...args,
-    context: {
-      ...args.context,
-      collisionRect: verticalRect(collisionRect),
-      droppableRects: new Map([...droppableRects].map(([id, rect]) => [id, verticalRect(rect)])),
-    },
-  });
-  return coordinates ? { x: args.currentCoordinates.x, y: coordinates.y } : coordinates;
-};
+import { taskCollisionDetection } from '@/utils/taskSorting';
 
 /** 单个预设卡片 */
 function PresetCard({ preset, onApply }: { preset: PresetItem; onApply: () => void }) {
@@ -317,7 +293,6 @@ export function TaskList() {
     selectedController,
     selectedResource,
     skippedPresetInstanceIds,
-    skinId,
   } = useAppStore();
 
   const instance = getActiveInstance();
@@ -369,8 +344,7 @@ export function TaskList() {
       },
     }),
     useSensor(KeyboardSensor, {
-      coordinateGetter:
-        skinId === 'naiwa' ? verticalKeyboardCoordinates : sortableKeyboardCoordinates,
+      coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
 
@@ -597,9 +571,7 @@ export function TaskList() {
           {showPreActions && (
             <DndContext
               sensors={sensors}
-              collisionDetection={
-                skinId === 'naiwa' ? verticalTaskCollisionDetection : taskCollisionDetection
-              }
+              collisionDetection={taskCollisionDetection}
               onDragEnd={handlePreActionDragEnd}
               modifiers={[restrictHorizontalMovement]}
             >
@@ -656,9 +628,7 @@ export function TaskList() {
           {pretaskTasks.length > 0 && (
             <DndContext
               sensors={sensors}
-              collisionDetection={
-                skinId === 'naiwa' ? verticalTaskCollisionDetection : taskCollisionDetection
-              }
+              collisionDetection={taskCollisionDetection}
               onDragEnd={handleDragEnd}
               modifiers={[restrictHorizontalMovement]}
             >
@@ -679,9 +649,7 @@ export function TaskList() {
           {showPreActions && (
             <DndContext
               sensors={sensors}
-              collisionDetection={
-                skinId === 'naiwa' ? verticalTaskCollisionDetection : taskCollisionDetection
-              }
+              collisionDetection={taskCollisionDetection}
               onDragEnd={handlePreActionDragEnd}
               modifiers={[restrictHorizontalMovement]}
             >
@@ -711,9 +679,7 @@ export function TaskList() {
           {/* 任务列表 */}
           <DndContext
             sensors={sensors}
-            collisionDetection={
-              skinId === 'naiwa' ? verticalTaskCollisionDetection : taskCollisionDetection
-            }
+            collisionDetection={taskCollisionDetection}
             onDragEnd={handleDragEnd}
             modifiers={[restrictHorizontalMovement]}
           >

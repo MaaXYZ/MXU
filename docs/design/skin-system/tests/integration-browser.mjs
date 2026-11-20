@@ -11,10 +11,11 @@ const output = process.env.SKIN_INTEGRATION_OUTPUT;
 if (output) fs.mkdirSync(output, { recursive: true });
 const server = await createServer({
   root,
-  server: { host: '127.0.0.1', port: 0, strictPort: false },
+  server: { host: '127.0.0.1', port: 0, strictPort: false, hmr: false },
 });
 let browser;
 const checks = [];
+const screenshotFrame = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
 const sampleTasks = [
   { name: 'StartUp', label: '开始唤醒', description: '启动应用并进入主界面。' },
   { name: 'Award', label: '领取奖励', description: '收取每日登录与邮件奖励。' },
@@ -34,7 +35,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  // The mock owns the latest saved config and the runtime facts used by the motion fixture.
+  // The mock owns the latest saved config and active runtime facts.
   let backendConfigSnapshot = null;
   let backendTaskInstances = {};
   await page.routeWebSocket('**/api/ws', () => {});
@@ -88,138 +89,124 @@ try {
       };
     } else if (url.pathname === '/api/maa/initialized') {
       body = { initialized: true, version: '5.0.0' };
+    } else if (/^\/api\/maa\/instances\/[^/]+\/screenshot$/.test(url.pathname)) {
+      body = { dataUrl: screenshotFrame };
     } else if (url.pathname === '/api/focus/pending') body = [];
     await route.fulfill({ json: body });
   });
   const base = server.resolvedUrls.local[0];
+  const slot = (name) => page.locator(`[data-skin-slot="${name}"]`);
+  const shell = page.locator('.skin-shell');
+  const preview = page.locator('[data-builtin-skin]');
+  const video = preview.locator('video');
+  const reducedMotion = page.getByRole('checkbox', { name: '减少皮肤动效', exact: true });
+  const skins = [
+    { id: 'deepseek', name: '蓝色大肥鱼', action: '投喂白饭' },
+    { id: 'naiwa', name: '奶蛙', action: '播放大笑' },
+    { id: 'gugugaga', name: '咕咕嘎嘎' },
+  ];
+  const waitForSkin = (id) =>
+    page.waitForFunction((skin) => document.body.dataset.mxuSkin === skin, id);
+  const waitForTaskState = (state) =>
+    page.waitForFunction(
+      (expected) => document.querySelector('.skin-shell')?.dataset.taskState === expected,
+      state,
+    );
+  const openSettings = () => page.getByTitle('设置', { exact: true }).click();
+  const showMain = () =>
+    page.evaluate(async () =>
+      (await import('/src/stores/appStore.ts')).useAppStore.getState().setCurrentPage('main'),
+    );
+
   await page.goto(base);
-  await page.locator('[data-builtin-skin="deepseek"]').waitFor();
+  await slot('workspace').waitFor();
+  await waitForSkin('deepseek');
   assert(await page.locator('html').evaluate((element) => element.classList.contains('dark')));
-  checks.push('startup restores skin and theme even when the saved configuration has no instances');
-  await page.waitForFunction(() => document.body.dataset.mxuSkin === 'deepseek');
-  await page.getByRole('button', { name: '投喂白饭', exact: true }).click();
-  await page.waitForFunction(
-    () => document.querySelector('[data-builtin-skin="deepseek"] video')?.currentTime > 0.2,
-  );
-  assert(
+  assert.equal(await preview.count(), 0);
+  checks.push('startup restores skin and theme on the standard task page with no saved instances');
+
+  await openSettings();
+  for (const { id, name, action } of skins) {
+    const choice = page.getByRole('button', { name, exact: true });
+    await choice.click();
+    await preview.locator('img').first().waitFor();
+    assert.equal(await choice.getAttribute('aria-pressed'), 'true');
+    assert.equal(await preview.getAttribute('data-builtin-skin'), id);
+    if (!action) continue;
+
+    await page.getByRole('button', { name: action, exact: true }).click();
     await page
-      .locator('[data-builtin-skin="deepseek"] video')
-      .evaluate((element) => element.muted && !element.paused),
-  );
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.waitForFunction(
-    () => document.querySelector('[data-builtin-skin="deepseek"] video').paused,
-  );
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
-  checks.push(
-    'community rice-eating footage plays silently and respects reduced motion without character dialogue',
-  );
-  await page.getByTitle('设置', { exact: true }).click();
+      .waitForFunction(
+        () => document.querySelector('[data-builtin-skin] video')?.currentTime > 0.2,
+        undefined,
+        { timeout: 5_000 },
+      )
+      .catch(async (error) => {
+        const playback = await video.evaluate((element) => ({
+          currentTime: element.currentTime,
+          readyState: element.readyState,
+          paused: element.paused,
+          error: element.error?.message,
+        }));
+        throw new Error(`${id}: preview video did not play (${JSON.stringify(playback)})`, {
+          cause: error,
+        });
+      });
+    assert(await video.evaluate((element) => element.muted && !element.paused));
+    if (id === 'deepseek') {
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await page.waitForFunction(() => document.querySelector('[data-builtin-skin] video').paused);
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+    } else {
+      await reducedMotion.check();
+      await page.waitForFunction(() => document.querySelector('[data-builtin-skin] video').paused);
+      await reducedMotion.uncheck();
+    }
+  }
+  await page.getByRole('button', { name: '默认', exact: true }).click();
+  await preview.waitFor({ state: 'detached' });
   await page.getByRole('button', { name: '奶蛙', exact: true }).click();
-  assert.equal(
-    await page.getByRole('button', { name: '奶蛙', exact: true }).getAttribute('aria-pressed'),
-    'true',
-  );
-  await page.getByRole('button', { name: '播放大笑', exact: true }).click();
-  const video = page.locator('[data-builtin-skin] video');
-  await page.waitForFunction(
-    () => document.querySelector('[data-builtin-skin] video')?.currentTime > 0.2,
-  );
-  assert(await video.evaluate((element) => element.muted && !element.paused));
-  await page.getByRole('checkbox', { name: '减少皮肤动效', exact: true }).check();
-  await page.waitForFunction(() => document.querySelector('[data-builtin-skin] video').paused);
-  await page.getByRole('checkbox', { name: '减少皮肤动效', exact: true }).uncheck();
+  await waitForSkin('naiwa');
   if (output) {
     await page.locator('#settings-skin-label').scrollIntoViewIfNeeded();
     await page.screenshot({ path: path.join(output, 'settings-skins.png') });
   }
-  checks.push(
-    'settings selects each bundled skin and previews real silent video with a motion toggle',
-  );
+  checks.push('the appearance picker preserves the silent skin previews and motion controls');
+
   await page.reload();
-  await page.locator('[data-builtin-skin="naiwa"]').waitFor();
+  await slot('workspace').waitFor();
+  await waitForSkin('naiwa');
   assert(await page.locator('html').evaluate((element) => element.classList.contains('dark')));
   assert.deepEqual(
     await page.evaluate(() => {
-      const appearance = JSON.parse(localStorage.getItem('mxu-webui-appearance'));
-      return {
-        theme: appearance.theme,
-        language: appearance.language,
-        accent: appearance.accentColor,
-      };
-    }),
-    { theme: 'dark', language: 'zh-CN', accent: 'deepsea' },
-  );
-  assert.equal(
-    await page.evaluate(() => JSON.parse(localStorage.getItem('mxu-webui-appearance')).skinId),
-    'naiwa',
-  );
-  checks.push('WebUI selection persists across reload without overwriting the backend appearance');
-
-  const setTaskState = async (mode) =>
-    page.evaluate(async (state) => {
-      const { useAppStore } = await import('/src/stores/appStore.ts');
-      const store = useAppStore.getState();
-      store.updateInstance(store.activeInstanceId, { isRunning: state === 'running' });
-      store.setInstanceTaskStatus(
-        store.activeInstanceId,
-        state === 'success'
-          ? 'Succeeded'
-          : state === 'error'
-            ? 'Failed'
-            : state === 'running'
-              ? 'Running'
-              : null,
+      const { theme, language, accentColor, skinId } = JSON.parse(
+        localStorage.getItem('mxu-webui-appearance'),
       );
-    }, mode);
-  await setTaskState('running');
-  await page.getByTitle('设置', { exact: true }).click();
-  const retained = await page.evaluate(async () => {
-    const { useAppStore } = await import('/src/stores/appStore.ts');
-    const before = useAppStore.getState();
-    const instances = before.instances,
-      statuses = before.instanceTaskStatus;
-    before.setSkinId('deepseek');
-    const after = useAppStore.getState();
-    return (
-      instances === after.instances &&
-      statuses === after.instanceTaskStatus &&
-      before.theme === after.theme &&
-      before.accentColor === after.accentColor
+      return { theme, language, accentColor, skinId };
+    }),
+    { theme: 'dark', language: 'zh-CN', accentColor: 'deepsea', skinId: 'naiwa' },
+  );
+  checks.push('WebUI selection persists after reload along with the theme, accent and language');
+
+  const setTaskState = async (mode) => {
+    const statuses = { idle: null, running: 'Running', success: 'Succeeded', error: 'Failed' };
+    await page.evaluate(
+      async ({ state, status }) => {
+        const { useAppStore } = await import('/src/stores/appStore.ts');
+        const store = useAppStore.getState();
+        store.updateInstance(store.activeInstanceId, { isRunning: state === 'running' });
+        store.setInstanceTaskStatus(store.activeInstanceId, status);
+      },
+      { state: mode, status: statuses[mode] },
     );
-  });
-  assert(retained);
-  assert.equal(
-    await page.locator('[data-builtin-skin]').getAttribute('data-task-state'),
-    'idle',
-    'settings preview must not impersonate the running task',
-  );
-  await page.getByRole('button', { name: '默认', exact: true }).click();
-  assert.equal(await page.locator('[data-builtin-skin]').count(), 0);
-  await page.getByRole('button', { name: '奶蛙', exact: true }).click();
-  await page.evaluate(async () =>
-    (await import('/src/stores/appStore.ts')).useAppStore.getState().setCurrentPage('main'),
-  );
-  assert.equal(await page.locator('.scene-status').getAttribute('data-task-state'), 'running');
-  checks.push(
-    'switching/default removal leaves the running task and existing theme intact; preview remains independent',
-  );
-  await setTaskState('success');
-  await page.waitForFunction(
-    () => document.querySelector('[data-builtin-skin] video').currentTime > 0.2,
-  );
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.waitForFunction(() => document.querySelector('[data-builtin-skin] video').paused);
-  assert.equal(await page.locator('.scene-status').getAttribute('data-task-state'), 'success');
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await setTaskState('error');
-  assert.equal(await page.locator('.scene-status').getAttribute('data-task-state'), 'error');
-  assert(await page.locator('[data-builtin-skin] video').evaluate((element) => element.paused));
-  await setTaskState('idle');
-  assert.equal(await page.locator('.scene-status').getAttribute('data-task-state'), 'idle');
-  checks.push(
-    'real host results drive celebration/error; stop stays neutral and system motion reduction pauses video',
-  );
+    await waitForTaskState(mode);
+  };
+  await setTaskState('running');
+  await openSettings();
+  assert.equal(await preview.getAttribute('data-task-state'), 'idle');
+  await showMain();
+  for (const state of ['success', 'error', 'idle']) await setTaskState(state);
+  checks.push('task feedback follows host state while the settings preview stays independent');
 
   // Populate the real TaskItem, tabs and log components, rather than screenshotting an empty shell.
   await page.evaluate(async () => {
@@ -274,160 +261,126 @@ try {
         ].map((name) => [name, style.getPropertyValue(name).trim()]),
       );
     });
-  const styles = {};
-  const layoutRects = {};
-  const sceneRectangles = () =>
-    page.evaluate(() => {
-      const selectors = {
-        navigation: '.scene-navigation',
-        companion: '.scene-companion',
-        instruments: '.scene-instruments',
-        logbook: '.scene-logbook',
-      };
-      return Object.fromEntries(
-        Object.entries(selectors).map(([name, selector]) => {
-          const { x, y, width, height } = document.querySelector(selector).getBoundingClientRect();
-          return [name, { x, y, width, height }];
-        }),
-      );
-    });
+  const desktopSlots = [
+    'tabs',
+    'workspace',
+    'task-panel',
+    'task-list',
+    'toolbar',
+    'sidebar',
+    'connection',
+    'screenshot',
+    'logs',
+  ];
+  const layout = (names) =>
+    page.evaluate(
+      (slots) =>
+        Object.fromEntries(
+          slots.map((name) => {
+            const element = document.querySelector(`[data-skin-slot="${name}"]`);
+            const { x, y, width, height, right, bottom } = element.getBoundingClientRect();
+            return [name, { x, y, width, height, right, bottom }];
+          }),
+        ),
+      names,
+    );
+  const assertDesktopLayout = async (baseline, skinId) => {
+    const current = await layout(desktopSlots);
+    const { tabs, workspace, toolbar, sidebar, connection, screenshot, logs } = current;
+    assert(tabs.bottom <= workspace.y + 1, `${skinId}: tabs are above the workspace`);
+    assert(toolbar.right <= sidebar.x + 1, `${skinId}: toolbar is in the left task column`);
+    assert(
+      connection.bottom <= screenshot.y + 1 && screenshot.bottom <= logs.y + 1,
+      `${skinId}: connection, screenshot and logs are stacked in the sidebar`,
+    );
+    assert.equal(
+      await slot('tabs-list').evaluate((element) => getComputedStyle(element).flexDirection),
+      'row',
+    );
+    for (const name of desktopSlots) {
+      assert(current[name].width > 0 && current[name].height > 0, `${skinId}: ${name} is visible`);
+      for (const edge of ['x', 'y', 'right', 'bottom']) {
+        assert(
+          Math.abs(current[name][edge] - baseline[name][edge]) <= 32,
+          `${skinId}: ${name} ${edge} stays near its default layout position`,
+        );
+      }
+    }
+  };
+
   await page.setViewportSize({ width: 1280, height: 900 });
+  await setAppearance('default', 'light');
+  const liveNodes = await page.evaluateHandle(
+    (names) => names.map((name) => document.querySelector(`[data-skin-slot="${name}"]`)),
+    desktopSlots,
+  );
+  if (output) {
+    await page
+      .getByRole('link', { name: '提交 Issue', exact: true })
+      .locator('xpath=../..')
+      .getByRole('button', { name: '关闭', exact: true })
+      .click();
+  }
   for (const theme of ['light', 'dark']) {
     await setAppearance('default', theme);
     const standard = await bodyTokens();
-    for (const skinId of ['deepseek', 'naiwa']) {
-      await setAppearance(skinId, theme);
-      styles[`${skinId}-${theme}`] = await bodyTokens();
-      assert.notEqual(
-        styles[`${skinId}-${theme}`]['--color-bg-primary'],
-        standard['--color-bg-primary'],
-      );
-      assert.notEqual(styles[`${skinId}-${theme}`]['--color-border'], standard['--color-border']);
-      assert.equal(
-        styles[`${skinId}-${theme}`]['--color-accent'],
-        standard['--color-accent'],
-        'skin preserves the explicit accent',
-      );
-      for (const slot of [
-        'tabs',
-        'workspace',
-        'task-panel',
-        'task-list',
-        'toolbar',
-        'sidebar',
-        'connection',
-        'screenshot',
-        'logs',
-      ]) {
-        assert(await page.locator(`[data-skin-slot="${slot}"]`).count(), `missing ${slot} anchor`);
-      }
-      const ambient = page.locator('[data-skin-ambient]');
-      assert(await ambient.count(), 'the complete shell includes a decorative scene');
+    const baseline = await layout(desktopSlots);
+    const backgrounds = new Set();
+    for (const { id } of skins) {
+      await setAppearance(id, theme);
+      const tokens = await bodyTokens();
+      backgrounds.add(tokens['--color-bg-primary']);
+      assert.notEqual(tokens['--color-bg-primary'], standard['--color-bg-primary']);
+      assert.notEqual(tokens['--color-border'], standard['--color-border']);
+      assert.equal(tokens['--color-accent'], standard['--color-accent']);
+      await assertDesktopLayout(baseline, id);
       assert(
-        await ambient.evaluateAll((elements) =>
-          elements.every((element) => getComputedStyle(element).pointerEvents === 'none'),
+        await liveNodes.evaluate(
+          (nodes, names) =>
+            nodes.every(
+              (node, index) =>
+                node === document.querySelector(`[data-skin-slot="${names[index]}"]`),
+            ),
+          desktopSlots,
         ),
+        `${id}: switching skins preserves the mounted workspace and its controls`,
       );
-      // The real context menu is rendered into document.body, outside the app shell.
-      await page.locator('[data-skin-slot="task-item"]').first().click({ button: 'right' });
+      const ambient = page.locator('[data-skin-ambient]');
+      assert.equal(await ambient.getAttribute('aria-hidden'), 'true');
+      assert.equal(
+        await ambient.evaluate((element) => getComputedStyle(element).pointerEvents),
+        'none',
+      );
+
+      // Portals outside the app shell inherit the skin palette.
+      await slot('task-item').first().click({ button: 'right' });
       const menu = page.locator('body > div[class*="min-w-[180px]"]');
       await menu.waitFor();
       assert.equal(
         await menu.evaluate((element) =>
           getComputedStyle(element).getPropertyValue('--color-bg-secondary').trim(),
         ),
-        styles[`${skinId}-${theme}`]['--color-bg-secondary'],
+        tokens['--color-bg-secondary'],
       );
-      await page.locator('.scene-heading h1').click();
+      await page.mouse.click(2, 2);
       await menu.waitFor({ state: 'detached' });
-      assert.equal(
-        await page.locator('.scene-workspace').getAttribute('data-scene-layout'),
-        skinId,
-      );
-      assert.equal(
-        await page
-          .locator('.scene-workspace .builtin-skin__copy, .scene-workspace .builtin-skin__scenery')
-          .count(),
-        0,
-        'the extra hero card has been removed',
-      );
-      const direction = await page
-        .locator('[data-skin-slot="tabs-list"]')
-        .evaluate((element) => getComputedStyle(element).flexDirection);
-      assert.equal(
-        direction,
-        skinId === 'deepseek' ? 'column' : 'row',
-        'instance navigation changes orientation with the scene',
-      );
-      layoutRects[`${skinId}-${theme}`] = await sceneRectangles();
       if (output) {
         await page.screenshot({
-          path: path.join(output, `main-${skinId}-${theme}.png`),
+          path: path.join(output, `main-${id}-${theme}.png`),
           animations: 'disabled',
         });
       }
     }
-    assert.notEqual(
-      styles[`deepseek-${theme}`]['--color-bg-primary'],
-      styles[`naiwa-${theme}`]['--color-bg-primary'],
-    );
-    const movedRegions = Object.keys(layoutRects[`deepseek-${theme}`]).filter((name) => {
-      const ocean = layoutRects[`deepseek-${theme}`][name];
-      const pond = layoutRects[`naiwa-${theme}`][name];
-      const dx = Math.abs(ocean.x + ocean.width / 2 - pond.x - pond.width / 2);
-      const dy = Math.abs(ocean.y + ocean.height / 2 - pond.y - pond.height / 2);
-      return Math.max(dx, dy) >= 40;
-    });
-    assert(
-      movedRegions.length >= 3,
-      `scenes must change composition, not only colour/radius: moved ${movedRegions.join(', ')}`,
-    );
+    assert.equal(backgrounds.size, skins.length);
     await setAppearance('default', theme);
-    assert.equal(
-      await page.locator('.scene-workspace').count(),
-      0,
-      'default restores the standard layout',
-    );
-    assert.equal(
-      await page
-        .locator('[data-skin-slot="tabs-list"]')
-        .evaluate((element) => getComputedStyle(element).flexDirection),
-      'row',
-    );
-    assert.deepEqual(await bodyTokens(), standard, 'default skin completely restores host palette');
-    assert.equal(await page.locator('[data-builtin-skin]').count(), 0);
+    assert.deepEqual(await bodyTokens(), standard, 'default restores the host palette');
+    assert.equal(await page.locator('[data-skin-ambient]').count(), 0);
   }
+  await liveNodes.dispose();
   checks.push(
-    'both skins transform the whole app in light/dark, include scene layers, preserve accent and style body portals; default restores every sampled token',
+    'all skins preserve desktop component placement and identity, style portals and retain the user accent in light and dark modes',
   );
 
-  // Changing a scene rearranges the same live business components.
-  await setAppearance('deepseek', 'dark');
-  await page.evaluate(() => {
-    window.__skinBusinessNodes = Object.fromEntries(
-      ['task-list', 'toolbar', 'screenshot'].map((slot) => [
-        slot,
-        document.querySelector(`[data-skin-slot="${slot}"]`),
-      ]),
-    );
-  });
-  await setAppearance('naiwa', 'dark');
-  assert(
-    await page.evaluate(() =>
-      Object.entries(window.__skinBusinessNodes).every(
-        ([slot, element]) => element === document.querySelector(`[data-skin-slot="${slot}"]`),
-      ),
-    ),
-    'scene switching must preserve task, toolbar and screenshot component identity',
-  );
-  await page.evaluate(() => {
-    delete window.__skinBusinessNodes;
-  });
-  checks.push(
-    'scene switching preserves the live task list, task toolbar and screenshot DOM nodes',
-  );
-
-  // Exercise the vertical tab hit-testing, not just its CSS orientation.
   await setAppearance('deepseek', 'light');
   const instanceOrder = await page.evaluate(async () =>
     (await import('/src/stores/appStore.ts')).useAppStore
@@ -463,9 +416,9 @@ try {
     },
     { id: activeBeforeReorder },
   );
-  checks.push('vertical instance navigation reorders tabs using their actual vertical hit regions');
+  checks.push('horizontal instance navigation retains drag reordering with a skin applied');
 
-  // Native task controls keep operating through the radically different presentation.
+  // Native task controls work through the same interface in both refreshed skins.
   for (const skinId of ['deepseek', 'naiwa']) {
     await setAppearance(skinId, 'light');
     await setTaskState('idle');
@@ -514,10 +467,10 @@ try {
     );
   }
   checks.push(
-    'both scene layouts retain task enable, option expansion and context-menu reordering',
+    'both refreshed skins retain task enable, option expansion and context-menu reordering',
   );
 
-  // A zigzag route is still a sequential list: moving to the next pad must not skip it.
+  // Pointer and keyboard sorting use the native adjacent task hit regions.
   await page.setViewportSize({ width: 1280, height: 900 });
   await setAppearance('naiwa', 'light');
   await setTaskState('idle');
@@ -527,22 +480,19 @@ try {
       .getActiveInstance()
       .selectedTasks.map((task) => task.id),
   );
-  const routeItems = page.locator('[data-skin-slot="task-item"]');
-  const routeHandle = await routeItems
+  const taskItems = page.locator('[data-skin-slot="task-item"]');
+  const taskHandle = await taskItems
     .first()
     .locator('[aria-roledescription="sortable"]')
     .boundingBox();
-  const nextPad = await routeItems
+  const nextTask = await taskItems
     .nth(1)
     .locator('[data-skin-slot="task-item-head"]')
     .boundingBox();
-  assert(routeHandle && nextPad, 'native sortable handles and the next lily pad must be visible');
-  await page.mouse.move(
-    routeHandle.x + routeHandle.width / 2,
-    routeHandle.y + routeHandle.height / 2,
-  );
+  assert(taskHandle && nextTask, 'sortable handles and the next task must be visible');
+  await page.mouse.move(taskHandle.x + taskHandle.width / 2, taskHandle.y + taskHandle.height / 2);
   await page.mouse.down();
-  await page.mouse.move(nextPad.x + nextPad.width / 2, nextPad.y + nextPad.height / 2, {
+  await page.mouse.move(nextTask.x + nextTask.width / 2, nextTask.y + nextTask.height / 2, {
     steps: 12,
   });
   await page.mouse.up();
@@ -576,9 +526,7 @@ try {
     ),
     beforePointerDrag,
   );
-  checks.push(
-    'native pointer drag from the first zigzag lily pad to the second swaps adjacent tasks without skipping a pad',
-  );
+  checks.push('pointer dragging swaps adjacent tasks');
 
   const keyboardHandle = page
     .locator('[data-skin-slot="task-item"]')
@@ -604,240 +552,148 @@ try {
     const store = useAppStore.getState();
     store.reorderTasks(store.activeInstanceId, 1, 0);
   });
-  checks.push(
-    'keyboard Space/ArrowDown/Space moves the adjacent winding-route task without a horizontal jump',
-  );
+  checks.push('keyboard Space/ArrowDown/Space swaps adjacent tasks');
 
-  // The log header owns the real instrument-collapse state in both scenes.
-  for (const skinId of ['deepseek', 'naiwa']) {
-    await setAppearance(skinId, 'light');
-    const logHeader = page.locator('.scene-logbook [data-skin-slot="logs"] > [role="button"]');
-    if (
-      (await page.locator('.scene-workspace').getAttribute('data-instruments-expanded')) === 'false'
-    ) {
-      await logHeader.click({ position: { x: 20, y: 15 } });
-    }
-    const beforeWidth = await page
-      .locator('.scene-tasks')
-      .evaluate((element) => element.getBoundingClientRect().width);
+  // Collapsing panels changes only their native local layout.
+  const panelHeight = (name) =>
+    slot(name).evaluate((element) => element.getBoundingClientRect().height);
+  for (const { id } of skins.slice(0, 2)) {
+    await setAppearance(id, 'light');
+    const screenshotHeader = slot('screenshot').locator(':scope > [role="button"]');
+    const expandedHeight = await panelHeight('screenshot');
+    await screenshotHeader.press('Enter');
+    await page.waitForFunction(
+      (height) =>
+        document.querySelector('[data-skin-slot="screenshot"]').clientHeight < height - 20,
+      expandedHeight,
+    );
+    await screenshotHeader.click();
+    await page.waitForFunction(
+      (height) =>
+        document.querySelector('[data-skin-slot="screenshot"]').clientHeight >= height - 1,
+      expandedHeight,
+    );
+
+    const logHeader = slot('logs').locator(':scope > [role="button"]');
+    await logHeader.press('Enter');
+    await page.waitForFunction(
+      () =>
+        document.querySelector('[data-skin-slot="connection"]').parentElement.clientHeight === 0,
+    );
     await logHeader.click({ position: { x: 20, y: 15 } });
-    await page.waitForFunction(() => {
-      const scene = document.querySelector('.scene-workspace');
-      const instruments = scene.querySelector('.scene-instruments');
-      const style = getComputedStyle(instruments);
-      return (
-        scene.dataset.instrumentsExpanded === 'false' &&
-        style.visibility === 'hidden' &&
-        style.pointerEvents === 'none'
-      );
-    });
-    if (skinId === 'deepseek') {
-      assert(
-        await page
-          .locator('.scene-tasks')
-          .evaluate(
-            (element, width) => element.getBoundingClientRect().width > width + 10,
-            beforeWidth,
-          ),
-        'collapsing the ocean instruments gives the live task route more room',
-      );
-    }
-    await logHeader.click({ position: { x: 20, y: 15 } });
-    await page.waitForFunction(() => {
-      const scene = document.querySelector('.scene-workspace');
-      const instruments = scene.querySelector('.scene-instruments');
-      return (
-        scene.dataset.instrumentsExpanded === 'true' &&
-        getComputedStyle(instruments).visibility === 'visible' &&
-        instruments.getBoundingClientRect().width > 0
-      );
-    });
+    await page.waitForFunction(
+      () => document.querySelector('[data-skin-slot="connection"]').parentElement.clientHeight > 0,
+    );
   }
-  checks.push(
-    'native log header hides and restores instruments in both scenes; the ocean route expands into the released space',
-  );
+  checks.push('screenshot and sidebar collapse controls work with keyboard and pointer');
 
-  // Controlled backend cache fixture: these are host facts, never inferred from decoration.
+  await setAppearance('deepseek', 'light');
   await page.evaluate(async () => {
     const { useAppStore } = await import('/src/stores/appStore.ts');
     const store = useAppStore.getState();
-    const instance = store.getActiveInstance();
-    useAppStore.setState({
-      instanceTaskRunStatus: {
-        ...store.instanceTaskRunStatus,
-        [instance.id]: {
-          [instance.selectedTasks[0].id]: 'succeeded',
-          [instance.selectedTasks[1].id]: 'running',
-        },
-      },
-    });
+    store.setInstanceConnectionStatus(store.activeInstanceId, 'Connected');
   });
-  const taskFacts = await page.evaluate(async () =>
-    JSON.stringify(
-      (await import('/src/stores/appStore.ts')).useAppStore.getState().instanceTaskRunStatus,
-    ),
-  );
-  const sceneAnimations = () =>
-    page.locator('.scene-workspace').evaluate((element) =>
-      element
-        .getAnimations({ subtree: true })
-        .filter((animation) => /^(bridge-|pond-|scene-)/.test(animation.animationName ?? ''))
-        .map((animation) => ({ name: animation.animationName, state: animation.playState })),
-    );
-  const assertSceneStopped = async () => {
-    assert(
-      (await sceneAnimations()).every((animation) => animation.state !== 'running'),
-      'visible scene animations must stop with motion reduction or a hidden page',
-    );
-    assert(
-      await page.locator('[data-builtin-skin] video').evaluate((element) => element.paused),
-      'character video also pauses',
-    );
-  };
-  const assertTaskFacts = async () => {
+  const screen = slot('screenshot-screen');
+  const image = screen.getByRole('img', { name: 'Screenshot' });
+  await image.waitFor();
+  const screenshotImage = await image.elementHandle();
+  assert(await image.evaluate((element) => element.decode().then(() => element.naturalWidth > 0)));
+  await slot('screenshot').getByTitle('停止实时流', { exact: true }).click();
+  await slot('screenshot').getByTitle('全屏显示', { exact: true }).click();
+  const exitFullscreen = page.getByTitle('退出全屏', { exact: true });
+  await exitFullscreen.waitFor();
+  for (const { id } of skins.slice(0, 2)) {
+    await setAppearance(id, 'light');
+    assert.equal(await image.getAttribute('src'), screenshotFrame);
+    assert(await image.evaluate((element, original) => element === original, screenshotImage));
     assert.equal(
-      await page.locator('[data-skin-slot="task-item"]').nth(0).getAttribute('data-task-status'),
-      'succeeded',
+      await screen.evaluate((element) => getComputedStyle(element).backgroundImage),
+      'none',
     );
-    assert.equal(
-      await page.locator('[data-skin-slot="task-item"]').nth(1).getAttribute('data-task-status'),
-      'running',
-    );
-    assert.equal(
-      await page
-        .locator('[data-skin-slot="task-item"]')
-        .nth(0)
-        .locator('.skin-task-marker')
-        .textContent(),
-      '01',
-    );
-    assert.equal(
-      await page
-        .locator('[data-skin-slot="task-item"]')
-        .nth(1)
-        .locator('.skin-task-marker')
-        .textContent(),
-      '02',
-    );
-    assert.equal(
-      await page.evaluate(async () =>
-        JSON.stringify(
-          (await import('/src/stores/appStore.ts')).useAppStore.getState().instanceTaskRunStatus,
-        ),
-      ),
-      taskFacts,
-      'motion policy and interaction do not rewrite task facts',
-    );
-  };
+    assert(await exitFullscreen.isVisible());
+    assert(await slot('screenshot').getByTitle('开始实时流', { exact: true }).isEnabled());
+  }
+  await page.keyboard.press('Escape');
+  await exitFullscreen.waitFor({ state: 'detached' });
+  await screenshotImage.dispose();
+  await page.evaluate(async () => {
+    const { useAppStore } = await import('/src/stores/appStore.ts');
+    const store = useAppStore.getState();
+    store.setInstanceConnectionStatus(store.activeInstanceId, 'Disconnected');
+  });
+  await image.waitFor({ state: 'detached' });
+  checks.push('skin switching retains the decoded screenshot, fullscreen view and paused stream');
+
+  // Provide real host statuses and preserve them through a foreground refresh.
   await setTaskState('running');
-  // App legitimately refreshes host runtime facts on foreground recovery. Return the
-  // same controlled backend facts through the real snake_case HTTP contract, rather
-  // than erasing them with the startup-only empty /maa/state response.
   backendTaskInstances = await page.evaluate(async () => {
     const { useAppStore } = await import('/src/stores/appStore.ts');
     const store = useAppStore.getState();
     const instance = store.getActiveInstance();
+    const statuses = {
+      [instance.selectedTasks[0].id]: 'succeeded',
+      [instance.selectedTasks[1].id]: 'running',
+    };
+    useAppStore.setState({
+      instanceTaskRunStatus: { ...store.instanceTaskRunStatus, [instance.id]: statuses },
+    });
     return {
       [instance.id]: {
         connected: store.instanceConnectionStatus[instance.id] === 'Connected',
         resource_loaded: !!store.instanceResourceLoaded[instance.id],
         tasker_inited: false,
-        is_running: instance.isRunning,
+        is_running: true,
         task_run_state: {
-          statuses: store.instanceTaskRunStatus[instance.id],
+          statuses,
           mappings: store.maaTaskIdMapping[instance.id] ?? {},
           pending_task_ids: store.instancePendingTaskIds[instance.id] ?? [],
           current_task_index: store.instanceCurrentTaskIndex[instance.id] ?? 0,
-          overall_status: store.instanceTaskStatus[instance.id] ?? null,
+          overall_status: 'Running',
         },
       },
     };
   });
-  for (const skinId of ['deepseek', 'naiwa']) {
-    await setAppearance(skinId, 'dark');
-    await page.waitForFunction(() => document.body.dataset.skinMotion === 'full');
-    await assertTaskFacts();
-    const activeAnimations = await sceneAnimations();
-    const expectedNames =
-      skinId === 'deepseek'
-        ? ['bridge-sonar-rotation', 'bridge-route-ping', 'scene-life-swim']
-        : ['pond-status-pulse', 'scene-water-breathe'];
-    for (const name of expectedNames) {
-      assert(
-        activeAnimations.some(
-          (animation) => animation.name === name && animation.state === 'running',
-        ),
-        `${skinId}: actual scene must run ${name}`,
-      );
-    }
-    const markerAnimation = await page
-      .locator('[data-task-status="running"] .skin-task-marker')
+  const taskStatuses = () =>
+    slot('task-item').evaluateAll((items) =>
+      items.slice(0, 2).map((item) => item.dataset.taskStatus),
+    );
+  const waitForMotion = (motion) =>
+    page.waitForFunction((mode) => document.body.dataset.skinMotion === mode, motion);
+  const ambientIsMoving = () =>
+    page
+      .locator('[data-skin-ambient]')
       .evaluate((element) =>
         element
           .getAnimations({ subtree: true })
-          .some(
-            (animation) =>
-              animation.animationName === 'bridge-route-ping' && animation.playState === 'running',
-          ),
+          .some((animation) => animation.playState === 'running'),
       );
-    assert.equal(
-      markerAnimation,
-      skinId === 'deepseek',
-      'only the running ocean route marker receives its sonar pulse',
-    );
-    await page.locator('.builtin-skin__interact').click();
-    await page.waitForFunction(() =>
-      document
-        .querySelector('.scene-workspace')
-        .getAnimations({ subtree: true })
-        .some(
-          (animation) =>
-            animation.animationName === 'scene-wide-echo' && animation.playState === 'running',
-        ),
-    );
-    if (skinId === 'naiwa') {
-      assert(
-        (await sceneAnimations()).some(
-          (animation) => animation.name === 'pond-water-response' && animation.state === 'running',
-        ),
-      );
-    }
-    await assertTaskFacts();
+  for (const { id } of skins.slice(0, 2)) {
+    await setAppearance(id, 'dark');
+    await waitForMotion('full');
+    assert.equal(await shell.getAttribute('data-task-state'), 'running');
+    assert.deepEqual(await taskStatuses(), ['succeeded', 'running']);
+    assert(await ambientIsMoving(), `${id}: themed ambience responds to a running task`);
     if (output) {
-      await page.waitForFunction(() => {
-        const clip = document.querySelector('[data-builtin-skin] video');
-        return clip && !clip.paused && clip.currentTime > 0.2;
-      });
-      await page.screenshot({ path: path.join(output, `scene-${skinId}-running.png`) });
+      await page.screenshot({ path: path.join(output, `main-${id}-running.png`) });
     }
 
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.waitForFunction(() => document.body.dataset.skinMotion === 'reduced');
-    await assertSceneStopped();
-    await assertTaskFacts();
+    await waitForMotion('reduced');
+    assert.equal(await ambientIsMoving(), false);
+    assert.deepEqual(await taskStatuses(), ['succeeded', 'running']);
     await page.emulateMedia({ reducedMotion: 'no-preference' });
-    await page.waitForFunction(() => document.body.dataset.skinMotion === 'full');
+    await waitForMotion('full');
 
-    // The actual application setting must suppress scene animation after returning to tasks.
-    await page.getByTitle('设置', { exact: true }).click();
-    await page.getByRole('checkbox', { name: '减少皮肤动效', exact: true }).check();
-    await page.evaluate(async () =>
-      (await import('/src/stores/appStore.ts')).useAppStore.getState().setCurrentPage('main'),
-    );
-    await page.waitForFunction(() => document.body.dataset.skinMotion === 'reduced');
-    await assertSceneStopped();
-    await assertTaskFacts();
-    assert.equal(await page.locator('.scene-status').getAttribute('data-task-state'), 'running');
-    await page.getByTitle('设置', { exact: true }).click();
-    await page.getByRole('checkbox', { name: '减少皮肤动效', exact: true }).uncheck();
-    await page.evaluate(async () =>
-      (await import('/src/stores/appStore.ts')).useAppStore.getState().setCurrentPage('main'),
-    );
-    await page.waitForFunction(() => document.body.dataset.skinMotion === 'full');
-    assert(
-      (await sceneAnimations()).some((animation) => animation.state === 'running'),
-      'turning application reduction off restores scene motion',
-    );
+    await openSettings();
+    await reducedMotion.check();
+    await showMain();
+    await waitForMotion('reduced');
+    assert.equal(await ambientIsMoving(), false);
+    assert.deepEqual(await taskStatuses(), ['succeeded', 'running']);
+    await openSettings();
+    await reducedMotion.uncheck();
+    await showMain();
+    await waitForMotion('full');
 
     await page.evaluate(() => {
       Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
@@ -847,75 +703,61 @@ try {
       });
       document.dispatchEvent(new Event('visibilitychange'));
     });
-    await page.waitForFunction(() => document.body.dataset.skinMotion === 'paused');
-    await assertSceneStopped();
-    await assertTaskFacts();
+    await waitForMotion('paused');
+    assert.equal(await ambientIsMoving(), false);
     await page.evaluate(() => {
       delete document.hidden;
       delete document.visibilityState;
       document.dispatchEvent(new Event('visibilitychange'));
     });
-    await page.waitForFunction(() => document.body.dataset.skinMotion === 'full');
-    await assertTaskFacts();
+    await waitForMotion('full');
+    assert.deepEqual(await taskStatuses(), ['succeeded', 'running']);
   }
   backendTaskInstances = {};
-  await page.evaluate(async () => {
-    const { useAppStore } = await import('/src/stores/appStore.ts');
-    const store = useAppStore.getState();
-    const statuses = { ...store.instanceTaskRunStatus };
-    delete statuses[store.activeInstanceId];
-    useAppStore.setState({ instanceTaskRunStatus: statuses });
-  });
+  await setTaskState('idle');
   checks.push(
-    'host per-task facts drive route markers and real scene animations; interaction, system/app motion reduction and hidden pages preserve facts while stopping scene and video motion',
+    'system and app motion settings and hidden pages pause ambience without altering task statuses',
   );
 
   for (const [width, height] of [
-    [1280, 900],
     [850, 525],
-    [800, 900],
     [768, 900],
     [680, 420],
-    [566, 350],
     [390, 844],
   ]) {
     await page.setViewportSize({ width, height });
-    for (const skinId of ['deepseek', 'naiwa']) {
-      await setAppearance(skinId, 'dark');
-      const companion = page.locator('[data-builtin-skin]');
-      await companion.scrollIntoViewIfNeeded();
-      const geometry = await page.evaluate(() => {
-        const actor = document.querySelector('[data-builtin-skin]').getBoundingClientRect();
-        const action = [...document.querySelectorAll('[data-role="start-stop-button"]')]
-          .find((element) => element.getBoundingClientRect().height > 0)
-          .getBoundingClientRect();
-        return {
-          overflow: document.documentElement.scrollWidth > innerWidth + 1,
-          overlap:
-            Math.min(actor.right, action.right) > Math.max(actor.left, action.left) &&
-            Math.min(actor.bottom, action.bottom) > Math.max(actor.top, action.top),
-          clipped: actor.left < 0 || actor.right > innerWidth + 1,
-          panelsClipped: [
-            ...document.querySelectorAll(
-              '.scene-navigation, .scene-tasks, .scene-instruments, .scene-logbook, [data-skin-slot="screenshot"]',
-            ),
-          ].some((element) => {
-            const box = element.getBoundingClientRect();
-            return box.width > 0 && (box.left < 0 || box.right > innerWidth + 1);
-          }),
-        };
-      });
-      assert.deepEqual(
-        geometry,
-        { overflow: false, overlap: false, clipped: false, panelsClipped: false },
-        `${skinId} ${width}x${height}`,
+    const mobile = width < 768;
+    if (mobile) await slot('mobile-scroll').waitFor();
+    else await slot('sidebar').waitFor();
+
+    for (const { id } of skins.slice(0, 2)) {
+      await setAppearance(id, 'dark');
+      if (mobile) {
+        const {
+          connection,
+          screenshot,
+          toolbar,
+          logs,
+          'task-list': tasks,
+        } = await layout(['connection', 'screenshot', 'task-list', 'toolbar', 'logs']);
+        assert(
+          connection.bottom <= screenshot.y + 1 &&
+            screenshot.bottom <= tasks.y + 1 &&
+            tasks.bottom <= toolbar.y + 1 &&
+            toolbar.bottom <= logs.y + 1,
+          `${id}: narrow workspace keeps the standard single-column panel order`,
+        );
+      }
+      assert(
+        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+        `${id} ${width}x${height}: the page has no horizontal overflow`,
       );
-      for (const control of [
+      const controls = [
         page.locator('[data-role="start-stop-button"]').filter({ visible: true }),
-        page.locator('.builtin-skin__interact'),
-        page.locator('.scene-monitor [data-skin-slot="screenshot"] > [role="button"]'),
-        page.locator('.scene-devices [data-skin-slot="connection"] > button').first(),
-      ]) {
+        slot('screenshot').locator(':scope > [role="button"]'),
+        slot('connection').locator(':scope > button').first(),
+      ];
+      for (const control of controls) {
         await control.scrollIntoViewIfNeeded();
         assert(
           await control.evaluate((element) => {
@@ -926,52 +768,27 @@ try {
             );
             return element === target || element.contains(target);
           }),
-          `${skinId} ${width}x${height}: protected control is covered`,
+          `${id} ${width}x${height}: native control stays clear of decoration`,
         );
         await control.focus();
-        assert(
-          await control.evaluate((element) => document.activeElement === element),
-          'real controls remain keyboard focusable',
-        );
-      }
-      if (width >= 768) {
-        await page.evaluate(async () =>
-          (await import('/src/stores/appStore.ts')).useAppStore
-            .getState()
-            .setShowAddTaskPanel(true),
-        );
-        await page.waitForFunction(() => {
-          const action = [...document.querySelectorAll('[data-role="start-stop-button"]')]
-            .find((element) => element.getBoundingClientRect().height > 0)
-            .getBoundingClientRect();
-          const list = document.querySelector('[data-skin-slot="task-list"]');
-          const listBox = list.getBoundingClientRect();
-          const style = getComputedStyle(list);
-          return (
-            action.top >= 0 &&
-            action.bottom <= innerHeight &&
-            listBox.height >= 44 &&
-            ['auto', 'scroll'].includes(style.overflowY)
-          );
-        });
-        await page.evaluate(async () =>
-          (await import('/src/stores/appStore.ts')).useAppStore
-            .getState()
-            .setShowAddTaskPanel(false),
-        );
+        assert(await control.evaluate((element) => document.activeElement === element));
       }
       if (output && (width === 850 || width === 390)) {
+        if (mobile)
+          await slot('mobile-scroll').evaluate((element) => {
+            element.scrollTop = 0;
+          });
         await page.screenshot({
-          path: path.join(output, `main-${skinId}-${width}x${height}.png`),
+          path: path.join(output, `main-${id}-${width}x${height}.png`),
           animations: 'disabled',
         });
       }
     }
     checks.push(
-      `scene controls, character and panel boundaries remain usable at ${width}x${height}`,
+      `standard workspace and controls remain usable on both refreshed skins at ${width}x${height}`,
     );
   }
-  // Native anchored popovers must fit both the ocean rail and the narrow mobile bar.
+  // Native anchored popovers fit the desktop and mobile tab bars.
   await page.setViewportSize({ width: 850, height: 525 });
   const priorPopoverState = await page.evaluate(async () => {
     const { useAppStore } = await import('/src/stores/appStore.ts');
@@ -1037,15 +854,9 @@ try {
     useAppStore.setState(previous);
   }, priorPopoverState);
   checks.push(
-    'native update and recently-closed popovers open, fit and dismiss from both scene navigations at 850x525 and 390x844 without downloading or reopening',
+    'update and recently-closed popovers open, fit and dismiss on both refreshed skins at 850x525 and 390x844',
   );
 
-  if (output) {
-    await page.setViewportSize({ width: 1280, height: 900 });
-    await setTaskState('success');
-    await page.waitForTimeout(350);
-    await page.screenshot({ path: path.join(output, 'main-naiwa.png') });
-  }
   for (const language of ['zh-CN', 'zh-TW', 'en-US', 'ja-JP', 'ko-KR']) {
     await page.evaluate(
       async (language) =>
@@ -1083,7 +894,7 @@ try {
     (await import('/src/stores/appStore.ts')).useAppStore.getState().setLanguage('zh-CN'),
   );
   checks.push(
-    'all five languages keep task actions inside the viewport in both scenes at 768px and 390px',
+    'all five languages keep task actions inside the viewport on both refreshed skins at 768px and 390px',
   );
   assert.deepEqual(errors, [], 'no browser runtime errors');
   console.log(
