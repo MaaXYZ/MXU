@@ -50,6 +50,7 @@ function OptionPreviewTag({
 
   return (
     <span
+      data-skin-slot="task-option-tag"
       className={clsx(
         'inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded',
         'text-text-tertiary',

@@ -20,20 +20,20 @@
 }
 
 [data-skin-choice='deepseek'] .skin-choice-preview {
-  --choice-bg: #cfe8f7;
-  --choice-panel: #f6fcff;
-  --choice-line: #8eb9d3;
-  --choice-mark: #2d83ac;
-  --choice-hero: #b5e3f6;
+  --choice-bg: #e5eaff;
+  --choice-panel: #fcfdff;
+  --choice-line: #aeb9e3;
+  --choice-mark: #5671c7;
+  --choice-hero: #eef2ff;
 }
 
 [data-skin-choice='naiwa'] .skin-choice-preview {
-  --choice-bg: #efe3ac;
-  --choice-panel: #fffced;
-  --choice-line: #acb27b;
-  --choice-mark: #668748;
-  --choice-hero: #f5d976;
-  border-radius: 11px;
+  --choice-bg: #f8e6ba;
+  --choice-panel: #fff9e9;
+  --choice-line: #e4c684;
+  --choice-mark: #c68a2f;
+  --choice-hero: #ffedb6;
+  border-radius: 15px;
 }
 
 [data-skin-choice='gugugaga'] .skin-choice-preview {
@@ -54,19 +54,19 @@
 }
 
 .dark [data-skin-choice='deepseek'] .skin-choice-preview {
-  --choice-bg: #112e43;
-  --choice-panel: #1d435b;
-  --choice-line: #527e97;
-  --choice-mark: #81d0e9;
-  --choice-hero: #22617d;
+  --choice-bg: #17213e;
+  --choice-panel: #273453;
+  --choice-line: #6476ae;
+  --choice-mark: #a2b4ff;
+  --choice-hero: #394e8c;
 }
 
 .dark [data-skin-choice='naiwa'] .skin-choice-preview {
-  --choice-bg: #273324;
-  --choice-panel: #3d4c34;
-  --choice-line: #7c895d;
-  --choice-mark: #bcd196;
-  --choice-hero: #7a783a;
+  --choice-bg: #2e2218;
+  --choice-panel: #4e3927;
+  --choice-line: #7f5b35;
+  --choice-mark: #f0c168;
+  --choice-hero: #8c6734;
 }
 
 .dark [data-skin-choice='gugugaga'] .skin-choice-preview {
@@ -242,7 +242,13 @@
 
 [data-skin-choice='naiwa'] .skin-choice-preview__row {
   border-left-width: 1px;
-  border-radius: 4px;
+  border-radius: 999px;
+  background-color: var(--choice-hero);
+}
+
+[data-skin-choice='deepseek'] .skin-choice-preview__row {
+  border-left-width: 4px;
+  border-radius: 3px 7px 7px 3px;
 }
 
 [data-skin-choice='default'] .skin-choice-preview__tasks {

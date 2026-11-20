@@ -1,4 +1,4 @@
-/* Style the host slots without changing their sizing or arrangement. */
+/* Shared surface defaults for skins using the standard workspace. */
 .skin-shell:is([data-mxu-skin='deepseek'], [data-mxu-skin='naiwa']) {
   --skin-panel-radius: 14px;
   --skin-task-radius: 12px;
@@ -44,6 +44,24 @@
 .skin-shell:is([data-mxu-skin='deepseek'], [data-mxu-skin='naiwa'])
   [data-skin-slot='start-button'] {
   border-radius: 999px;
+}
+
+.skin-shell:is([data-mxu-skin='deepseek'], [data-mxu-skin='naiwa']) [data-skin-slot='toolbar'] {
+  column-gap: 6px;
+}
+
+.skin-shell:is([data-mxu-skin='deepseek'], [data-mxu-skin='naiwa'])
+  [data-skin-slot='toolbar-actions'] {
+  flex: 1;
+  min-width: 0;
+  container: skin-toolbar-actions / inline-size;
+}
+
+/* Use the space left by the run controls, which can grow with the current language. */
+@container skin-toolbar-actions (max-width: 360px) {
+  [data-skin-slot='toolbar-label'] {
+    display: none;
+  }
 }
 
 @media (forced-colors: active) {

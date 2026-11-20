@@ -52,8 +52,6 @@ export default {
 
   // 設定
   skin: {
-    deepseekScene: '白ごはん潜航艇',
-    naiwaScene: '奶蛙の池',
     gugugagaScene: 'グーグーガーガの雪原',
     regionLabel: 'スキンの仲間',
     state: {

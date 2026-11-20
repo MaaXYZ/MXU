@@ -923,9 +923,9 @@ HTML / CSS / SVG / assets  →  布局占位、图层合成         →  隔离�
 <h3 id="93-本轮可信内置皮肤接入">9.3 本轮可信内置皮肤接入</h3>
 <p>主程序外观设置提供默认、蓝色大肥鱼、奶蛙和咕咕嘎嘎，以及减少皮肤动效偏好。三套皮肤均有浅色和深色，跟随宿主明暗模式，保留用户强调色、自定义强调色、语义状态色和背景图。选择默认恢复宿主样式。</p>
 <p><code>skinId</code> 接受 <code>default</code> / <code>deepseek</code> / <code>naiwa</code> / <code>gugugaga</code>，未知或旧配置中缺失的值回退为默认。桌面沿用项目外观配置，WebUI 沿用本地外观存储及后端值缓存。系统减少动效设置和 <code>skinReducedMotion</code> 共同约束角色表现。</p>
-<p><code>BuiltinSkinShell</code> 包裹主页面、设置和加载视图，以 <code>data-mxu-skin</code>、<code>data-skin-motion</code> 与 <code>data-task-state</code> 管理内置表现。配色定义在壳层和 <code>body</code> 上，菜单、提示等 portal 继承同一套配色。皮肤通过 <code>data-skin-slot</code> 调整面板背景、边框、圆角和阴影。</p>
+<p><code>BuiltinSkinShell</code> 包裹主页面、设置和加载视图，以 <code>data-mxu-skin</code>、<code>data-skin-motion</code> 与 <code>data-task-state</code> 管理内置表现。配色定义在壳层和 <code>body</code> 上，菜单、提示等 portal 继承同一套配色。任务区、面板标题、截图框和工具栏动作提供 <code>data-skin-slot</code>。蓝色大肥鱼和奶蛙通过这些槽位设置各自的组件轮廓和角色呈现，并按活动实例状态切换姿势。</p>
 <p>各套皮肤共享默认工作区，保留已挂载的标签、任务、工具栏、连接、截图和日志。桌面沿用顶部标签和左右分栏，手机沿用单列布局。任务拖拽、展开、勾选和执行由原组件处理。</p>
-<p>整批任务状态读取活动实例，按 <code>isRunning</code>、<code>Succeeded</code>、<code>Failed</code> 映射为运行中、成功、失败，其余为待机。角色装饰据此切换静态姿势。外观设置的 <code>BuiltinSkinCompanion</code> 提供独立的互动预览，减少动效或页面隐藏时停止预览视频和环境动画。</p>
+<p>整批任务状态读取活动实例，按 <code>isRunning</code>、<code>Succeeded</code>、<code>Failed</code> 映射为运行中、成功、失败，其余为待机。角色装饰据此切换静态姿势。奶蛙和鲸鱼娘通过工具栏宿主按钮打开带键盘焦点的互动浮层。角色播放使用浮层自己的状态，任务执行由原组件管理。外观设置也提供独立预览，减少动效或页面隐藏时停止角色视频和环境动画。</p>
 <p>资源固定来自 <code>src/assets/skins/</code>，不支持作者提供 HTML/脚本、不解释 <code>.mxuskin</code>、不提供第三方安装入口，也不增加原生或网络权限。媒体来源说明见 <a href="../meme-skins.md">两套皮肤说明</a>。固定壳层与语义样式锚点不等于通用运行时；通用 token registry、Manifest 绑定、占位协商、保护区裁切、第三方安装、隔离与原生启动恢复门槛继续保留。</p>
 <p>鲸鱼娘采用固定版本社区吃饭动画，原 VP9 alpha 经解码合成白底、移除音轨并转为 H.264，静态姿态从同源视频抽帧保留透明，本次不重绘角色。格式不受支持或播放失败时保留静态表现；不能以 Chromium 成功播放推断所有原生 WebView 都已通过验证。资产的 CC BY-NC-SA 4.0、署名与修改记录独立于代码许可。</p>
 <h2 id="10-离线-demo-能证明什么">10. 离线 Demo 能证明什么</h2>

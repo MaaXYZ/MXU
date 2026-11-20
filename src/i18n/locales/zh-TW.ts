@@ -51,8 +51,6 @@ export default {
 
   // 設定
   skin: {
-    deepseekScene: '白飯潛航艙',
-    naiwaScene: '奶蛙的池塘',
     gugugagaScene: '咕咕嘎嘎雪原',
     regionLabel: '造型夥伴',
     state: {

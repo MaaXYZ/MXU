@@ -1,143 +1,273 @@
+/* Ink-blue outlines and cool paper take their colours from the original character. */
 .skin-shell[data-mxu-skin='deepseek'] {
-  --skin-panel-radius: 14px;
-  --skin-task-radius: 10px;
-  --ocean-surface: #f4fbff;
-  --ocean-depth: #b9dcef;
-  --ocean-light: #e4fbffb0;
-  --ocean-wash: #51acd526;
-  --ocean-ring: #4f92af45;
-  --ocean-porthole: #e3f4fd;
-  --ocean-mascot: url('../../assets/skins/deepseek-calm.png');
+  --skin-panel-radius: 19px;
+  --skin-task-radius: 14px;
+  --whale-paper: #f8faff;
+  --whale-splash: #e2eaff;
+  --whale-edge: #b7c7ed;
+  --whale-ink-line: #8fa5df;
+  --whale-clip-paper: #eaf0ff;
+  --whale-halo: #ffffffdb;
+  --whale-ground: #a8bae44e;
+  --whale-grain: #a8bae498;
+  --whale-art: url('../../assets/skins/deepseek.png');
 }
 
 html.dark .skin-shell[data-mxu-skin='deepseek'] {
-  --ocean-surface: #12364c;
-  --ocean-depth: #071827;
-  --ocean-light: #4fcde32e;
-  --ocean-wash: #46c1e21a;
-  --ocean-ring: #85d8ee40;
-  --ocean-porthole: #18445a;
+  --whale-paper: #1a223e;
+  --whale-splash: #303965;
+  --whale-edge: #485982;
+  --whale-ink-line: #667db6;
+  --whale-clip-paper: #b9c7ee;
+  --whale-halo: #8d9dd76d;
+  --whale-ground: #0f1739a0;
+  --whale-grain: #7c92ce6f;
 }
 
-.skin-shell[data-mxu-skin='deepseek'][data-task-state='running'],
-.skin-shell[data-mxu-skin='deepseek'][data-task-state='success'] {
-  --ocean-mascot: url('../../assets/skins/deepseek.png');
+.skin-shell[data-mxu-skin='deepseek'][data-task-state='running'] {
+  --whale-art: url('../../assets/skins/deepseek-calm.png');
 }
 
 .skin-shell[data-mxu-skin='deepseek'][data-task-state='error'] {
-  --ocean-mascot: url('../../assets/skins/deepseek-error.png');
+  --whale-art: url('../../assets/skins/deepseek-error.png');
 }
 
 .skin-shell[data-mxu-skin='deepseek'] > .skin-atmosphere {
   background:
-    radial-gradient(ellipse at 75% -8%, var(--ocean-light), transparent 56%),
-    linear-gradient(120deg, transparent 37%, var(--ocean-light) 56%, transparent 64%),
-    linear-gradient(164deg, var(--ocean-surface), var(--ocean-depth));
+    radial-gradient(ellipse at 70% 93%, var(--whale-halo), transparent 66%),
+    linear-gradient(155deg, var(--whale-paper) 12%, var(--whale-splash) 95%);
 }
 
-.skin-shell[data-mxu-skin='deepseek'] > .skin-atmosphere::before {
-  inset: auto -30% -36% 22%;
-  height: 74%;
-  border: 1px solid var(--ocean-ring);
-  border-radius: 50%;
-  box-shadow:
-    0 0 0 31px var(--ocean-wash),
-    0 0 0 32px var(--ocean-ring),
-    0 0 0 65px var(--ocean-wash),
-    0 0 0 66px var(--ocean-ring);
-  transform: rotate(-12deg);
-  opacity: 0.42;
-}
-
-.skin-shell[data-mxu-skin='deepseek'] > .skin-atmosphere::after {
-  inset: 0;
-  background-image: radial-gradient(var(--ocean-ring) 1px, transparent 1.5px);
-  background-size: 29px 31px;
-  mask-image: linear-gradient(140deg, transparent 12%, #000 64%, transparent 96%);
-  opacity: 0.52;
+.skin-shell[data-mxu-skin='deepseek'] .skin-atmosphere__waves {
+  display: none;
 }
 
 .skin-shell[data-mxu-skin='deepseek'] .skin-atmosphere__orb {
-  border: 1px solid var(--ocean-ring);
-  background: linear-gradient(140deg, var(--ocean-light), transparent 68%);
-  box-shadow: inset 1px 1px 0 var(--ocean-light);
+  width: 13px;
+  aspect-ratio: 1.7;
+  border-radius: 68% 42% 62% 43%;
+  background: var(--whale-grain);
+  opacity: 0.5;
+  rotate: -30deg;
 }
 
-.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='task-panel'] {
-  background-image: radial-gradient(ellipse at 100% 100%, var(--ocean-wash), transparent 65%);
+.skin-shell[data-mxu-skin='deepseek'] .skin-atmosphere__orb:nth-child(1) {
+  left: 8%;
+  top: auto;
+  bottom: 12%;
+}
+
+.skin-shell[data-mxu-skin='deepseek'] .skin-atmosphere__orb:nth-child(2) {
+  right: 35%;
+  top: auto;
+  bottom: 26%;
+  width: 9px;
+}
+
+.skin-shell[data-mxu-skin='deepseek'] .skin-atmosphere__orb:nth-child(3) {
+  left: 34%;
+  bottom: 6%;
+  width: 16px;
+}
+
+/* Paint the character behind the existing list so rows and controls remain in front. */
+@media (min-width: 768px) and (min-height: 640px) {
+  .skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='task-panel'] [data-skin-slot='task-list'] {
+    --whale-paper-width: clamp(395px, min(49vw, calc((100vh - 420px) * 1.6)), 665px);
+    background-image:
+      var(--whale-art), radial-gradient(ellipse, var(--whale-ground) 30%, transparent 70%),
+      radial-gradient(ellipse, var(--whale-halo) 12%, transparent 70%),
+      radial-gradient(ellipse, var(--whale-grain) 54%, transparent 71%),
+      radial-gradient(ellipse, var(--whale-grain) 47%, transparent 69%);
+    background-position:
+      right calc(var(--whale-paper-width) * -0.18) bottom -8px,
+      right calc(var(--whale-paper-width) * 0.16) bottom 15px,
+      right calc(var(--whale-paper-width) * 0.02) bottom 0,
+      right calc(var(--whale-paper-width) * 0.55) bottom calc(var(--whale-paper-width) * 0.3),
+      right calc(var(--whale-paper-width) * 0.13) bottom calc(var(--whale-paper-width) * 0.37);
+    background-size:
+      var(--whale-paper-width) auto,
+      calc(var(--whale-paper-width) * 0.32) 28px,
+      calc(var(--whale-paper-width) * 0.6) calc(var(--whale-paper-width) * 0.48),
+      15px 8px,
+      9px 5px;
+    background-repeat: no-repeat;
+  }
+}
+
+.skin-shell[data-mxu-skin='deepseek']:has([data-companion-view='workspace'])
+  [data-skin-slot='task-list'] {
+  background-image: none;
 }
 
 .skin-shell[data-mxu-skin='deepseek']
-  :is([data-skin-slot='connection'], [data-skin-slot='screenshot'], [data-skin-slot='logs'])
-  > :first-child {
-  background-image: linear-gradient(110deg, var(--ocean-wash), transparent 58%);
+  :is([data-skin-slot='titlebar'], [data-skin-slot='tabs'], [data-skin-slot='toolbar']) {
+  background-color: color-mix(in srgb, var(--color-bg-secondary) 86%, var(--whale-splash));
+  border-color: var(--whale-edge);
 }
 
-/* Reuse the screen's decorative placeholder without covering a live screenshot. */
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='tab'] {
+  border-radius: 12px 12px 5px 5px;
+  border-inline-color: var(--color-border);
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='tab'][data-active='true'] {
+  box-shadow:
+    inset 0 1px 0 var(--whale-ink-line),
+    inset 1px 0 0 var(--whale-edge);
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='task-item'] {
+  background-color: var(--color-bg-secondary);
+  border-color: var(--whale-edge);
+  box-shadow:
+    0 2px 0 var(--whale-edge),
+    var(--shadow-sm);
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='task-item-head'] [role='checkbox'] {
+  border-radius: 5px;
+  box-shadow: 0 1px 0 var(--whale-edge);
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='task-item-head'] .font-medium {
+  font-weight: 620;
+}
+
+.skin-shell[data-mxu-skin='deepseek']
+  :is([data-skin-slot='connection'], [data-skin-slot='screenshot'], [data-skin-slot='logs']) {
+  box-shadow:
+    inset 0 0 0 1px var(--whale-edge),
+    0 2px 0 var(--whale-edge),
+    var(--shadow-md);
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='panel-header'] {
+  background-image: linear-gradient(104deg, var(--whale-splash), transparent 84%);
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='log-scroll'] {
+  background: color-mix(in srgb, var(--color-bg-secondary) 55%, var(--whale-paper));
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='screenshot-screen'] {
+  border-radius: 12px;
+}
+
 .skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='screenshot-screen']:not(:has(> img)) {
-  background-image: repeating-radial-gradient(
-    circle at 50% 44%,
-    var(--ocean-ring) 0 1px,
-    transparent 1px 27px
-  );
+  background:
+    radial-gradient(ellipse at 50% 87%, var(--whale-ground), transparent 62%),
+    linear-gradient(145deg, var(--whale-paper), var(--whale-splash));
 }
 
-.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='screenshot-screen'] > div:has(> svg) {
-  position: relative;
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='add-tasks'] {
+  background: var(--whale-paper);
+  border-color: var(--whale-edge);
 }
 
-.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='screenshot-screen'] > div > svg:first-child {
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='add-tasks-scroll'] button[class~='border'] {
+  border-radius: 9px;
+}
+
+.skin-shell[data-mxu-skin='deepseek']
+  :is(
+    [data-skin-slot='toolbar-actions'] > button,
+    [data-skin-slot='toolbar-run'] > div > button:first-child
+  ) {
+  border-radius: 9px;
+  box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='start-button'] {
+  border-radius: 11px;
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='companion-trigger'] {
+  border-radius: 11px;
+  background: linear-gradient(160deg, var(--whale-paper), var(--whale-splash));
+  box-shadow: 0 2px 0 var(--whale-edge);
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='companion-trigger'] img {
+  transform: scale(1.18);
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='companion-panel'] {
+  border-color: var(--whale-ink-line);
+  border-radius: var(--skin-panel-radius);
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-companion-view='workspace'] {
+  background: linear-gradient(145deg, var(--whale-paper) 19%, var(--whale-splash));
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-companion-view='workspace'] .builtin-skin__plinth {
+  background: var(--whale-ground);
+  box-shadow: none;
+}
+
+.skin-shell[data-mxu-skin='deepseek']
+  [data-companion-view='workspace'][data-performing='true']
+  .builtin-skin__art {
+  background: var(--whale-clip-paper);
+}
+
+.skin-shell[data-mxu-skin='deepseek']
+  [data-companion-view='workspace'][data-performing='true']
+  .builtin-skin__art
+  img {
   visibility: hidden;
 }
 
-.skin-shell[data-mxu-skin='deepseek']
-  [data-skin-slot='screenshot-screen']
-  > div:has(> svg)::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: calc(50% - 20px);
-  width: 40px;
-  height: 40px;
-  border: 1px solid var(--ocean-ring);
-  border-radius: 50%;
-  background: var(--ocean-mascot) center / 89px auto no-repeat var(--ocean-porthole);
-  box-shadow: 0 0 0 4px var(--ocean-wash);
-  pointer-events: none;
+.skin-shell[data-mxu-skin='deepseek'] [data-companion-view='workspace'] .builtin-skin__video {
+  mix-blend-mode: multiply;
 }
 
-/* The porthole sits in the unused log corner and clears when log lines arrive. */
-.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='log-scroll']:not(:has(> [data-log-type])) {
-  background-image:
-    var(--ocean-mascot),
-    radial-gradient(circle, var(--ocean-porthole) 62%, var(--ocean-ring) 63% 68%, transparent 70%),
-    radial-gradient(circle, transparent 67%, var(--ocean-ring) 68% 69%, transparent 70%);
-  background-size:
-    107px 60px,
-    60px 60px,
-    68px 68px;
-  background-position:
-    right -13px bottom 8px,
-    right 10px bottom 8px,
-    right 6px bottom 4px;
-  background-repeat: no-repeat;
+@media (max-width: 767px), (max-height: 639px) {
+  .skin-shell[data-mxu-skin='deepseek']
+    [data-skin-slot='screenshot-screen']:not(:has(> img))
+    > div:has(> svg:first-child) {
+    position: relative;
+  }
+
+  .skin-shell[data-mxu-skin='deepseek']
+    [data-skin-slot='screenshot-screen']:not(:has(> img))
+    > div
+    > svg:first-child {
+    width: 72px;
+    height: 58px;
+    visibility: hidden;
+  }
+
+  .skin-shell[data-mxu-skin='deepseek']
+    [data-skin-slot='screenshot-screen']:not(:has(> img))
+    > div:has(> svg:first-child)::before {
+    content: '';
+    position: absolute;
+    inset: -8px -9px auto;
+    height: 79px;
+    background: var(--whale-art) center 58% / 153px auto no-repeat;
+    pointer-events: none;
+  }
 }
 
 @media (forced-colors: active) {
+  .skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='task-list'] {
+    background-image: none;
+  }
+
   .skin-shell[data-mxu-skin='deepseek']
-    [data-skin-slot='screenshot-screen']
+    [data-skin-slot='screenshot-screen']:not(:has(> img))
     > div
     > svg:first-child {
+    width: 40px;
+    height: 40px;
     visibility: visible;
   }
 
   .skin-shell[data-mxu-skin='deepseek']
-    [data-skin-slot='screenshot-screen']
-    > div:has(> svg)::before {
+    [data-skin-slot='screenshot-screen']:not(:has(> img))
+    > div:has(> svg:first-child)::before {
     display: none;
-  }
-
-  .skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='log-scroll'] {
-    --ocean-mascot: none;
   }
 }

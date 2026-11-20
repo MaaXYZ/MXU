@@ -1,7 +1,7 @@
 import { useLayoutEffect, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '@/stores/appStore';
-import { getSkinTaskState } from './state';
+import { selectSkinTaskState } from './state';
 import { useSkinMotion } from './useSkinMotion';
 import './shell.css';
 import './workspace.css';
@@ -9,20 +9,23 @@ import './ocean.css';
 import './pond.css';
 import './gugugaga.css';
 
+// The still and laughter come from different source frames with different white backgrounds.
+const NAIWA_ALPHA_ROWS = {
+  'mxu-naiwa-cutout': '4 0 -7 0 1.98',
+  'mxu-naiwa-laugh-cutout': '0 0 -8 0 7.68',
+};
+
 /** Applies the bundled skin around the shared application layout. */
 export function BuiltinSkinShell({ children }: { children: ReactNode }) {
-  const { skinId, reduced, running, status } = useAppStore(
+  const { skinId, reduced, taskState } = useAppStore(
     useShallow((state) => ({
       skinId: state.skinId,
       reduced: state.skinReducedMotion,
-      running: !!state.instances.find((instance) => instance.id === state.activeInstanceId)
-        ?.isRunning,
-      status: state.activeInstanceId ? state.instanceTaskStatus[state.activeInstanceId] : null,
+      taskState: selectSkinTaskState(state),
     })),
   );
   const { systemReduced, pageVisible } = useSkinMotion();
   const motion = reduced || systemReduced ? 'reduced' : pageVisible ? 'full' : 'paused';
-  const taskState = getSkinTaskState(running, status);
 
   // Portals (menus/tooltips/dialogs) inherit the same palette as the application.
   // Host accent/semantic tokens remain untouched; selecting default restores inheritance.
@@ -47,6 +50,21 @@ export function BuiltinSkinShell({ children }: { children: ReactNode }) {
       data-skin-motion={motion}
       data-task-state={taskState}
     >
+      {skinId === 'naiwa' && (
+        <svg className="absolute" width="0" height="0" aria-hidden="true">
+          {Object.entries(NAIWA_ALPHA_ROWS).map(([id, alpha]) => (
+            <filter key={id} id={id} colorInterpolationFilters="sRGB">
+              <feColorMatrix
+                in="SourceGraphic"
+                type="matrix"
+                values={`0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  ${alpha}`}
+                result="matte"
+              />
+              <feComposite in="SourceGraphic" in2="matte" operator="in" />
+            </filter>
+          ))}
+        </svg>
+      )}
       {skinId !== 'default' && (
         <div className="skin-atmosphere" data-skin-ambient aria-hidden="true">
           <div className="skin-atmosphere__orb" />

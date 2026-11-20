@@ -1,130 +1,304 @@
-/* Warm banks and lily-green water within the standard workspace. */
+/* The yellow character is the focal point. The controls use softly rounded, quiet surfaces. */
 .skin-shell[data-mxu-skin='naiwa'] {
-  --pond-bank: #f7e6af;
-  --pond-water: #dbe6c5;
-  --pond-leaf: #8da66b;
-  --pond-ripple: #a3b788;
-  --pond-light: #fff8dd;
-  --skin-panel-radius: 16px;
-  --skin-task-radius: 12px;
+  --naiwa-surface: var(--color-bg-secondary);
+  --naiwa-halo: #f8c95578;
+  --naiwa-glow: #ffca502d;
+  --naiwa-ring: #c37f1a35;
+  --naiwa-pose: url('../../assets/skins/naiwa-calm.png');
+  --naiwa-cutout: url('#mxu-naiwa-cutout');
+  --skin-panel-radius: 23px;
+  --skin-task-radius: 24px;
 }
 
 html.dark .skin-shell[data-mxu-skin='naiwa'] {
-  --pond-bank: #45442d;
-  --pond-water: #22372c;
-  --pond-leaf: #658450;
-  --pond-ripple: #5a7958;
-  --pond-light: #484b32;
+  --naiwa-halo: #c2842a52;
+  --naiwa-glow: #cb8a2230;
+  --naiwa-ring: #efb44a49;
+}
+
+.skin-shell[data-mxu-skin='naiwa']:is(
+    [data-task-state='success'],
+    :has([data-companion-view='workspace'][data-interacting='true'])
+  ) {
+  --naiwa-pose: url('../../assets/skins/naiwa-still.webp');
+  --naiwa-cutout: url('#mxu-naiwa-laugh-cutout');
 }
 
 .skin-shell[data-mxu-skin='naiwa'] > .skin-atmosphere {
   background:
-    radial-gradient(ellipse at 12% 0%, var(--pond-light), transparent 52%),
-    linear-gradient(145deg, var(--pond-bank), var(--color-bg-primary) 46%, var(--pond-water));
-}
-
-.skin-shell[data-mxu-skin='naiwa'] > .skin-atmosphere::after {
-  inset: 0;
-  background-image: radial-gradient(var(--pond-ripple) 1px, transparent 1px);
-  background-size: 19px 19px;
-  opacity: 0.24;
-  mask-image: linear-gradient(115deg, transparent 28%, #000);
+    radial-gradient(ellipse at 58% 101%, var(--naiwa-glow), transparent 61%),
+    linear-gradient(124deg, var(--color-bg-primary), var(--color-bg-tertiary));
 }
 
 .skin-shell[data-mxu-skin='naiwa'] .skin-atmosphere__orb {
-  aspect-ratio: 1.45;
-  border: 1px solid var(--pond-ripple);
-  border-radius: 55% 44% 52% 46%;
-  background: conic-gradient(from -34deg, transparent 34deg, var(--pond-leaf) 34deg);
-  opacity: 0.18;
-  rotate: -14deg;
+  border: 1px solid var(--naiwa-ring);
+  border-radius: 50%;
+  background: var(--naiwa-glow);
 }
 
 .skin-shell[data-mxu-skin='naiwa'] .skin-atmosphere__orb:nth-child(1) {
-  inset: auto auto 12% 6%;
-  width: 94px;
+  inset: auto auto 13% 6%;
+  width: 84px;
+  opacity: 0.45;
 }
 
 .skin-shell[data-mxu-skin='naiwa'] .skin-atmosphere__orb:nth-child(2) {
-  inset: auto 8% 22% auto;
-  width: 74px;
-  rotate: 19deg;
+  inset: auto auto 23% 24%;
+  width: 28px;
+  opacity: 0.53;
 }
 
-.skin-shell[data-mxu-skin='naiwa'] .skin-atmosphere__orb:nth-child(3) {
-  inset: auto auto 3% 52%;
-  width: 58px;
+.skin-shell[data-mxu-skin='naiwa']
+  :is(.skin-atmosphere__orb:nth-child(3), .skin-atmosphere__waves) {
+  display: none;
 }
 
-.skin-shell[data-mxu-skin='naiwa'] .skin-atmosphere__waves {
-  bottom: -26px;
-  height: 30%;
-  stroke: var(--pond-ripple);
-  stroke-width: 2;
-  opacity: 0.36;
+.skin-shell[data-mxu-skin='naiwa'] :is([data-skin-slot='titlebar'], [data-skin-slot='tabs']) {
+  background-color: color-mix(in srgb, var(--naiwa-surface) 90%, transparent);
 }
 
-.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='task-panel'] {
-  background: linear-gradient(
-    145deg,
-    color-mix(in srgb, var(--color-bg-secondary) 66%, transparent),
-    color-mix(in srgb, var(--pond-water) 24%, transparent) 85%
-  );
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='tab'] {
+  height: calc(100% - 8px);
+  margin-inline-start: 5px;
+  border-right-color: transparent;
+  border-radius: 999px;
+  background-color: transparent;
 }
 
-.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='toolbar'] {
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--color-bg-secondary) 85%, var(--pond-bank)),
-    color-mix(in srgb, var(--color-bg-secondary) 78%, var(--pond-water))
-  );
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='tab']:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='tab'][data-active='true'] {
+  border-bottom-color: transparent;
+  background-color: color-mix(in srgb, var(--color-accent) 12%, var(--naiwa-surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='tabs-new'] {
+  height: calc(100% - 8px);
+  margin-inline-start: 5px;
+  border-radius: 50%;
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='task-item'] {
+  border-color: color-mix(in srgb, var(--color-border) 77%, transparent);
+  border-radius: 17px;
+  background-color: var(--naiwa-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='task-item'][data-expanded='false'] {
+  border-radius: var(--skin-task-radius);
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='task-item'][data-task-status='running'] {
+  border-color: var(--color-accent);
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='task-option-tag'] {
+  border-radius: 999px;
+  background-color: var(--color-bg-tertiary);
+}
+
+.skin-shell[data-mxu-skin='naiwa']
+  :is([data-skin-slot='connection'], [data-skin-slot='screenshot'], [data-skin-slot='logs']) {
+  background-color: var(--naiwa-surface);
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='panel-header'] {
+  border-bottom-color: color-mix(in srgb, var(--color-border) 74%, transparent);
 }
 
 .skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='log-scroll'] {
-  background-image: linear-gradient(
-    155deg,
-    var(--color-bg-secondary) 12%,
-    color-mix(in srgb, var(--color-bg-tertiary) 62%, var(--pond-water))
-  );
+  background-color: color-mix(in srgb, var(--color-bg-tertiary) 44%, var(--naiwa-surface));
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='screenshot-screen'] {
+  border-radius: 13px;
 }
 
 .skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='screenshot-screen']:not(:has(> img)) {
   background:
-    radial-gradient(
-      ellipse at 94% 98%,
-      transparent 39%,
-      color-mix(in srgb, var(--pond-ripple) 25%, transparent) 40% 41%,
-      transparent 42% 52%,
-      color-mix(in srgb, var(--pond-ripple) 18%, transparent) 53% 54%,
-      transparent 55%
-    ),
-    linear-gradient(145deg, var(--color-bg-secondary), var(--pond-water));
+    radial-gradient(ellipse at 89% 80%, var(--naiwa-glow), transparent 65%),
+    var(--color-bg-tertiary);
 }
 
-/* The small portrait stays inside the unused corner of the empty screenshot. */
-.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='screenshot-screen']:not(:has(> img))::after {
-  content: '';
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 34px;
-  height: 34px;
-  border-radius: 47% 53% 53% 47%;
-  background: var(--pond-portrait, url('../../assets/skins/naiwa-calm.png'))
-    var(--pond-portrait-position, 44% 10%) / 96px auto no-repeat;
-  box-shadow:
-    0 0 0 2px var(--pond-light),
-    0 2px 5px color-mix(in srgb, var(--color-text-primary) 24%, transparent);
-  pointer-events: none;
+/* The cutout uses only room left over below the real, opaque task cards. */
+@media (min-width: 768px) and (min-height: 641px) {
+  .skin-shell[data-mxu-skin='naiwa']
+    [data-skin-slot='task-list']:has(> [data-skin-slot='task-groups']) {
+    display: flex;
+    flex-direction: column;
+    background:
+      radial-gradient(ellipse at center, var(--naiwa-halo), transparent 68%) right 54px bottom /
+        min(80%, 560px) min(42%, 330px) no-repeat,
+      radial-gradient(
+          ellipse at center,
+          transparent 61%,
+          var(--naiwa-ring) 62% 62.5%,
+          transparent 63.5%
+        )
+        right 70px bottom 12px / min(76%, 530px) min(27%, 210px) no-repeat;
+  }
+
+  .skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='task-groups'] {
+    flex: none;
+  }
+
+  .skin-shell[data-mxu-skin='naiwa']
+    [data-skin-slot='task-list']:has(> [data-skin-slot='task-groups'])::after {
+    content: '';
+    flex: 1 0 0;
+    align-self: flex-end;
+    width: min(100%, 560px);
+    min-height: 0;
+    margin-inline-end: min(6%, 42px);
+    background: var(--naiwa-pose) center bottom 6px / auto clamp(0px, calc(100% - 10px), 370px)
+      no-repeat;
+    filter: var(--naiwa-cutout);
+    pointer-events: none;
+  }
 }
 
-.skin-shell[data-mxu-skin='naiwa'][data-task-state='success'] {
-  --pond-portrait: url('../../assets/skins/naiwa-still.webp');
-  --pond-portrait-position: 68% 13%;
+@media (min-width: 1024px) and (min-height: 760px) {
+  .skin-shell[data-mxu-skin='naiwa']
+    [data-skin-slot='task-list']:has(> [data-skin-slot='task-empty']) {
+    position: relative;
+    background: radial-gradient(ellipse at center, var(--naiwa-halo), transparent 65%) right 3%
+      bottom 2% / 36% 35% no-repeat;
+  }
+
+  .skin-shell[data-mxu-skin='naiwa']
+    [data-skin-slot='task-list']:has(> [data-skin-slot='task-empty'])::after {
+    content: '';
+    position: absolute;
+    inset: auto 7% 5% auto;
+    width: min(28%, 267px);
+    height: min(41%, 292px);
+    background: var(--naiwa-pose) center bottom / contain no-repeat;
+    filter: var(--naiwa-cutout);
+    pointer-events: none;
+  }
+}
+
+.skin-shell[data-mxu-skin='naiwa']:has(.skin-companion-panel) [data-skin-slot='task-list']::after {
+  visibility: hidden;
+}
+
+/* In short windows the unused screenshot canvas has room for a much smaller pose. */
+@media (max-width: 767px), (max-height: 640px) {
+  .skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='screenshot-screen']:not(:has(> img)) {
+    justify-content: flex-start;
+    background:
+      radial-gradient(ellipse at 80% 53%, var(--naiwa-halo), transparent 59%),
+      var(--color-bg-tertiary);
+  }
+
+  .skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='screenshot-screen']:not(:has(> img))::after {
+    content: '';
+    position: absolute;
+    inset: 0 3% 0 59%;
+    background: var(--naiwa-pose) center / contain no-repeat;
+    filter: var(--naiwa-cutout);
+    pointer-events: none;
+  }
+
+  .skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='screenshot-screen']:not(:has(> img)) > div {
+    width: 59%;
+    padding-inline: 6px;
+    text-align: center;
+  }
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='toolbar'] {
+  background-color: color-mix(in srgb, var(--naiwa-surface) 95%, transparent);
+}
+
+.skin-shell[data-mxu-skin='naiwa']
+  :is([data-skin-slot='toolbar-actions'] > button, [data-skin-slot='toolbar-run'] > div > button) {
+  border-radius: 999px;
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='start-button'] {
+  box-shadow: var(--shadow-sm);
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='companion-trigger'] {
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 25%, var(--naiwa-surface), var(--naiwa-halo));
+  box-shadow: var(--shadow-sm);
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='companion-trigger'] img {
+  object-fit: contain;
+  padding: 1px;
+  filter: var(--naiwa-cutout);
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='companion-panel'] {
+  border-radius: 24px;
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-companion-view='workspace'] {
+  grid-template-columns: minmax(0, 1fr) minmax(96px, 46%);
+  grid-template-rows: minmax(120px, auto) auto;
+  padding: 17px 16px 16px;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at 76% 58%, var(--naiwa-halo), transparent 52%), var(--naiwa-surface);
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-companion-view='workspace'] .builtin-skin__copy h2 {
+  margin-block-end: 8px;
+  font-size: clamp(1.25rem, 5.5vw, 1.65rem);
+  overflow-wrap: anywhere;
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-companion-view='workspace'] .builtin-skin__stage {
+  align-self: center;
+  height: clamp(104px, 42dvh, 172px);
+  margin-block-start: 8px;
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-companion-view='workspace'] .builtin-skin__art {
+  inset: 0 0 6px;
+  border-radius: 0;
+  background: transparent;
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-companion-view='workspace'] .builtin-skin__plinth {
+  inset: auto 16% 0;
+  height: 17px;
+  background: var(--naiwa-glow);
+  box-shadow: 0 0 0 1px var(--naiwa-ring);
+  transform: none;
+}
+
+.skin-shell[data-mxu-skin='naiwa'] [data-companion-view='workspace'] .builtin-skin__interact {
+  max-width: 100%;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 999px;
+  background-color: var(--color-bg-active);
+  box-shadow: var(--shadow-sm);
+  color: var(--color-text-primary);
+}
+
+@media (max-width: 360px), (max-height: 400px) {
+  .skin-shell[data-mxu-skin='naiwa'] [data-companion-view='workspace'] {
+    grid-template-rows: minmax(100px, auto) auto;
+    column-gap: 8px;
+    padding: 12px;
+  }
+
+  .skin-shell[data-mxu-skin='naiwa'] [data-companion-view='workspace'] .builtin-skin__stage {
+    height: clamp(88px, 36dvh, 130px);
+  }
 }
 
 @media (forced-colors: active) {
-  .skin-shell[data-mxu-skin='naiwa'] [data-skin-slot='screenshot-screen']::after {
+  .skin-shell[data-mxu-skin='naiwa']
+    :is([data-skin-slot='task-list'], [data-skin-slot='screenshot-screen'])::after {
     display: none;
   }
 }

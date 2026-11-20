@@ -1363,6 +1363,7 @@ export function ConnectionPanel() {
     >
       {/* 标题栏（可点击折叠） */}
       <button
+        data-skin-slot="panel-header"
         onClick={() => setConnectionPanelExpanded(!connectionPanelExpanded)}
         className={clsx(
           'w-full flex items-center justify-between px-3 py-2 hover:bg-bg-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/50 outline-none',

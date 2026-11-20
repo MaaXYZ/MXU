@@ -362,6 +362,7 @@ export function ScreenshotPanel() {
     >
       {/* 标题栏（可点击折叠） */}
       <div
+        data-skin-slot="panel-header"
         role="button"
         tabIndex={0}
         onClick={() => setScreenshotPanelExpanded(!screenshotPanelExpanded)}
@@ -438,7 +439,7 @@ export function ScreenshotPanel() {
         <div className="overflow-hidden min-h-0">
           {/* 分隔线放在 overflow-hidden 内部，避免展开瞬间闪烁 */}
           <div className="border-t border-border" />
-          <div className="p-3">
+          <div data-skin-slot="screenshot-frame" className="p-3">
             {/* 截图区域 */}
             <div
               data-skin-slot="screenshot-screen"

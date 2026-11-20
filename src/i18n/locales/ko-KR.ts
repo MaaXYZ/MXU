@@ -52,8 +52,6 @@ export default {
 
   // 설정
   skin: {
-    deepseekScene: '흰쌀밥 잠수정',
-    naiwaScene: '나이와의 연못',
     gugugagaScene: '구구가가의 설원',
     regionLabel: '스킨 친구',
     state: {

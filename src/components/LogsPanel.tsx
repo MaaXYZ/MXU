@@ -236,6 +236,7 @@ export function LogsPanel() {
     >
       {/* 标题栏（桌面端可点击展开/折叠上方面板，移动端仅显示标题） */}
       <div
+        data-skin-slot="panel-header"
         role={isMobile ? undefined : 'button'}
         tabIndex={isMobile ? undefined : 0}
         onClick={isMobile ? undefined : toggleSidePanelExpanded}

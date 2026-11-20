@@ -97,7 +97,7 @@ try {
   const base = server.resolvedUrls.local[0];
   const slot = (name) => page.locator(`[data-skin-slot="${name}"]`);
   const shell = page.locator('.skin-shell');
-  const preview = page.locator('[data-builtin-skin]');
+  const preview = page.locator('[data-companion-view="preview"]');
   const video = preview.locator('video');
   const reducedMotion = page.getByRole('checkbox', { name: '减少皮肤动效', exact: true });
   const skins = [
@@ -261,6 +261,9 @@ try {
         ].map((name) => [name, style.getPropertyValue(name).trim()]),
       );
     });
+  const toolbarLabels = slot('toolbar-label').filter({ visible: true });
+  const companionTrigger = slot('companion-trigger');
+  const companionPanel = slot('companion-panel');
   const desktopSlots = [
     'tabs',
     'workspace',
@@ -334,6 +337,11 @@ try {
       assert.notEqual(tokens['--color-border'], standard['--color-border']);
       assert.equal(tokens['--color-accent'], standard['--color-accent']);
       await assertDesktopLayout(baseline, id);
+      const hasWorkspaceCompanion = id === 'deepseek' || id === 'naiwa';
+      assert.equal(await companionTrigger.count(), hasWorkspaceCompanion ? 1 : 0);
+      if (hasWorkspaceCompanion) {
+        assert.equal(await toolbarLabels.count(), 3, `${id}: wide toolbar shows action labels`);
+      }
       assert(
         await liveNodes.evaluate(
           (nodes, names) =>
@@ -375,10 +383,51 @@ try {
     await setAppearance('default', theme);
     assert.deepEqual(await bodyTokens(), standard, 'default restores the host palette');
     assert.equal(await page.locator('[data-skin-ambient]').count(), 0);
+    assert.equal(await companionTrigger.count(), 0);
   }
   await liveNodes.dispose();
   checks.push(
     'all skins preserve desktop component placement and identity, style portals and retain the user accent in light and dark modes',
+  );
+
+  for (const { id, action } of skins.slice(0, 2)) {
+    await setAppearance(id, id === 'deepseek' ? 'dark' : 'light');
+    const baseline = await layout(desktopSlots);
+    await companionTrigger.press('Enter');
+    await companionPanel.waitFor();
+    assert.equal(await companionTrigger.getAttribute('aria-expanded'), 'true');
+    assert.deepEqual(
+      await layout(desktopSlots),
+      baseline,
+      'opening a companion keeps panel bounds',
+    );
+    const scene = companionPanel.locator('[data-companion-view="workspace"]');
+    await setTaskState('running');
+    assert.equal(await scene.getAttribute('data-task-state'), 'running');
+    await setTaskState('idle');
+    const interact = scene.getByRole('button', { name: action, exact: true });
+    await interact.press('Enter');
+    await page.waitForFunction(() => {
+      const clip = document.querySelector('[data-skin-slot="companion-panel"] video');
+      return clip?.muted && !clip.paused && clip.currentTime > 0.2;
+    });
+    assert.equal(await interact.getAttribute('aria-pressed'), 'true');
+    if (output) {
+      await page.screenshot({ path: path.join(output, `main-${id}-companion.png`) });
+    }
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.waitForFunction(
+      () => document.querySelector('[data-skin-slot="companion-panel"] video')?.paused,
+    );
+    await page.keyboard.press('Escape');
+    await companionPanel.waitFor({ state: 'detached' });
+    assert(await companionTrigger.evaluate((element) => document.activeElement === element));
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+  }
+  await setAppearance('default', 'light');
+  assert.equal(await companionTrigger.count(), 0);
+  checks.push(
+    'the toolbar companion plays silently, respects motion reduction and closes without reflow',
   );
 
   await setAppearance('deepseek', 'light');
@@ -480,7 +529,16 @@ try {
       .getActiveInstance()
       .selectedTasks.map((task) => task.id),
   );
-  const taskItems = page.locator('[data-skin-slot="task-item"]');
+  const taskItems = slot('task-item');
+  const taskLabels = new Map(
+    sampleTasks.map(({ label }, index) => [`skin-fixture-task-${index}`, label]),
+  );
+  const assertVisibleTaskOrder = async (order) => {
+    for (const [index, id] of order.entries()) {
+      const row = taskItems.nth(index);
+      await row.getByText(taskLabels.get(id), { exact: true }).waitFor();
+    }
+  };
   const taskHandle = await taskItems
     .first()
     .locator('[aria-roledescription="sortable"]')
@@ -512,6 +570,10 @@ try {
       ) === JSON.stringify(expected)
     );
   }, afterPointerDrag);
+  await assertVisibleTaskOrder(afterPointerDrag);
+  await setAppearance('deepseek', 'light');
+  await assertVisibleTaskOrder(afterPointerDrag);
+  await setAppearance('naiwa', 'light');
   await page.evaluate(async () => {
     const { useAppStore } = await import('/src/stores/appStore.ts');
     const store = useAppStore.getState();
@@ -526,7 +588,9 @@ try {
     ),
     beforePointerDrag,
   );
-  checks.push('pointer dragging swaps adjacent tasks');
+  checks.push(
+    'pointer dragging swaps adjacent tasks and both skins preserve the new visible order',
+  );
 
   const keyboardHandle = page
     .locator('[data-skin-slot="task-item"]')
@@ -732,6 +796,9 @@ try {
 
     for (const { id } of skins.slice(0, 2)) {
       await setAppearance(id, 'dark');
+      if (width === 850) {
+        assert.equal(await toolbarLabels.count(), 0, `${id}: narrow toolbar hides action labels`);
+      }
       if (mobile) {
         const {
           connection,
@@ -754,6 +821,7 @@ try {
       );
       const controls = [
         page.locator('[data-role="start-stop-button"]').filter({ visible: true }),
+        companionTrigger,
         slot('screenshot').locator(':scope > [role="button"]'),
         slot('connection').locator(':scope > button').first(),
       ];

@@ -19,20 +19,21 @@
 
 三套皮肤共用 MXU 默认工作区。桌面的实例标签在顶部，任务列表和工具栏在左侧，设备、实时截图与日志在右侧。手机沿用内置的单列布局。
 
-- **白饭潜航舱**使用水蓝或深海蓝配色，空截图区有声呐纹理与鲸鱼娘角色，空日志角落也有舷窗装饰。
-- **奶蛙的池塘**使用奶黄、荷叶绿或深苔绿配色，工作区有水纹与荷叶，空截图角落有奶蛙角色。
+- **蓝色大肥鱼**以鲸鱼娘吃白饭的原素材为中心。任务卡用蓝白贴纸轮廓，留白处展示原有角色姿势。工具栏头像可打开投喂互动。
+- **奶蛙**采用奶黄、奶白和圆润的组件轮廓。留白处展示原版黄色三维形象，成功时切换为大笑姿势，工具栏头像也可直接打开大笑互动。
 - **咕咕嘎嘎雪原**的浅色为雪地早晨，深色为带极光的极夜。角色出现在项目名、开始按钮与日志角落。
 
-统一的 `BuiltinSkinShell` 管理配色和动效。菜单、提示等 `body` portal 继承同一套配色。主题通过 `data-skin-slot` 调整组件外观，角色装饰可随活动实例的任务状态切换，设置页提供独立的互动预览。减少动效设置和页面可见性控制环境动画与预览视频的播放。切换皮肤时，已挂载的工作区组件和任务继续运行。
+统一的 `BuiltinSkinShell` 管理配色和动效。菜单、提示等 `body` portal 继承同一套配色。主题通过 `data-skin-slot` 调整任务行、面板标题、截图边框、日志和工具栏。点击奶蛙或鲸鱼娘头像可在主视图打开互动浮层，查看活动实例状态并播放原有的大笑或投喂动画。减少动效设置和页面可见性控制环境动画及角色视频。切换皮肤时，已挂载的工作区组件和任务继续运行。
 
 桌面端通过项目外观配置保存 `skinId` 与 `skinReducedMotion`，WebUI 使用浏览器本地外观存储。角色和视频来自随前端打包的 `src/assets/skins/`。
 
 以下截图来自实际 WebUI，使用模拟设备后端和示例任务。
 
-| 显示模式 | 白饭潜航舱 | 奶蛙的池塘 |
+| 显示模式 | 蓝色大肥鱼 | 奶蛙 |
 | --- | --- | --- |
-| 浅色 | ![白饭潜航舱浅色工作区](images/workspace-deepseek-light.webp) | ![奶蛙的池塘浅色工作区](images/workspace-naiwa-light.webp) |
-| 深色 | ![白饭潜航舱深色工作区](images/workspace-deepseek-dark.webp) | ![奶蛙的池塘深色工作区](images/workspace-naiwa-dark.webp) |
+| 浅色 | ![蓝色大肥鱼浅色工作区](images/workspace-deepseek-light.webp) | ![奶蛙浅色工作区](images/workspace-naiwa-light.webp) |
+| 深色 | ![蓝色大肥鱼深色工作区](images/workspace-deepseek-dark.webp) | ![奶蛙深色工作区](images/workspace-naiwa-dark.webp) |
+| 角色互动 | ![投喂白饭浮层](images/workspace-deepseek-companion.webp) | ![奶蛙大笑浮层](images/workspace-naiwa-companion.webp) |
 
 首版独立工作区见[场景构图截图](images/11-main-deepseek.png)。
 

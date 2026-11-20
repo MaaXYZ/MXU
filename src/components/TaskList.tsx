@@ -545,7 +545,10 @@ export function TaskList() {
           {hasPresets ? (
             <PresetSelector instanceId={instance.id} presets={presets} />
           ) : (
-            <div className="h-full flex flex-col items-center justify-center text-text-muted gap-3">
+            <div
+              data-skin-slot="task-empty"
+              className="h-full flex flex-col items-center justify-center text-text-muted gap-3"
+            >
               <ListTodo className="w-12 h-12 opacity-30" />
               <p className="text-sm">{t('taskList.noTasks')}</p>
               <p className="text-xs">{t('taskList.dragToReorder')}</p>

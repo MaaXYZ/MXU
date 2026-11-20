@@ -57,8 +57,6 @@ export default {
 
   // Settings
   skin: {
-    deepseekScene: 'The rice submarine',
-    naiwaScene: 'Naiwa’s pond',
     gugugagaScene: 'Gugugaga’s snowfield',
     regionLabel: 'Skin companion',
     state: {

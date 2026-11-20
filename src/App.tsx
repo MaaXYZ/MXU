@@ -2219,6 +2219,7 @@ function AppContent() {
             {/* 浮动按钮：定位到运行日志 */}
             <button
               type="button"
+              data-skin-slot="logs-jump"
               onClick={() =>
                 document.getElementById('logs-panel')?.scrollIntoView({ behavior: 'smooth' })
               }

@@ -59,6 +59,7 @@ import { resolveI18nText } from '@/services/contentResolver';
 import { getInterfaceLangKey } from '@/i18n';
 import { PermissionModal } from './toolbar/PermissionModal';
 import { ScheduleButton } from './toolbar/ScheduleButton';
+import { WorkspaceSkinCompanion } from './skins/BuiltinSkinCompanion';
 import {
   startGlobalCallbackListener,
   waitForCtrlResult,
@@ -1546,7 +1547,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
       )}
     >
       {/* 左侧工具按钮 */}
-      <div className="flex items-center gap-1">
+      <div data-skin-slot="toolbar-actions" className="flex items-center gap-1">
         {/* 全选/取消全选 */}
         <button
           onClick={handleSelectAll}
@@ -1608,7 +1609,8 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
       </div>
 
       {/* 右侧执行按钮组 */}
-      <div className="flex items-center gap-2 relative">
+      <div data-skin-slot="toolbar-run" className="flex items-center gap-2 relative">
+        <WorkspaceSkinCompanion />
         {/* 定时执行按钮和状态气泡 */}
         <ScheduleButton
           enabledCount={instance?.schedulePolicies?.filter((p) => p.enabled).length || 0}
