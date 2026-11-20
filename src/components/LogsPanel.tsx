@@ -9,6 +9,7 @@ import {
   useLayoutEffect,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useShallow } from 'zustand/react/shallow';
 import { Eraser, Copy, ChevronUp, ChevronDown, Archive } from 'lucide-react';
 import clsx from 'clsx';
 import { invoke } from '@tauri-apps/api/core';
@@ -27,6 +28,7 @@ import type { LogEntry } from '@/stores/types';
 const DEFAULT_VISIBLE_LOG_LIMIT = 500;
 const EXPANDED_LOG_LIMIT = 2000;
 const BOTTOM_FOLLOW_THRESHOLD_PX = 24;
+const EMPTY_LOGS: LogEntry[] = [];
 
 function formatLogTime(date: Date, locale?: string) {
   return date.toLocaleTimeString(locale || undefined, {
@@ -51,15 +53,24 @@ export function LogsPanel() {
     sidePanelExpanded,
     toggleSidePanelExpanded,
     activeInstanceId,
-    instanceLogs,
+    logs,
     clearLogs,
     setMaxLogsPerInstance,
-  } = useAppStore();
+  } = useAppStore(
+    useShallow((state) => ({
+      sidePanelExpanded: state.sidePanelExpanded,
+      toggleSidePanelExpanded: state.toggleSidePanelExpanded,
+      activeInstanceId: state.activeInstanceId,
+      logs: state.activeInstanceId
+        ? (state.instanceLogs[state.activeInstanceId] ?? EMPTY_LOGS)
+        : EMPTY_LOGS,
+      clearLogs: state.clearLogs,
+      setMaxLogsPerInstance: state.setMaxLogsPerInstance,
+    })),
+  );
   const { state: menuState, show: showMenu, hide: hideMenu } = useContextMenu();
   const { exportModal, handleExportLogs, closeExportModal, openExportedFile } = useExportLogs();
 
-  // 获取当前实例的日志
-  const logs = activeInstanceId ? instanceLogs[activeInstanceId] || [] : [];
   const visibleLogs = useMemo(() => logs.slice(-visibleLogLimit), [logs, visibleLogLimit]);
   const canShowMoreLogs =
     visibleLogLimit === DEFAULT_VISIBLE_LOG_LIMIT &&
