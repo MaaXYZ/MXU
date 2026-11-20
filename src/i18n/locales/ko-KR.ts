@@ -58,6 +58,7 @@ export default {
     instruments: '장치와 화면',
     deepseekScene: '흰쌀밥 잠수정',
     naiwaScene: '나이와의 연못',
+    gugugagaScene: '구구가가의 설원',
     taskCount: '활성 작업 {{count}}개',
     regionLabel: '스킨 친구',
     state: {
@@ -68,6 +69,7 @@ export default {
     },
     feed: '흰밥 주기',
     poke: '웃음 재생',
+    cheer: '응원하기',
     reducedMotion: '움직임을 줄였습니다',
   },
 
@@ -98,6 +100,7 @@ export default {
     skinDefault: '기본값',
     skinDeepseek: '파란 뚱보 고래',
     skinNaiwa: '나이와',
+    skinGugugaga: '구구가가',
     skinReducedMotion: '스킨 움직임 줄이기',
     skinReducedMotionHint: '반복되는 움직임을 줄입니다. 시스템의 동작 줄이기 설정도 적용됩니다.',
     skinPreview: '스킨 미리보기',

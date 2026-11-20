@@ -19,8 +19,23 @@ import { isTauri } from '@/utils/windowUtils';
 import { BuiltinSkinCompanion } from '@/components/skins/BuiltinSkinCompanion';
 import deepseekThumbnail from '@/assets/skins/deepseek.png';
 import naiwaThumbnail from '@/assets/skins/naiwa-calm.png';
+import gugugagaThumbnail from '@/assets/skins/gugugaga-idle.webp';
 import deepseekLicense from '@/assets/skins/LICENSE.deepseek.txt?raw';
 import '@/components/skins/choices.css';
+import { BUILTIN_SKIN_IDS } from '@/skins/types';
+
+const SKIN_CHOICE_LABEL_KEYS = {
+  default: 'settings.skinDefault',
+  deepseek: 'settings.skinDeepseek',
+  naiwa: 'settings.skinNaiwa',
+  gugugaga: 'settings.skinGugugaga',
+} as const;
+
+const SKIN_THUMBNAILS = {
+  deepseek: deepseekThumbnail,
+  naiwa: naiwaThumbnail,
+  gugugaga: gugugagaThumbnail,
+} as const;
 
 interface AppearanceSectionProps {
   onOpenCreateAccentModal: () => void;
@@ -161,9 +176,9 @@ export function AppearanceSection({
           role="group"
           aria-labelledby="settings-skin-label"
           aria-describedby="settings-skin-hint"
-          className="grid grid-cols-3 gap-2"
+          className="grid grid-cols-2 sm:grid-cols-4 gap-2"
         >
-          {(['default', 'deepseek', 'naiwa'] as const).map((id) => (
+          {BUILTIN_SKIN_IDS.map((id) => (
             <button
               key={id}
               type="button"
@@ -193,11 +208,7 @@ export function AppearanceSection({
                       <i />
                       <i />
                     </span>
-                    <img
-                      src={id === 'deepseek' ? deepseekThumbnail : naiwaThumbnail}
-                      alt=""
-                      draggable={false}
-                    />
+                    <img src={SKIN_THUMBNAILS[id]} alt="" draggable={false} />
                   </span>
                 )}
                 <span className="skin-choice-preview__workspace">
@@ -216,15 +227,7 @@ export function AppearanceSection({
                   </span>
                 </span>
               </span>
-              <span className="text-center">
-                {t(
-                  id === 'default'
-                    ? 'settings.skinDefault'
-                    : id === 'deepseek'
-                      ? 'settings.skinDeepseek'
-                      : 'settings.skinNaiwa',
-                )}
-              </span>
+              <span className="text-center">{t(SKIN_CHOICE_LABEL_KEYS[id])}</span>
             </button>
           ))}
         </div>

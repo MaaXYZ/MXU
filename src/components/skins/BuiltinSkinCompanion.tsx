@@ -10,11 +10,34 @@ import deepseekClip from '@/assets/skins/deepseek-eat.mp4';
 import naiwaCalm from '@/assets/skins/naiwa-calm.png';
 import naiwaStill from '@/assets/skins/naiwa-still.webp';
 import naiwaClip from '@/assets/skins/naiwa-laugh.mp4';
+import gugugagaIdle from '@/assets/skins/gugugaga-idle.webp';
+import gugugagaCheer from '@/assets/skins/gugugaga-cheer.webp';
+import gugugagaLaugh from '@/assets/skins/gugugaga-laugh.webp';
+import gugugagaSad from '@/assets/skins/gugugaga-sad.webp';
 import { getSkinTaskState } from './state';
 import { useSkinMotion } from './useSkinMotion';
 import './skins.css';
 
 const INTERACTION_MS = 2400;
+
+const SKIN_LABEL_KEYS = {
+  deepseek: 'settings.skinDeepseek',
+  naiwa: 'settings.skinNaiwa',
+  gugugaga: 'settings.skinGugugaga',
+} as const;
+
+const SKIN_SCENE_KEYS = {
+  deepseek: 'skin.deepseekScene',
+  naiwa: 'skin.naiwaScene',
+  gugugaga: 'skin.gugugagaScene',
+} as const;
+
+const GUGUGAGA_POSES = {
+  idle: gugugagaIdle,
+  running: gugugagaCheer,
+  success: gugugagaLaugh,
+  error: gugugagaSad,
+} as const;
 
 /** Trusted, bundled companions only. This is not a third-party skin renderer. */
 export function BuiltinSkinCompanion({ preview = false }: { preview?: boolean }) {
@@ -62,7 +85,8 @@ function SkinScene({
   const laughing = skinId === 'naiwa' && (hasInteraction || taskState === 'success');
   const eating =
     skinId === 'deepseek' && (hasInteraction || taskState === 'running' || taskState === 'success');
-  const performing = (laughing || eating) && !reduced && pageVisible && !videoFailed;
+  const clip = skinId === 'naiwa' ? naiwaClip : skinId === 'deepseek' ? deepseekClip : null;
+  const performing = (laughing || eating) && !!clip && !reduced && pageVisible && !videoFailed;
   wantsPlayback.current = performing;
 
   // Instance changes and terminal results retire the old interaction without changing any task.
@@ -125,6 +149,14 @@ function SkinScene({
   }
 
   const deepseekPose = taskState === 'error' ? deepseekError : eating ? deepseekArt : deepseekCalm;
+  const pose =
+    skinId === 'deepseek'
+      ? deepseekPose
+      : skinId === 'naiwa'
+        ? laughing
+          ? naiwaStill
+          : naiwaCalm
+        : GUGUGAGA_POSES[hasInteraction ? 'running' : taskState];
 
   return (
     <section
@@ -139,10 +171,8 @@ function SkinScene({
     >
       {preview && (
         <div className="builtin-skin__copy">
-          <div className="builtin-skin__eyebrow">
-            {t(skinId === 'deepseek' ? 'settings.skinDeepseek' : 'settings.skinNaiwa')}
-          </div>
-          <h2>{t(skinId === 'deepseek' ? 'skin.deepseekScene' : 'skin.naiwaScene')}</h2>
+          <div className="builtin-skin__eyebrow">{t(SKIN_LABEL_KEYS[skinId])}</div>
+          <h2>{t(SKIN_SCENE_KEYS[skinId])}</h2>
           <span>{t(`skin.state.${taskState}`)}</span>
           {reduced && <small>{t('skin.reducedMotion')}</small>}
         </div>
@@ -150,22 +180,20 @@ function SkinScene({
       <div className="builtin-skin__stage">
         <span className="builtin-skin__plinth" aria-hidden="true" />
         <div className={`builtin-skin__art builtin-skin__art--${skinId}`} aria-hidden="true">
-          <img
-            src={skinId === 'deepseek' ? deepseekPose : laughing ? naiwaStill : naiwaCalm}
-            alt=""
-            draggable={false}
-          />
-          <video
-            ref={videoRef}
-            src={skinId === 'naiwa' ? naiwaClip : deepseekClip}
-            poster={skinId === 'naiwa' ? naiwaStill : deepseekPose}
-            className={performing ? 'builtin-skin__video is-playing' : 'builtin-skin__video'}
-            muted
-            loop
-            playsInline
-            preload="metadata"
-            onError={() => setVideoFailed(true)}
-          />
+          <img src={pose} alt="" draggable={false} />
+          {clip && (
+            <video
+              ref={videoRef}
+              src={clip}
+              poster={skinId === 'naiwa' ? naiwaStill : deepseekPose}
+              className={performing ? 'builtin-skin__video is-playing' : 'builtin-skin__video'}
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              onError={() => setVideoFailed(true)}
+            />
+          )}
         </div>
       </div>
       <button
@@ -176,7 +204,7 @@ function SkinScene({
         disabled={!interactionAllowed}
       >
         <span aria-hidden="true">{skinId === 'deepseek' ? '+' : '▷'}</span>
-        {t(skinId === 'deepseek' ? 'skin.feed' : 'skin.poke')}
+        {t(skinId === 'deepseek' ? 'skin.feed' : skinId === 'naiwa' ? 'skin.poke' : 'skin.cheer')}
       </button>
     </section>
   );

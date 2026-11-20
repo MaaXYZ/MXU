@@ -1633,6 +1633,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel, className }: ToolbarPr
         {/* 开始/停止按钮 */}
         <button
           data-role="start-stop-button"
+          data-skin-slot="start-button"
           onClick={handleStartStop}
           disabled={isDisabled || isStopping || (isStarting && !isStartStopRunning)}
           className={clsx(

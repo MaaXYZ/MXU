@@ -20,6 +20,7 @@ import {
 import { BackgroundOverlay } from '@/components/BackgroundOverlay';
 import { BuiltinSkinWorkspace } from '@/components/skins/BuiltinSkinWorkspace';
 import { BuiltinSkinShell } from '@/components/skins/BuiltinSkinShell';
+import { usesSceneWorkspace } from '@/skins/types';
 import { isAllowedSettingsHotkey } from '@/components/FormControls';
 import type { BadPathType } from '@/components';
 import {
@@ -2163,7 +2164,7 @@ function AppContent() {
         )}
 
         {/* 顶部标签栏 */}
-        {(skinId === 'default' || dashboardView) && <TabBar />}
+        {(!usesSceneWorkspace(skinId) || dashboardView) && <TabBar />}
 
         {/* 中控台视图 */}
         {dashboardView ? (
@@ -2175,7 +2176,7 @@ function AppContent() {
               <LazyDashboardView onClose={closeDashboardWithAnimation} />
             </Suspense>
           </div>
-        ) : skinId !== 'default' ? (
+        ) : usesSceneWorkspace(skinId) ? (
           <BuiltinSkinWorkspace
             showAddPanel={showAddTaskPanel}
             onToggleAddPanel={() => setShowAddTaskPanel(!showAddTaskPanel)}

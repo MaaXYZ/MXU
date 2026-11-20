@@ -63,6 +63,7 @@ export default {
     instruments: 'Devices and screen',
     deepseekScene: 'The rice submarine',
     naiwaScene: 'Naiwa’s pond',
+    gugugagaScene: 'Gugugaga’s snowfield',
     taskCount: '{{count}} tasks enabled',
     regionLabel: 'Skin companion',
     state: {
@@ -73,6 +74,7 @@ export default {
     },
     feed: 'Feed rice',
     poke: 'Play laughter',
+    cheer: 'Cheer on',
     reducedMotion: 'Motion reduced',
   },
 
@@ -103,6 +105,7 @@ export default {
     skinDefault: 'Default',
     skinDeepseek: 'Blue Fat Fish',
     skinNaiwa: 'Naiwa',
+    skinGugugaga: 'Gugugaga',
     skinReducedMotion: 'Reduce skin motion',
     skinReducedMotionHint:
       'Reduce continuous animation. Your system’s reduced motion preference also applies.',

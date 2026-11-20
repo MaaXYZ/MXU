@@ -57,6 +57,7 @@ export default {
     instruments: '设备与画面',
     deepseekScene: '白饭潜航舱',
     naiwaScene: '奶蛙的池塘',
+    gugugagaScene: '咕咕嘎嘎雪原',
     taskCount: '{{count}} 项任务已启用',
     regionLabel: '皮肤伙伴',
     state: {
@@ -67,6 +68,7 @@ export default {
     },
     feed: '投喂白饭',
     poke: '播放大笑',
+    cheer: '举手打气',
     reducedMotion: '已减少动态效果',
   },
 
@@ -96,6 +98,7 @@ export default {
     skinDefault: '默认',
     skinDeepseek: '蓝色大肥鱼',
     skinNaiwa: '奶蛙',
+    skinGugugaga: '咕咕嘎嘎',
     skinReducedMotion: '减少皮肤动效',
     skinReducedMotionHint: '减少连续动作，同时遵循系统的减少动态效果设置。',
     skinPreview: '皮肤预览',

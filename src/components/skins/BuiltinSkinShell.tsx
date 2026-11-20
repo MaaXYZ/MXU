@@ -4,6 +4,7 @@ import { useAppStore } from '@/stores/appStore';
 import { getSkinTaskState } from './state';
 import { useSkinMotion } from './useSkinMotion';
 import './shell.css';
+import './gugugaga.css';
 
 /** Trusted bundled presentation. No scene code can issue business commands. */
 export function BuiltinSkinShell({ children }: { children: ReactNode }) {
