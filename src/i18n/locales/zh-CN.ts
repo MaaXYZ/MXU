@@ -51,14 +51,7 @@ export default {
   },
 
   skin: {
-    route: '任务航线',
-    pondRoute: '沿着水路，慢慢完成',
-    instances: '实例导航',
-    instruments: '设备与画面',
-    deepseekScene: '白饭潜航舱',
-    naiwaScene: '奶蛙的池塘',
     gugugagaScene: '咕咕嘎嘎雪原',
-    taskCount: '{{count}} 项任务已启用',
     regionLabel: '皮肤伙伴',
     state: {
       idle: '待机中',
@@ -93,7 +86,7 @@ export default {
     themeDark: '深色',
     themeSystem: '系统',
     skin: '内置皮肤',
-    skinHint: '整套界面的配色、面板、角色场景与动效一起切换。默认可恢复原有外观。',
+    skinHint: '选择工作区的配色和角色贴纸。可以在这里试试角色的动作。',
     skinAssetLicense: '素材来源与许可',
     skinDefault: '默认',
     skinDeepseek: '蓝色大肥鱼',

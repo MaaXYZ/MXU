@@ -18,9 +18,7 @@ import {
   ConnectionPanel,
 } from '@/components';
 import { BackgroundOverlay } from '@/components/BackgroundOverlay';
-import { BuiltinSkinWorkspace } from '@/components/skins/BuiltinSkinWorkspace';
 import { BuiltinSkinShell } from '@/components/skins/BuiltinSkinShell';
-import { usesSceneWorkspace } from '@/skins/types';
 import { isAllowedSettingsHotkey } from '@/components/FormControls';
 import type { BadPathType } from '@/components';
 import {
@@ -217,7 +215,6 @@ function AppContent() {
     importConfig,
     createInstance,
     theme,
-    skinId,
     currentPage,
     setCurrentPage,
     projectInterface,
@@ -262,7 +259,6 @@ function AppContent() {
       importConfig: state.importConfig,
       createInstance: state.createInstance,
       theme: state.theme,
-      skinId: state.skinId,
       currentPage: state.currentPage,
       setCurrentPage: state.setCurrentPage,
       projectInterface: state.projectInterface,
@@ -2164,7 +2160,7 @@ function AppContent() {
         )}
 
         {/* 顶部标签栏 */}
-        {(!usesSceneWorkspace(skinId) || dashboardView) && <TabBar />}
+        <TabBar />
 
         {/* 中控台视图 */}
         {dashboardView ? (
@@ -2176,11 +2172,6 @@ function AppContent() {
               <LazyDashboardView onClose={closeDashboardWithAnimation} />
             </Suspense>
           </div>
-        ) : usesSceneWorkspace(skinId) ? (
-          <BuiltinSkinWorkspace
-            showAddPanel={showAddTaskPanel}
-            onToggleAddPanel={() => setShowAddTaskPanel(!showAddTaskPanel)}
-          />
         ) : isMobile ? (
           /* 移动端竖屏布局：单列纵向堆叠 */
           <div

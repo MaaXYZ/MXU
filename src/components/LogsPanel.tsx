@@ -1,3 +1,4 @@
+import { BuiltinSkinDecor } from './skins/BuiltinSkinDecor';
 import {
   Fragment,
   useRef,
@@ -255,7 +256,10 @@ export function LogsPanel() {
             'hover:bg-bg-hover cursor-pointer focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/50 outline-none',
         )}
       >
-        <span className="text-sm font-medium text-text-primary">{t('logs.title')}</span>
+        <span className="inline-flex items-center gap-2 text-sm font-medium text-text-primary">
+          {t('logs.title')}
+          <BuiltinSkinDecor slot="logs" />
+        </span>
         <div className="flex items-center gap-1.5">
           <button
             onClick={(e) => {

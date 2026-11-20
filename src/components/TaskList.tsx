@@ -9,7 +9,6 @@ import {
   useSensors,
   DragEndEvent,
   type Modifier,
-  type KeyboardCoordinateGetter,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -58,30 +57,8 @@ import { loggers } from '@/utils/logger';
 import { toast } from 'sonner';
 import clsx from 'clsx';
 import { getAllMxuSpecialTasks, getAllMxuSpecialTasksOptions } from '@/types/specialTasks.ts';
-import { taskCollisionDetection, verticalTaskCollisionDetection } from '@/utils/taskSorting';
-
-const verticalKeyboardCoordinates: KeyboardCoordinateGetter = (event, args) => {
-  const { collisionRect, droppableRects } = args.context;
-  if (!collisionRect) return;
-  // Keep the library's container/scroll handling while removing decorative horizontal distance.
-  const verticalRect = (rect: typeof collisionRect) => ({
-    top: rect.top,
-    bottom: rect.bottom,
-    height: rect.height,
-    left: 0,
-    right: collisionRect.width,
-    width: collisionRect.width,
-  });
-  const coordinates = sortableKeyboardCoordinates(event, {
-    ...args,
-    context: {
-      ...args.context,
-      collisionRect: verticalRect(collisionRect),
-      droppableRects: new Map([...droppableRects].map(([id, rect]) => [id, verticalRect(rect)])),
-    },
-  });
-  return coordinates ? { x: args.currentCoordinates.x, y: coordinates.y } : coordinates;
-};
+import { taskCollisionDetection } from '@/utils/taskSorting';
+import { BuiltinSkinDecor } from './skins/BuiltinSkinDecor';
 
 /** 单个预设卡片 */
 function PresetCard({ preset, onApply }: { preset: PresetItem; onApply: () => void }) {
@@ -317,7 +294,6 @@ export function TaskList() {
     selectedController,
     selectedResource,
     skippedPresetInstanceIds,
-    skinId,
   } = useAppStore();
 
   const instance = getActiveInstance();
@@ -369,8 +345,7 @@ export function TaskList() {
       },
     }),
     useSensor(KeyboardSensor, {
-      coordinateGetter:
-        skinId === 'naiwa' ? verticalKeyboardCoordinates : sortableKeyboardCoordinates,
+      coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
 
@@ -560,46 +535,18 @@ export function TaskList() {
   );
   const hasPresets = presets.length > 0 && !skippedPresetInstanceIds.has(instance.id);
 
-  if (!hasVisibleTasks && !showPreActions) {
-    return (
-      <>
-        <div
-          data-skin-slot="task-list"
-          className="flex-1 overflow-y-auto"
-          onContextMenu={handleListContextMenu}
-        >
-          {hasPresets ? (
-            <PresetSelector instanceId={instance.id} presets={presets} />
-          ) : (
-            <div className="h-full flex flex-col items-center justify-center text-text-muted gap-3">
-              <ListTodo className="w-12 h-12 opacity-30" />
-              <p className="text-sm">{t('taskList.noTasks')}</p>
-              <p className="text-xs">{t('taskList.dragToReorder')}</p>
-              <ImportConfigButton instanceId={instance.id} />
-            </div>
-          )}
-        </div>
-        {menuState.isOpen && (
-          <ContextMenu items={menuState.items} position={menuState.position} onClose={hideMenu} />
-        )}
-      </>
-    );
-  }
-
   if (!hasVisibleTasks) {
     return (
       <>
         <div
           data-skin-slot="task-list"
-          className="flex-1 flex flex-col overflow-y-auto p-3 gap-2"
+          className={clsx('flex-1 overflow-y-auto', showPreActions && 'flex flex-col p-3 gap-2')}
           onContextMenu={handleListContextMenu}
         >
           {showPreActions && (
             <DndContext
               sensors={sensors}
-              collisionDetection={
-                skinId === 'naiwa' ? verticalTaskCollisionDetection : taskCollisionDetection
-              }
+              collisionDetection={taskCollisionDetection}
               onDragEnd={handlePreActionDragEnd}
               modifiers={[restrictHorizontalMovement]}
             >
@@ -625,13 +572,23 @@ export function TaskList() {
           )}
 
           {hasPresets ? (
-            <PresetSelector instanceId={instance.id} presets={presets} />
+            <>
+              <PresetSelector instanceId={instance.id} presets={presets} />
+              <BuiltinSkinDecor slot="tasks" />
+            </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-text-muted gap-3 min-h-[120px]">
+            <div
+              data-skin-slot="empty-tasks"
+              className={clsx(
+                'flex flex-col items-center justify-center text-text-muted gap-3',
+                showPreActions ? 'flex-1 min-h-[120px]' : 'h-full',
+              )}
+            >
               <ListTodo className="w-12 h-12 opacity-30" />
               <p className="text-sm">{t('taskList.noTasks')}</p>
               <p className="text-xs">{t('taskList.dragToReorder')}</p>
               <ImportConfigButton instanceId={instance.id} />
+              <BuiltinSkinDecor slot="tasks" />
             </div>
           )}
         </div>
@@ -656,9 +613,7 @@ export function TaskList() {
           {pretaskTasks.length > 0 && (
             <DndContext
               sensors={sensors}
-              collisionDetection={
-                skinId === 'naiwa' ? verticalTaskCollisionDetection : taskCollisionDetection
-              }
+              collisionDetection={taskCollisionDetection}
               onDragEnd={handleDragEnd}
               modifiers={[restrictHorizontalMovement]}
             >
@@ -679,9 +634,7 @@ export function TaskList() {
           {showPreActions && (
             <DndContext
               sensors={sensors}
-              collisionDetection={
-                skinId === 'naiwa' ? verticalTaskCollisionDetection : taskCollisionDetection
-              }
+              collisionDetection={taskCollisionDetection}
               onDragEnd={handlePreActionDragEnd}
               modifiers={[restrictHorizontalMovement]}
             >
@@ -711,9 +664,7 @@ export function TaskList() {
           {/* 任务列表 */}
           <DndContext
             sensors={sensors}
-            collisionDetection={
-              skinId === 'naiwa' ? verticalTaskCollisionDetection : taskCollisionDetection
-            }
+            collisionDetection={taskCollisionDetection}
             onDragEnd={handleDragEnd}
             modifiers={[restrictHorizontalMovement]}
           >
@@ -729,6 +680,7 @@ export function TaskList() {
             </SortableContext>
           </DndContext>
         </div>
+        <BuiltinSkinDecor slot="tasks" />
       </div>
       {menuState.isOpen && (
         <ContextMenu items={menuState.items} position={menuState.position} onClose={hideMenu} />

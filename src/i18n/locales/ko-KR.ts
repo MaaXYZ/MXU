@@ -52,14 +52,7 @@ export default {
 
   // 설정
   skin: {
-    route: '작업 항로',
-    pondRoute: '물길을 따라 하나씩',
-    instances: '인스턴스',
-    instruments: '장치와 화면',
-    deepseekScene: '흰쌀밥 잠수정',
-    naiwaScene: '나이와의 연못',
     gugugagaScene: '구구가가의 설원',
-    taskCount: '활성 작업 {{count}}개',
     regionLabel: '스킨 친구',
     state: {
       idle: '대기 중',
@@ -95,7 +88,7 @@ export default {
     themeSystem: '시스템 설정',
     skin: '기본 제공 스킨',
     skinHint:
-      '전체 화면의 색상, 패널, 캐릭터 장면과 동작을 함께 변경합니다. 기본값을 선택하면 원래 모습으로 돌아갑니다.',
+      '작업 공간의 색상과 캐릭터 스티커를 선택하세요. 미리보기에서 캐릭터의 동작을 볼 수 있습니다.',
     skinAssetLicense: '소재 출처 및 라이선스',
     skinDefault: '기본값',
     skinDeepseek: '파란 뚱보 고래',

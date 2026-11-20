@@ -1,0 +1,290 @@
+/* Ink, porcelain and the blue checks on the whale maid's table linen. */
+:is(body, .skin-shell)[data-mxu-skin='deepseek'] {
+  --color-bg-primary: #e8eef8;
+  --color-bg-secondary: #fffef9;
+  --color-bg-tertiary: #f1f5fc;
+  --color-bg-hover: #e2eaf6;
+  --color-bg-active: #d2dfef;
+  --color-text-primary: #273853;
+  --color-text-secondary: #455b79;
+  --color-text-tertiary: #536882;
+  --color-text-muted: #5d718c;
+  --color-border: #c2cee0;
+  --color-border-strong: #8c9fb9;
+  --shadow-sm: 0 2px 4px #24365712;
+  --shadow-md: 0 4px 12px #24365714;
+  --shadow-lg: 0 10px 32px #24365729;
+  --rice-ink: #35527b;
+  --rice-linen: #f9faff;
+  --rice-stitch: #9baec8;
+  --rice-check: #809fcb24;
+  --rice-spots: #7d91af39;
+  --skin-highlight: #779fcf;
+}
+
+.dark :is(body, .skin-shell)[data-mxu-skin='deepseek'] {
+  --color-bg-primary: #202b40;
+  --color-bg-secondary: #29354b;
+  --color-bg-tertiary: #233046;
+  --color-bg-hover: #344561;
+  --color-bg-active: #415472;
+  --color-text-primary: #eff2fa;
+  --color-text-secondary: #c5d3e7;
+  --color-text-tertiary: #aec0d7;
+  --color-text-muted: #a1b4ce;
+  --color-border: #42526d;
+  --color-border-strong: #7186a6;
+  --shadow-sm: 0 2px 4px #0c152333;
+  --shadow-md: 0 4px 15px #0c152347;
+  --shadow-lg: 0 10px 32px #0c15235e;
+  --rice-ink: #b8d1f3;
+  --rice-linen: #283449;
+  --rice-stitch: #617896;
+  --rice-check: #94b6e122;
+  --rice-spots: #a3bcdd29;
+  --skin-highlight: #a8c9f3;
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='tabs'] {
+  padding-inline: 4px;
+  border-bottom-color: var(--rice-stitch);
+  background-color: var(--color-bg-secondary);
+  background-image:
+    repeating-linear-gradient(90deg, transparent 0 5px, var(--rice-check) 5px 10px),
+    repeating-linear-gradient(0deg, transparent 0 5px, var(--rice-check) 5px 10px);
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='tabs-list'] {
+  gap: 4px;
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='tab'] {
+  height: 34px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-secondary);
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='tab']:hover {
+  background: var(--color-bg-hover);
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='tab'][data-active='true'] {
+  border-color: var(--rice-stitch);
+  box-shadow: inset 0 -2px var(--color-accent);
+}
+
+.dark .skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='tab'][data-active='true'] {
+  color: color-mix(in srgb, var(--color-accent) 35%, var(--color-text-primary));
+}
+
+/* A stitched fabric label on the plaid band uses the project's own name. */
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='tabs-project'] {
+  position: relative;
+  padding: 1px 5px 1px 25px;
+  border: 1px dashed var(--rice-stitch);
+  border-radius: 3px;
+  color: var(--rice-ink);
+  background: var(--color-bg-secondary);
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='tabs-project']::before {
+  content: '';
+  position: absolute;
+  inset: 1px auto 1px 2px;
+  width: 21px;
+  pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 31 25' fill='none' stroke='%23465f85' stroke-linejoin='round'%3E%3Cg transform='rotate(-12 14 12)'%3E%3Cpath fill='%2382a3cc' d='m13 13-6 8 4-1 1 3 4-9 3 7 2-3 3 1-6-7'/%3E%3Cpath fill='%23a9c6eb' d='M14 10Q2 1 2 6L3 15Q4 18 14 12q12 8 12 3l-1-8q-1-4-11 3Z'/%3E%3Cpath stroke='%23fffaf0' d='m5 7 1 7m16-6 1 7'/%3E%3Crect x='12' y='9' width='5' height='5' rx='1' fill='%23748eb9'/%3E%3C/g%3E%3Cpath stroke='%237d91ac' stroke-linecap='round' d='m26 3 2-1m0 5 2 1'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
+@media (max-width: 859px) {
+  .skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='tabs-project'] {
+    padding-inline: 6px;
+  }
+  .skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='tabs-project']::before {
+    display: none;
+  }
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='workspace'] {
+  background-image: linear-gradient(125deg, var(--rice-check), transparent 50%);
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='task-panel'] {
+  margin: 3px 0 3px 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 11px;
+  background-color: var(--rice-linen);
+  box-shadow: var(--shadow-sm);
+}
+
+.skin-shell[data-mxu-skin='deepseek'] .has-background-image [data-skin-slot='task-panel'] {
+  background-color: var(--mxu-bg-secondary);
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='task-list'] {
+  border-radius: 11px 11px 0 0;
+  background-image: radial-gradient(var(--rice-spots) 0.8px, transparent 0.9px);
+  background-size: 16px 16px;
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='task-item'] {
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='toolbar'] {
+  border-top: 1px dashed var(--rice-stitch);
+  border-radius: 0 0 11px 11px;
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='sidebar'] {
+  background-color: transparent;
+}
+
+.skin-shell[data-mxu-skin='deepseek']
+  :is([data-skin-slot='connection'], [data-skin-slot='screenshot'], [data-skin-slot='logs']) {
+  border: 1px solid var(--color-border);
+  border-radius: 11px;
+  box-shadow: var(--shadow-sm);
+}
+
+.skin-shell[data-mxu-skin='deepseek']
+  :is([data-skin-slot='connection'], [data-skin-slot='screenshot'], [data-skin-slot='logs'])
+  > :first-child {
+  color: var(--rice-ink);
+  background-image: linear-gradient(105deg, var(--rice-check), transparent 75%);
+}
+
+.rice-place-setting {
+  container: rice-place / size;
+}
+
+.rice-place-setting__art {
+  position: absolute;
+  right: clamp(8px, 5cqw, 48px);
+  bottom: min(18px, 4cqh);
+  height: min(216px, 89cqh, 52cqw);
+  aspect-ratio: 1.55;
+}
+
+.rice-mat {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  height: auto;
+}
+
+.rice-guest {
+  position: absolute;
+  bottom: 8%;
+  left: 20%;
+  width: 55%;
+  height: 99%;
+  object-fit: cover;
+  filter: drop-shadow(-1.5px 0 0 #fff8e9) drop-shadow(1.5px 1.5px 0 #fff8e9)
+    drop-shadow(0 3px 1.5px #26385240);
+}
+
+.rice-grains {
+  position: absolute;
+  inset: 0;
+}
+
+.rice-grains i {
+  position: absolute;
+  width: 2.5%;
+  height: 1.6%;
+  left: 68%;
+  top: 60%;
+  border-radius: 65%;
+  background: #fffdf4;
+  box-shadow:
+    0 0 0 1px #869ab5,
+    inset 1px -1px 0 #e4dac3;
+  rotate: -38deg;
+}
+
+.rice-grains i:nth-child(2) {
+  left: 74%;
+  top: 75%;
+  width: 2%;
+  rotate: 55deg;
+}
+
+.rice-grains i:nth-child(3) {
+  left: 78%;
+  top: 79%;
+  rotate: 12deg;
+}
+
+@container rice-place (max-height: 66px) {
+  .rice-place-setting__art {
+    display: none;
+  }
+}
+
+.skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='screenshot-screen']:has(.rice-photo) {
+  border: 1px dashed var(--rice-stitch);
+  background-image: linear-gradient(130deg, var(--rice-check), transparent 55%);
+}
+
+.rice-photo {
+  container: rice-photo / inline-size;
+}
+
+.rice-photo img {
+  position: absolute;
+  /* Only the peeking face shows above the edge of the empty screenshot. */
+  left: 1%;
+  bottom: -16%;
+  width: 20%;
+  height: 65%;
+  object-fit: cover;
+  rotate: -10deg;
+  filter: drop-shadow(1px -1px 0 #fff8ee) drop-shadow(1px 1px 1px #52678755);
+}
+
+.rice-photo__ribbon {
+  position: absolute;
+  top: 2%;
+  right: 2%;
+  width: clamp(23px, 12%, 48px);
+  rotate: 14deg;
+  filter: drop-shadow(0 1px 0 #fff8ef);
+}
+
+@container rice-photo (max-width: 230px) {
+  .rice-photo img {
+    display: none;
+  }
+}
+
+.rice-log-bowl {
+  width: 32px;
+  height: 20px;
+  transform: rotate(-7deg);
+}
+
+@media (max-width: 800px) {
+  .skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='task-panel'] {
+    margin-inline: 0;
+  }
+}
+
+@media (max-width: 767px) {
+  .skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='toolbar'] {
+    border-radius: 0;
+  }
+}
+
+@media (forced-colors: active) {
+  .skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='tabs-project']::before {
+    display: none;
+  }
+
+  .skin-shell[data-mxu-skin='deepseek'] [data-skin-slot='tab'][data-active='true'] {
+    border-bottom: 2px solid Highlight;
+  }
+}
