@@ -12,7 +12,7 @@ use tauri::Emitter;
 use super::types::GitHubRelease;
 use reqwest::header::{ACCEPT, AUTHORIZATION, USER_AGENT};
 
-use super::types::{DownloadProgressEvent, DownloadResult};
+use super::types::{DownloadProgressEvent, DownloadResult, DownloadRetryEvent};
 use super::update::move_to_old_folder;
 use super::utils::build_user_agent;
 
@@ -58,6 +58,26 @@ impl Drop for TempFileGuard {
 static DOWNLOAD_CANCELLED: AtomicBool = AtomicBool::new(false);
 /// 当前下载的 session ID，用于区分不同的下载任务
 static CURRENT_DOWNLOAD_SESSION: AtomicU64 = AtomicU64::new(0);
+
+// 下载错误码：后端只返回稳定标识，由前端映射为当前语言的提示文案
+const ERR_CANCELLED: &str = "download_cancelled";
+const ERR_TIMEOUT: &str = "download_timeout";
+const ERR_CONNECT_FAILED: &str = "download_connect_failed";
+const ERR_REQUEST_FAILED: &str = "download_request_failed";
+const ERR_INCOMPLETE: &str = "download_incomplete";
+
+/// 当前下载是否已被取消，或已被新的下载会话取代
+fn is_download_aborted(session_id: u64) -> bool {
+    DOWNLOAD_CANCELLED.load(Ordering::SeqCst)
+        || CURRENT_DOWNLOAD_SESSION.load(Ordering::SeqCst) != session_id
+}
+
+/// 等待下载被取消或会话被取代，用于在等待连接时及时中止，避免旧任务继续占用连接
+async fn wait_for_download_abort(session_id: u64) {
+    while !is_download_aborted(session_id) {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+}
 
 /// 根据版本号获取 GitHub Release URL
 ///
@@ -159,12 +179,25 @@ pub async fn download_file(
     save_path: String,
     total_size: Option<u64>,
     proxy_url: Option<String>,
+    connect_timeout_secs: Option<u64>,
+    retries: Option<u32>,
+    request_id: Option<String>,
 ) -> Result<DownloadResult, String> {
     use futures_util::StreamExt;
     use std::io::Write;
     use tokio::time::{sleep, Duration};
 
     info!("download_file: {} -> {}", url, save_path);
+
+    let request_id = request_id.unwrap_or_default();
+
+    // 连接超时时间与重试次数（前端设置项）：默认 10 秒、不重试，与未提供设置时的旧行为一致
+    let timeout_secs = connect_timeout_secs.unwrap_or(10).clamp(1, 600);
+    let max_retries = retries.unwrap_or(0).min(10);
+    info!(
+        "download_file 超时设置: {} 秒, 重试 {} 次",
+        timeout_secs, max_retries
+    );
 
     // 生成新的 session ID，使旧下载的进度事件无效
     let session_id = CURRENT_DOWNLOAD_SESSION.fetch_add(1, Ordering::SeqCst) + 1;
@@ -184,7 +217,7 @@ pub async fn download_file(
     let mut client_builder = reqwest::Client::builder()
         .user_agent(build_user_agent())
         .timeout(std::time::Duration::from_secs(1800)) // 30 分钟超时，足够下载大文件但防止无限挂起
-        .connect_timeout(std::time::Duration::from_secs(10));
+        .connect_timeout(std::time::Duration::from_secs(timeout_secs));
 
     // 配置代理（如果提供）
     if let Some(ref proxy) = proxy_url {
@@ -210,14 +243,84 @@ pub async fn download_file(
         .build()
         .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
 
-    let response = client
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| format!("请求失败: {}", e))?;
+    // 连接阶段：connect_timeout 仅约束连接建立，等待响应头仍由客户端 30 分钟超时兜底，
+    // 避免服务器响应头较慢时被连接超时误判为失败；等待期间响应取消与新旧会话切换
+    let mut attempt: u32 = 0;
+    let response = loop {
+        if is_download_aborted(session_id) {
+            info!(
+                "download_file aborted before connect (session {})",
+                session_id
+            );
+            return Err(ERR_CANCELLED.to_string());
+        }
+
+        let send_result = tokio::select! {
+            result = client.get(&url).send() => result,
+            _ = wait_for_download_abort(session_id) => {
+                info!(
+                    "download_file aborted while connecting (session {})",
+                    session_id
+                );
+                return Err(ERR_CANCELLED.to_string());
+            }
+        };
+
+        match send_result {
+            Ok(resp) => break resp,
+            Err(e) => {
+                // 仅对连接/超时类错误重试，其它错误直接失败
+                let retriable = e.is_timeout() || e.is_connect();
+                if retriable && attempt < max_retries {
+                    attempt += 1;
+                    warn!(
+                        "连接失败，第 {}/{} 次重试（{} 秒）: {}",
+                        attempt, max_retries, timeout_secs, e
+                    );
+                    emit_retry(
+                        &app,
+                        &request_id,
+                        session_id,
+                        attempt,
+                        max_retries,
+                        timeout_secs,
+                    );
+                    tokio::select! {
+                        _ = sleep(Duration::from_secs(1)) => {}
+                        _ = wait_for_download_abort(session_id) => {
+                            info!(
+                                "download_file aborted during retry wait (session {})",
+                                session_id
+                            );
+                            return Err(ERR_CANCELLED.to_string());
+                        }
+                    }
+                    continue;
+                }
+
+                if retriable {
+                    error!(
+                        "连接失败（{} 秒超时），已重试 {} 次仍无法连接服务器: {}",
+                        timeout_secs, max_retries, e
+                    );
+                    return Err(if e.is_timeout() {
+                        ERR_TIMEOUT.to_string()
+                    } else {
+                        ERR_CONNECT_FAILED.to_string()
+                    });
+                }
+
+                error!("下载请求失败: {}", e);
+                return Err(ERR_REQUEST_FAILED.to_string());
+            }
+        }
+    };
 
     if !response.status().is_success() {
-        return Err(format!("HTTP 错误: {}", response.status()));
+        return Err(format!(
+            "download_http_status:{}",
+            response.status().as_u16()
+        ));
     }
 
     // 尝试从 Content-Disposition header 或最终 URL 提取文件名
@@ -286,6 +389,7 @@ pub async fn download_file(
 
     // 启动独立任务定期上报进度，避免在下载循环中因 emit 阻塞导致”卡卡停停”
     let app_for_emitter = app.clone();
+    let request_id_for_emitter = request_id.clone();
     let (stop_tx, mut stop_rx) = tokio::sync::oneshot::channel::<()>();
     let progress_guard = ProgressEmitterGuard(Some(stop_tx));
     tokio::spawn(async move {
@@ -328,6 +432,7 @@ pub async fn download_file(
                     let _ = app_for_emitter.emit(
                         "download-progress",
                         DownloadProgressEvent {
+                            request_id: request_id_for_emitter.clone(),
                             session_id,
                             downloaded_size: downloaded,
                             total_size: total,
@@ -352,11 +457,9 @@ pub async fn download_file(
     let mut download_err: Option<String> = None;
 
     while let Some(chunk) = stream.next().await {
-        if DOWNLOAD_CANCELLED.load(Ordering::SeqCst)
-            || CURRENT_DOWNLOAD_SESSION.load(Ordering::SeqCst) != session_id
-        {
+        if is_download_aborted(session_id) {
             info!("download_file cancelled (session {})", session_id);
-            download_err = Some("下载已取消".to_string());
+            download_err = Some(ERR_CANCELLED.to_string());
             break;
         }
 
@@ -378,15 +481,12 @@ pub async fn download_file(
     }
 
     // 最后再检查一次取消标志
-    if download_err.is_none()
-        && (DOWNLOAD_CANCELLED.load(Ordering::SeqCst)
-            || CURRENT_DOWNLOAD_SESSION.load(Ordering::SeqCst) != session_id)
-    {
+    if download_err.is_none() && is_download_aborted(session_id) {
         info!(
             "download_file cancelled before finalization (session {})",
             session_id
         );
-        download_err = Some("下载已取消".to_string());
+        download_err = Some(ERR_CANCELLED.to_string());
     }
 
     // 关闭发送端，通知写入线程所有数据已发送完毕
@@ -415,10 +515,7 @@ pub async fn download_file(
                 "download_file size mismatch: {} / {} bytes (session {})",
                 downloaded, expected, session_id
             );
-            return Err(format!(
-                "下载不完整：已下载 {} 字节，应为 {} 字节",
-                downloaded, expected
-            ));
+            return Err(ERR_INCOMPLETE.to_string());
         }
     }
 
@@ -426,6 +523,7 @@ pub async fn download_file(
     let _ = app.emit(
         "download-progress",
         DownloadProgressEvent {
+            request_id: request_id.clone(),
             session_id,
             downloaded_size: downloaded,
             total_size: if total > 0 { total } else { downloaded },
@@ -458,6 +556,27 @@ pub async fn download_file(
         actual_save_path,
         detected_filename,
     })
+}
+
+/// 通知前端“连接超时，正在重试”，让用户能看到重试过程而不是静默等待
+fn emit_retry(
+    app: &tauri::AppHandle,
+    request_id: &str,
+    session_id: u64,
+    attempt: u32,
+    max_retries: u32,
+    timeout_secs: u64,
+) {
+    let _ = app.emit(
+        "download-retry",
+        DownloadRetryEvent {
+            request_id: request_id.to_string(),
+            session_id,
+            attempt,
+            max_retries,
+            timeout_secs,
+        },
+    );
 }
 
 /// 取消下载

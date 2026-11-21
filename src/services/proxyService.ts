@@ -171,6 +171,12 @@ export async function downloadWithProxy(
   options?: {
     totalSize?: number;
     proxyUrl?: string | null;
+    /** 连接超时时间（秒），超时后中断并重试 */
+    timeoutSec?: number;
+    /** 连接超时后的自动重试次数 */
+    retries?: number;
+    /** 本次下载的请求 ID，会随进度/重试事件回传，用于过滤旧下载残留的事件 */
+    requestId?: string;
   },
 ): Promise<DownloadResult> {
   const hasProxy = options?.proxyUrl && options.proxyUrl.trim() !== '';
@@ -190,5 +196,8 @@ export async function downloadWithProxy(
     savePath,
     totalSize: options?.totalSize || null,
     proxyUrl: options?.proxyUrl || null,
+    connectTimeoutSecs: options?.timeoutSec ?? null,
+    retries: options?.retries ?? null,
+    requestId: options?.requestId ?? null,
   });
 }
