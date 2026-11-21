@@ -381,8 +381,10 @@ export interface AppState {
 
   // 定时检查更新
   scheduledUpdateCheckEnabled: boolean;
+  startupUpdateCheckEnabled: boolean;
   scheduledUpdateCheckTime: string;
   setScheduledUpdateCheckEnabled: (enabled: boolean) => void;
+  setStartupUpdateCheckEnabled: (enabled: boolean) => void;
   setScheduledUpdateCheckTime: (time: string) => void;
 
   // 代理设置
