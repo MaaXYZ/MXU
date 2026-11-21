@@ -1187,8 +1187,13 @@ function AppContent() {
           log.info('MXU 开发模式，跳过自动更新检查');
         } else if (isDebugVersion(result.interface.version)) {
           log.info(`非正式版本 (${result.interface.version})，跳过自动更新检查`);
+        } else if (useAppStore.getState().startupUpdateCheckEnabled) {
+          await checkForAutoUpdate(
+            result.interface,
+            () => !useAppStore.getState().startupUpdateCheckEnabled,
+          );
         } else {
-          await checkForAutoUpdate(result.interface);
+          log.info('已关闭启动时自动检查更新');
         }
       }
 

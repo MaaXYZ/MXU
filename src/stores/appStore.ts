@@ -1555,6 +1555,11 @@ export const useAppStore = create<AppState>()(
         maxLogsPerInstance: config.settings.maxLogsPerInstance ?? DEFAULT_MAX_LOGS_PER_INSTANCE,
         autoClearLogsOnLaunch: config.settings.autoClearLogsOnLaunch ?? false,
         scheduledUpdateCheckEnabled: config.settings.scheduledUpdateCheckEnabled === true,
+        // 旧配置没有该字段时保持「默认开启」；只有显式 false 或非法值才视为关闭。
+        startupUpdateCheckEnabled:
+          config.settings.startupUpdateCheckEnabled === undefined
+            ? true
+            : config.settings.startupUpdateCheckEnabled === true,
         scheduledUpdateCheckTime: normalizeScheduledUpdateCheckTime(
           config.settings.scheduledUpdateCheckTime,
         ),
@@ -2080,8 +2085,10 @@ export const useAppStore = create<AppState>()(
       })),
 
     // 定时检查更新
+    startupUpdateCheckEnabled: true,
     scheduledUpdateCheckEnabled: false,
     scheduledUpdateCheckTime: defaultScheduledUpdateCheckTime,
+    setStartupUpdateCheckEnabled: (enabled) => set({ startupUpdateCheckEnabled: enabled }),
     setScheduledUpdateCheckEnabled: (enabled) => set({ scheduledUpdateCheckEnabled: enabled }),
     setScheduledUpdateCheckTime: (time) =>
       set({ scheduledUpdateCheckTime: normalizeScheduledUpdateCheckTime(time) }),
@@ -2584,6 +2591,7 @@ function generateConfig(): MxuConfig {
           maxLogsPerInstance: state.maxLogsPerInstance,
           autoClearLogsOnLaunch: state.autoClearLogsOnLaunch,
           scheduledUpdateCheckEnabled: state.scheduledUpdateCheckEnabled,
+          startupUpdateCheckEnabled: state.startupUpdateCheckEnabled,
           scheduledUpdateCheckTime: state.scheduledUpdateCheckTime,
           helpImproveSoftware: state.helpImproveSoftware,
           windowSize: bl?.windowSize ?? state.windowSize,
@@ -2684,6 +2692,7 @@ useAppStore.subscribe(
     helpImproveSoftware: state.helpImproveSoftware,
     mirrorChyanSettings: state.mirrorChyanSettings,
     scheduledUpdateCheckEnabled: state.scheduledUpdateCheckEnabled,
+    startupUpdateCheckEnabled: state.startupUpdateCheckEnabled,
     scheduledUpdateCheckTime: state.scheduledUpdateCheckTime,
     proxySettings: state.proxySettings,
     welcomeShownHash: state.welcomeShownHash,

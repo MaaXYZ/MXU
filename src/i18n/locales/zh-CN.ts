@@ -71,6 +71,7 @@ export default {
     appearance: '外观',
     hotkeys: '快捷键',
     general: '通用',
+    startupUpdateCheck: '启动时自动检查更新',
     scheduledUpdateCheck: '定时检查更新',
     scheduledUpdateCheckTime: '每日检查时间（本地时间）',
     taskSettings: '任务设置',

@@ -76,6 +76,7 @@ export default {
     appearance: 'Appearance',
     hotkeys: 'Hotkeys',
     general: 'General',
+    startupUpdateCheck: 'Check for Updates on Launch',
     scheduledUpdateCheck: 'Scheduled Update Checks',
     scheduledUpdateCheckTime: 'Daily Check Time (Local Time)',
     taskSettings: 'Task Settings',

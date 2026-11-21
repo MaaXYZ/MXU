@@ -71,6 +71,7 @@ export default {
     appearance: '外観',
     hotkeys: 'ショートカットキー',
     general: '一般',
+    startupUpdateCheck: '起動時に更新を確認',
     scheduledUpdateCheck: '更新の定時確認',
     scheduledUpdateCheckTime: '毎日の確認時刻（現地時間）',
     taskSettings: 'タスク設定',
