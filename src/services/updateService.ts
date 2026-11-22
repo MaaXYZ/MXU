@@ -559,9 +559,36 @@ function getArchForDownload(arch: string): string {
 }
 
 /**
+ * 直接下载链接的文件名后缀候选。
+ *
+ * 部分项目每个版本只发布带前端后缀的 GUI 包（如 -MFAA / -MXU），没有无后缀的
+ * 通用 zip，模板拼出的无后缀名会 404。MXU 客户端应使用 -MXU 包，因此在无后缀
+ * 候选失败后追加 -MXU 变体（GitHub 资产名大小写不敏感，-MXU 可匹配 -mxu）。
+ */
+const DIRECT_DOWNLOAD_NAME_SUFFIXES = ['', '-MXU'];
+
+/**
+ * 构建直接下载文件名
+ * 格式: {项目名}-{os}-{arch}-v{版本}{后缀}.{ext}
+ */
+function buildDirectDownloadFilename(
+  projectName: string,
+  version: string,
+  extension: string,
+  arch: string,
+  nameSuffix = '',
+): string {
+  const os = getOSForDownload();
+  const downloadArch = getArchForDownload(arch);
+  // 确保版本号有 v 前缀
+  const versionTag = version.startsWith('v') ? version : `v${version}`;
+  return `${projectName}-${os}-${downloadArch}-${versionTag}${nameSuffix}${extension}`;
+}
+
+/**
  * 构建直接下载链接
  * 格式:
- * https://github.com/{owner}/{repo}/releases/download/v{version}/{项目名}-{os}-{arch}-v{version}.{ext}
+ * https://github.com/{owner}/{repo}/releases/download/v{version}/{项目名}-{os}-{arch}-v{version}{后缀}.{ext}
  */
 function buildDirectDownloadUrl(
   owner: string,
@@ -570,18 +597,16 @@ function buildDirectDownloadUrl(
   version: string,
   extension: string,
   arch: string,
+  nameSuffix = '',
 ): string {
-  const os = getOSForDownload();
-  const downloadArch = getArchForDownload(arch);
-  // 确保版本号有 v 前缀
   const versionTag = version.startsWith('v') ? version : `v${version}`;
-  const filename = `${projectName}-${os}-${downloadArch}-${versionTag}${extension}`;
+  const filename = buildDirectDownloadFilename(projectName, version, extension, arch, nameSuffix);
   return `https://github.com/${owner}/${repo}/releases/download/${versionTag}/${filename}`;
 }
 
 /**
  * 尝试直接下载链接（HEAD 请求检查是否存在）
- * 依次尝试多种文件扩展名，返回第一个存在的链接
+ * 依次尝试多种文件扩展名和文件名后缀，返回第一个存在的链接
  */
 async function tryDirectDownloadUrls(
   owner: string,
@@ -593,28 +618,27 @@ async function tryDirectDownloadUrls(
   const arch = await getArch();
 
   for (const ext of extensions) {
-    const url = buildDirectDownloadUrl(owner, repo, projectName, version, ext, arch);
-    const os = getOSForDownload();
-    const downloadArch = getArchForDownload(arch);
-    const versionTag = version.startsWith('v') ? version : `v${version}`;
-    const filename = `${projectName}-${os}-${downloadArch}-${versionTag}${ext}`;
+    for (const nameSuffix of DIRECT_DOWNLOAD_NAME_SUFFIXES) {
+      const url = buildDirectDownloadUrl(owner, repo, projectName, version, ext, arch, nameSuffix);
+      const filename = buildDirectDownloadFilename(projectName, version, ext, arch, nameSuffix);
 
-    try {
-      log.info(`尝试直接下载链接: ${url}`);
-      const response = await tauriFetch(url, {
-        method: 'HEAD',
-        headers: {
-          'User-Agent': await buildUserAgent(),
-        },
-      });
+      try {
+        log.info(`尝试直接下载链接: ${url}`);
+        const response = await tauriFetch(url, {
+          method: 'HEAD',
+          headers: {
+            'User-Agent': await buildUserAgent(),
+          },
+        });
 
-      if (response.ok) {
-        log.info(`直接下载链接可用: ${filename}`);
-        return { url, filename };
+        if (response.ok) {
+          log.info(`直接下载链接可用: ${filename}`);
+          return { url, filename };
+        }
+        log.info(`直接下载链接不存在 (${response.status}): ${filename}`);
+      } catch (error) {
+        log.warn(`检查直接下载链接失败: ${filename}`, error);
       }
-      log.info(`直接下载链接不存在 (${response.status}): ${filename}`);
-    } catch (error) {
-      log.warn(`检查直接下载链接失败: ${filename}`, error);
     }
   }
 
