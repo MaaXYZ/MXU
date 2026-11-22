@@ -14,6 +14,7 @@ import {
   Bug,
   Network,
   Clock,
+  Github,
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -21,6 +22,7 @@ import { useAppStore } from '@/stores/appStore';
 import {
   checkAndPrepareDownload,
   openMirrorChyanWebsite,
+  openGithubTokenPage,
   downloadUpdate,
   getUpdateSavePath,
   cancelDownload,
@@ -43,6 +45,7 @@ export function UpdateSection() {
     language,
     mirrorChyanSettings,
     setMirrorChyanCdk,
+    setMirrorChyanGithubPat,
     setMirrorChyanChannel,
     scheduledUpdateCheckEnabled,
     scheduledUpdateCheckTime,
@@ -68,6 +71,7 @@ export function UpdateSection() {
 
   const [showCdk, setShowCdk] = useState(false);
   const cdkInputRef = useRef<HTMLInputElement>(null);
+  const [showGithubPat, setShowGithubPat] = useState(false);
   const [proxyInput, setProxyInput] = useState(proxySettings?.url || '');
   const [proxyError, setProxyError] = useState(false);
   const [checkFailed, setCheckFailed] = useState(false);
@@ -231,6 +235,7 @@ export function UpdateSection() {
             channel: mirrorChyanSettings.channel,
             userAgent: 'MXU',
             githubUrl: projectInterface!.github,
+            githubPat: mirrorChyanSettings.githubPat || undefined,
             projectName: projectInterface!.name,
           });
 
@@ -338,6 +343,7 @@ export function UpdateSection() {
         channel: mirrorChyanSettings.channel,
         userAgent: 'MXU',
         githubUrl: projectInterface.github,
+        githubPat: mirrorChyanSettings.githubPat || undefined,
         proxyUrl: proxySettings?.url,
         projectName: projectInterface.name,
       });
@@ -488,6 +494,39 @@ export function UpdateSection() {
                   </button>
                   {t('mirrorChyan.cdkHintAfterLink', { projectName })}
                 </p>
+              </div>
+            </div>
+
+            {/* GitHub PAT 输入（仅用于未填 CDK 时的 GitHub 回退路径） */}
+            <div className="pt-4 border-t border-border">
+              <div className="flex items-center gap-3 mb-3">
+                <Github className="w-5 h-5 text-accent" />
+                <span className="font-medium text-text-primary">{t('mirrorChyan.githubPat')}</span>
+                <button
+                  onClick={() => openGithubTokenPage()}
+                  className="ml-auto text-xs text-accent hover:underline flex items-center gap-1"
+                >
+                  {t('mirrorChyan.getGithubPat')}
+                  <ExternalLink className="w-3 h-3" />
+                </button>
+              </div>
+              <div className="relative">
+                <input
+                  type={showGithubPat ? 'text' : 'password'}
+                  value={mirrorChyanSettings.githubPat ?? ''}
+                  onChange={(e) => setMirrorChyanGithubPat(e.target.value)}
+                  placeholder={t('mirrorChyan.githubPatPlaceholder')}
+                  className="w-full px-3 py-2.5 pr-10 rounded-lg bg-bg-tertiary border border-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
+                />
+                <button
+                  onClick={() => setShowGithubPat(!showGithubPat)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-text-muted hover:text-text-secondary transition-colors"
+                >
+                  {showGithubPat ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <div className="mt-3 text-xs text-text-muted leading-relaxed">
+                <p>{t('mirrorChyan.githubPatHint')}</p>
               </div>
             </div>
 

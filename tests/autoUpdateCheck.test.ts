@@ -185,3 +185,18 @@ test('equivalent settings synchronized from another client still allow the resul
   await request;
   assert.deepEqual(check.results, [update]);
 });
+
+test('startup check forwards the configured GitHub PAT to the download request', async () => {
+  const check = createCheck();
+  check.setState({
+    mirrorChyanSettings: { cdk: '', channel: 'stable', githubPat: 'ghp_example' },
+  });
+
+  const request = runAutoUpdateCheck(check.project, check.dependencies);
+  check.resolve(null);
+  await request;
+
+  assert.equal(check.requests.length, 1);
+  assert.equal(check.requests[0].githubPat, 'ghp_example');
+  assert.equal(check.requests[0].projectName, 'Example');
+});

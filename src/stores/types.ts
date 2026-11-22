@@ -377,6 +377,7 @@ export interface AppState {
   // MirrorChyan 更新设置
   mirrorChyanSettings: MirrorChyanSettings;
   setMirrorChyanCdk: (cdk: string) => void;
+  setMirrorChyanGithubPat: (pat: string) => void;
   setMirrorChyanChannel: (channel: UpdateChannel) => void;
 
   // 定时检查更新

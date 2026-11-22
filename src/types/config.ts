@@ -116,6 +116,7 @@ export interface MirrorChyanSettings {
   cdkEncrypted?: string; // 加密后的 CDK（持久化用，XOR + Base64）
   channel: UpdateChannel; // 更新频道：stable(正式版) / beta(公测版)
   githubPat?: string; // GitHub Personal Access Token（支持 classic 和 fine-grained）
+  githubPatEncrypted?: string; // 加密后的 GitHub PAT（持久化用，XOR + Base64）
 }
 
 // 代理设置

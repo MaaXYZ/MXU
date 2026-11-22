@@ -486,6 +486,16 @@ export function openMirrorChyanWebsite(source?: string) {
 }
 
 /**
+ * 打开 GitHub Token 生成页（用于提升 GitHub API 限额）
+ * 使用系统默认浏览器打开
+ */
+export function openGithubTokenPage() {
+  openUrl('https://github.com/settings/tokens').catch((err) => {
+    log.error('Failed to open URL:', err);
+  });
+}
+
+/**
  * 从 GitHub URL 提取 owner 和 repo
  * 支持格式: https://github.com/owner/repo 或 https://github.com/owner/repo.git
  */

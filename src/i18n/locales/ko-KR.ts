@@ -757,6 +757,11 @@ export default {
       '는 독립적인 서드파티 고속 다운로드 서비스이며 유료 구독이 필요합니다. 이것은 "{{projectName}}"의 요금이 아닙니다. 운영비는 구독 수익으로 충당되며 일부는 개발자에게 환원됩니다. CDK를 구독하여 고속 다운로드를 즐기세요. CDK가 없으면 GitHub에서 다운로드됩니다. 실패하면 네트워크 프록시를 설정하세요.',
     getCdk: 'CDK가 없으신가요? 지금 구독하세요',
     cdkHint: 'CDK가 올바른지 또는 만료되지 않았는지 확인하세요',
+    githubPat: 'GitHub 액세스 토큰',
+    githubPatPlaceholder: 'GitHub PAT 입력(선택)',
+    githubPatHint:
+      'CDK가 없으면 업데이트는 GitHub에서 다운로드됩니다. PAT를 입력하면 GitHub API 한도가 시간당 60회에서 5000회로 늘어나 "사용 가능한 다운로드 링크 없음" 문제를 피할 수 있습니다. public 저장소 읽기 권한만 있으면 됩니다.',
+    getGithubPat: '토큰 생성',
     slowDownloadHint: '다른 채널',
     checkUpdate: '업데이트 확인',
     checking: '확인 중...',

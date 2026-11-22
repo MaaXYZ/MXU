@@ -48,7 +48,7 @@ import {
   buildPretaskDef,
   resolveCompatTaskDef,
 } from '@/types/pretasks';
-import { decryptCdk, encryptCdk } from '@/utils/cdkCrypto';
+import { decryptCdk, decryptGithubPat, encryptCdk, encryptGithubPat } from '@/utils/cdkCrypto';
 import {
   decryptPasswordOptionValues,
   encryptPasswordOptionValues,
@@ -1571,13 +1571,18 @@ export const useAppStore = create<AppState>()(
         mirrorChyanSettings: (() => {
           const saved = config.settings.mirrorChyan || defaultMirrorChyanSettings;
           const piName = get().projectInterface?.name;
-          if (saved.cdk) {
-            return { ...saved, cdkEncrypted: encryptCdk(saved.cdk, piName) };
+          const withCdk = saved.cdk
+            ? { ...saved, cdkEncrypted: encryptCdk(saved.cdk, piName) }
+            : saved.cdkEncrypted
+              ? { ...saved, cdk: decryptCdk(saved.cdkEncrypted, piName) }
+              : saved;
+          if (withCdk.githubPat) {
+            return { ...withCdk, githubPatEncrypted: encryptGithubPat(withCdk.githubPat, piName) };
           }
-          if (saved.cdkEncrypted) {
-            return { ...saved, cdk: decryptCdk(saved.cdkEncrypted, piName) };
+          if (withCdk.githubPatEncrypted) {
+            return { ...withCdk, githubPat: decryptGithubPat(withCdk.githubPatEncrypted, piName) };
           }
-          return saved;
+          return withCdk;
         })(),
         proxySettings: config.settings.proxy,
         showOptionPreview:
@@ -2073,6 +2078,10 @@ export const useAppStore = create<AppState>()(
     setMirrorChyanCdk: (cdk) =>
       set((state) => ({
         mirrorChyanSettings: { ...state.mirrorChyanSettings, cdk },
+      })),
+    setMirrorChyanGithubPat: (githubPat) =>
+      set((state) => ({
+        mirrorChyanSettings: { ...state.mirrorChyanSettings, githubPat },
       })),
     setMirrorChyanChannel: (channel) =>
       set((state) => ({
@@ -2600,6 +2609,11 @@ function generateConfig(): MxuConfig {
             ...state.mirrorChyanSettings,
             cdk: '',
             cdkEncrypted: encryptCdk(state.mirrorChyanSettings.cdk, state.projectInterface?.name),
+            githubPat: '',
+            githubPatEncrypted: encryptGithubPat(
+              state.mirrorChyanSettings.githubPat ?? '',
+              state.projectInterface?.name,
+            ),
           },
           proxy: state.proxySettings,
           welcomeShownHash: state.welcomeShownHash,

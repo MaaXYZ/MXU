@@ -730,6 +730,11 @@ export default {
       ' 是獨立的第三方加速下載服務，需要付費使用，並非「{{projectName}}」收費。其營運成本由訂閱收入支撐，部分收益將回饋專案開發者。歡迎訂閱 CDK 享受高速下載，同時支援專案持續開發。未填寫 CDK 時將自動透過 GitHub 下載，若失敗請嘗試設定網路代理。',
     getCdk: '沒有CDK？立即訂閱',
     cdkHint: '請檢查您的 CDK 是否正確或已過期',
+    githubPat: 'GitHub 存取權杖',
+    githubPatPlaceholder: '輸入 GitHub PAT（可選）',
+    githubPatHint:
+      '未填寫 CDK 時更新走 GitHub 下載。填寫 PAT 可將 GitHub API 限額從 60 次/小時提升到 5000 次/小時，避免出現「無可用下載連結」；只需 public 儲存庫的讀取權限。',
+    getGithubPat: '產生權杖',
     slowDownloadHint: '其他管道',
     checkUpdate: '檢查更新',
     checking: '正在檢查...',

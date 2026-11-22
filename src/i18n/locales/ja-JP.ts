@@ -770,6 +770,11 @@ export default {
       ' は独立したサードパーティの高速ダウンロードサービスで、有料サブスクリプションが必要です。これは「{{projectName}}」の料金ではありません。運営費はサブスクリプション収入で賄われ、一部は開発者に還元されます。CDK を購読して高速ダウンロードをお楽しみください。CDK を入力しない場合、GitHub からダウンロードします。失敗した場合は、ネットワークプロキシを設定してください。',
     getCdk: 'CDKをお持ちでない方はこちら',
     cdkHint: 'CDK が正しいか、または有効期限が切れていないか確認してください',
+    githubPat: 'GitHub アクセストークン',
+    githubPatPlaceholder: 'GitHub PAT を入力（任意）',
+    githubPatHint:
+      'CDK を入力しない場合、更新は GitHub からダウンロードされます。PAT を設定すると GitHub API の制限が 60 回/時から 5000 回/時に上がり、「ダウンロードリンクがありません」を回避できます。public リポジトリの読み取り権限のみで十分です。',
+    getGithubPat: 'トークンを作成',
     slowDownloadHint: '他の入手先',
     checkUpdate: '更新を確認',
     checking: '確認中...',

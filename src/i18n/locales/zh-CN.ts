@@ -734,6 +734,11 @@ export default {
       ' 是独立的第三方加速下载服务，需要付费使用，并非「{{projectName}}」收费。其运营成本由订阅收入支撑，部分收益将回馈项目开发者。欢迎订阅 CDK 享受高速下载，同时支持项目持续开发。未填写 CDK 时将自动通过 GitHub 下载，若失败请尝试配置网络代理。',
     getCdk: '没有CDK？立即订阅',
     cdkHint: '请检查您的 CDK 是否正确或已过期',
+    githubPat: 'GitHub 访问令牌',
+    githubPatPlaceholder: '输入 GitHub PAT（可选）',
+    githubPatHint:
+      '未填写 CDK 时更新走 GitHub 下载。填写 PAT 可把 GitHub API 限额从 60 次/小时提升到 5000 次/小时，避免出现「无可用下载链接」；只需 public 仓库的读取权限。',
+    getGithubPat: '生成令牌',
     slowDownloadHint: '其他渠道',
     checkUpdate: '检查更新',
     checking: '正在检查...',
