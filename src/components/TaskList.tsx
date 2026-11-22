@@ -120,7 +120,15 @@ function useImportConfigActions(instanceId: string) {
     renameInstance,
     setSelectedController,
     setSelectedResource,
-  } = useAppStore();
+  } = useAppStore(
+    useShallow((state) => ({
+      projectInterface: state.projectInterface,
+      updateInstance: state.updateInstance,
+      renameInstance: state.renameInstance,
+      setSelectedController: state.setSelectedController,
+      setSelectedResource: state.setSelectedResource,
+    })),
+  );
   const { t } = useTranslation();
 
   const handleImport = async (source: 'clipboard' | 'file') => {
@@ -282,7 +290,7 @@ function PresetSelector({ instanceId, presets }: { instanceId: string; presets: 
 export function TaskList() {
   const { t } = useTranslation();
   const {
-    getActiveInstance,
+    instance,
     reorderTasks,
     reorderPreActions,
     selectAllTasks,
@@ -297,7 +305,7 @@ export function TaskList() {
     skippedPresetInstanceIds,
   } = useAppStore(
     useShallow((state) => ({
-      getActiveInstance: state.getActiveInstance,
+      instance: state.instances.find((i) => i.id === state.activeInstanceId) ?? null,
       reorderTasks: state.reorderTasks,
       reorderPreActions: state.reorderPreActions,
       selectAllTasks: state.selectAllTasks,
@@ -313,7 +321,6 @@ export function TaskList() {
     })),
   );
 
-  const instance = getActiveInstance();
   const isInstanceRunning = instance?.isRunning || false;
   // 当前控制器/资源，未选择时回退到第一个
   const controllerName = instance
