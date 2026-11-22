@@ -776,6 +776,11 @@ export default {
       ' is an independent third-party accelerated download service that requires a paid subscription, not a fee charged by "{{projectName}}". Its operating costs are covered by subscription revenue, with a portion supporting project developers. Subscribe for high-speed downloads while supporting ongoing development. Without a CDK, downloads will fall back to GitHub. If that fails, please configure a network proxy.',
     getCdk: 'No CDKey? Subscribe Now',
     cdkHint: 'Please check if your CDK is correct or has expired',
+    githubPat: 'GitHub Access Token',
+    githubPatPlaceholder: 'Enter a GitHub PAT (optional)',
+    githubPatHint:
+      'Without a CDK, updates are downloaded from GitHub. A PAT raises the GitHub API limit from 60 to 5000 requests per hour and avoids "no available download link" failures. Read-only access to public repositories is enough.',
+    getGithubPat: 'Create token',
     slowDownloadHint: 'Other channels',
     checkUpdate: 'Check for Updates',
     checking: 'Checking...',
