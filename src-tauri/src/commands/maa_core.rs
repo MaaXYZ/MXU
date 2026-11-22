@@ -40,6 +40,38 @@ const MIN_MACOS_VERSION_MAJOR: u64 = 14;
 /// ControllerPool 复用时的合成 conn_id（负数，避免与 MaaFramework 正数 ID 冲突）
 static SYNTHETIC_CONN_ID: AtomicI64 = AtomicI64::new(-1);
 
+/// Win32 控制器创建失败时，从 MaaFramework 日志尾部提取 ControlUnit 动态库加载失败原因。
+///
+/// 框架在加载失败时只把详细原因写入日志，句柄为空时 binding 只能返回 `status -1`。
+/// 这里回读日志补全具体原因，避免前端只能看到通用错误码。
+#[cfg(windows)]
+fn win32_control_unit_failure_detail() -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    const TAIL_BYTES: u64 = 64 * 1024;
+
+    let path = super::utils::get_app_data_dir()
+        .ok()?
+        .join("debug")
+        .join("maafw.log");
+    let mut file = std::fs::File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    let read_len = len.min(TAIL_BYTES);
+    file.seek(SeekFrom::Start(len - read_len)).ok()?;
+    let mut bytes = Vec::with_capacity(read_len as usize);
+    file.read_to_end(&mut bytes).ok()?;
+    let text = String::from_utf8_lossy(&bytes);
+
+    text.lines()
+        .rev()
+        .find(|line| {
+            let lower = line.to_ascii_lowercase();
+            lower.contains("maawin32controlunit")
+                || (lower.contains("failed to load library") && lower.contains("controlunit"))
+        })
+        .map(|line| line.trim().to_string())
+}
+
 fn next_synthetic_conn_id() -> i64 {
     SYNTHETIC_CONN_ID.fetch_sub(1, Ordering::Relaxed)
 }
@@ -1017,7 +1049,16 @@ pub async fn connect_controller_impl(
                     maa_framework::common::Win32InputMethod::from_bits_truncate(*keyboard_method)
                         .bits(),
                 )
-                .map_err(|e| e.to_string())?
+                .map_err(|e| {
+                    let message = e.to_string();
+                    #[cfg(windows)]
+                    if message.contains("status -1") {
+                        if let Some(detail) = win32_control_unit_failure_detail() {
+                            return format!("{message}\n{detail}");
+                        }
+                    }
+                    message
+                })?
             }
             ControllerConfig::MacOS {
                 handle,

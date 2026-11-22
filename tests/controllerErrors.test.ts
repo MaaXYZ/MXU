@@ -33,6 +33,10 @@ test('detects MaaFramework library load failures for control units', () => {
     true,
   );
   assert.equal(
+    isWindowsDllLoadBlockedMessage('[MaaWin32ControlUnit] Failed to load library [message]'),
+    true,
+  );
+  assert.equal(
     isWindowsDllLoadBlockedMessage('Failed to load library [MaaMacOSControlUnit] [message]'),
     false,
   );

@@ -7,6 +7,7 @@ const WINDOWS_DLL_LOAD_FAILURE_PATTERNS = [
   /没有被指定在\s*windows\s*上运行/i,
   /不是有效的\s*win32\s*应用程序/i,
   /failed to load library[^\n]*maawin32controlunit/i,
+  /maawin32controlunit[^\n]*failed to load library/i,
 ];
 
 export function isWindowsDllLoadBlockedMessage(message: string): boolean {
