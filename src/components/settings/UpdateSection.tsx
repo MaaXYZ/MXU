@@ -261,6 +261,7 @@ export function UpdateSection() {
     [
       mirrorChyanSettings.cdk,
       mirrorChyanSettings.channel,
+      mirrorChyanSettings.githubPat,
       setMirrorChyanCdk,
       downloadStatus,
       updateInfo,
@@ -336,7 +337,7 @@ export function UpdateSection() {
     addDebugLog(`开始检查更新... (频道: ${mirrorChyanSettings.channel})`);
 
     try {
-      const result = await checkAndPrepareDownload({
+      const checkOptions = {
         resourceId: projectInterface.mirrorchyan_rid,
         currentVersion: projectInterface.version,
         cdk: mirrorChyanSettings.cdk || undefined,
@@ -346,7 +347,24 @@ export function UpdateSection() {
         githubPat: mirrorChyanSettings.githubPat || undefined,
         proxyUrl: proxySettings?.url,
         projectName: projectInterface.name,
-      });
+      };
+      const result = await checkAndPrepareDownload(checkOptions);
+
+      // 检查期间改了 CDK / PAT / 频道 / 代理，或切换了项目：本次结果已过期，丢弃。
+      // 否则旧请求的失败/下载结果会覆盖当前状态（例如刚换上有效 PAT，却被旧 PAT 的结果盖回去）。
+      const current = useAppStore.getState();
+      const settingsChanged =
+        (current.mirrorChyanSettings.cdk || undefined) !== checkOptions.cdk ||
+        current.mirrorChyanSettings.channel !== checkOptions.channel ||
+        (current.mirrorChyanSettings.githubPat || undefined) !== checkOptions.githubPat ||
+        current.proxySettings?.url !== checkOptions.proxyUrl ||
+        current.projectInterface?.mirrorchyan_rid !== checkOptions.resourceId ||
+        current.projectInterface?.version !== checkOptions.currentVersion ||
+        current.projectInterface?.github !== checkOptions.githubUrl;
+      if (settingsChanged) {
+        addDebugLog('检查期间设置已变更，丢弃本次检查结果');
+        return;
+      }
 
       if (result) {
         setUpdateInfo(result);
