@@ -782,6 +782,11 @@ export default {
     later: '後で通知',
     dismiss: 'このバージョンをスキップ',
     noReleaseNotes: 'リリースノートはありません',
+    viewReleaseNotes: '現在のバージョンのリリースノートを表示',
+    hideReleaseNotes: 'リリースノートを閉じる',
+    loadingReleaseNotes: 'リリースノートを取得中...',
+    loadReleaseNotesFailed:
+      'リリースノートの取得に失敗しました。ネットワーク接続を確認してください',
     checkFailed: '更新の確認に失敗しました',
     checkFailedHint: 'ネットワーク接続を確認して再試行してください',
     downloading: 'ダウンロード中',

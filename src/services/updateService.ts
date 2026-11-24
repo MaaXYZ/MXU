@@ -404,6 +404,54 @@ export async function checkUpdate(options: CheckUpdateOptions): Promise<UpdateIn
   };
 }
 
+export interface LatestReleaseNote {
+  versionName: string;
+  releaseNote: string;
+  channel?: string;
+}
+
+/**
+ * 获取当前频道最新版本的更新日志
+ * 带 current_version 且已是最新版本时 Mirror酱 只返回占位文本，因此这里不传 current_version；
+ * 也不传 cdk，避免返回下载地址
+ */
+export async function fetchLatestReleaseNote(options: {
+  resourceId: string;
+  channel?: UpdateChannel;
+  userAgent?: string;
+}): Promise<LatestReleaseNote | null> {
+  const { resourceId, channel = 'stable', userAgent = 'MXU' } = options;
+  if (!resourceId) return null;
+
+  const params = new URLSearchParams();
+  params.set('user_agent', userAgent);
+  params.set('channel', channel);
+  const os = getOS();
+  const arch = await getArch();
+  if (os) params.set('os', os);
+  if (arch) params.set('arch', arch);
+
+  log.info(`获取最新版本更新日志: ${resourceId}, 频道: ${channel}`);
+
+  for (const apiBase of MIRRORCHYAN_API_BASES) {
+    try {
+      const data = await fetchUpdateFromBase(apiBase, resourceId, params);
+      if (data.code === 0 && data.data?.version_name) {
+        const note = data.data.release_note || '';
+        return {
+          versionName: data.data.version_name,
+          releaseNote: note === 'placeholder' ? '' : note,
+          channel: data.data.channel,
+        };
+      }
+      log.warn(`${apiBase} 获取更新日志返回错误: code=${data.code}, msg=${data.msg}`);
+    } catch (error) {
+      log.warn(`${apiBase} 获取更新日志失败:`, error);
+    }
+  }
+  return null;
+}
+
 /**
  * 判断是否为非正式版本（不进行自动更新）
  * 非正式版本定义：

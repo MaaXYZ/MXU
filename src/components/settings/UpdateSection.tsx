@@ -14,6 +14,7 @@ import {
   Bug,
   Network,
   Clock,
+  FileText,
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -26,6 +27,8 @@ import {
   cancelDownload,
   MIRRORCHYAN_ERROR_CODES,
   isDebugVersion,
+  fetchLatestReleaseNote,
+  type LatestReleaseNote,
 } from '@/services/updateService';
 import { createProxySettings, proxySettingsForUpdateDownload } from '@/services/proxyService';
 import { resolveI18nText } from '@/services/contentResolver';
@@ -72,6 +75,11 @@ export function UpdateSection() {
   const [proxyError, setProxyError] = useState(false);
   const [checkFailed, setCheckFailed] = useState(false);
   const [, setDebugLog] = useState<string[]>([]);
+  const [currentNote, setCurrentNote] = useState<LatestReleaseNote | null>(null);
+  const [currentNoteVisible, setCurrentNoteVisible] = useState(false);
+  const [currentNoteLoading, setCurrentNoteLoading] = useState(false);
+  const [currentNoteFailed, setCurrentNoteFailed] = useState(false);
+  const [channelChangedSinceCheck, setChannelChangedSinceCheck] = useState(false);
 
   const addDebugLog = useCallback((msg: string) => {
     setDebugLog((prev) => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
@@ -312,6 +320,49 @@ export function UpdateSection() {
     ];
     return cdkErrorCodes.includes(updateInfo.errorCode);
   }, [updateInfo?.errorCode]);
+
+  // 切换频道后已获取的更新日志不再对应当前频道
+  useEffect(() => {
+    setCurrentNote(null);
+    setCurrentNoteVisible(false);
+    setCurrentNoteFailed(false);
+    setChannelChangedSinceCheck(true);
+  }, [mirrorChyanSettings.channel]);
+
+  // 检查结果更新后才对应当前频道（需在上方频道 effect 之后声明，保证挂载时结果为 false）
+  useEffect(() => {
+    setChannelChangedSinceCheck(false);
+  }, [updateInfo]);
+
+  // 查看 / 收起当前频道最新版本的更新日志
+  const handleToggleCurrentNote = async () => {
+    if (currentNoteVisible) {
+      setCurrentNoteVisible(false);
+      return;
+    }
+    setCurrentNoteVisible(true);
+    if (currentNote || currentNoteLoading || !projectInterface?.mirrorchyan_rid) return;
+
+    setCurrentNoteFailed(false);
+    setCurrentNoteLoading(true);
+    try {
+      const result = await fetchLatestReleaseNote({
+        resourceId: projectInterface.mirrorchyan_rid,
+        channel: mirrorChyanSettings.channel,
+        userAgent: 'MXU',
+      });
+      if (result) {
+        setCurrentNote(result);
+      } else {
+        setCurrentNoteFailed(true);
+      }
+    } catch (err) {
+      loggers.ui.error('获取更新日志失败:', err);
+      setCurrentNoteFailed(true);
+    } finally {
+      setCurrentNoteLoading(false);
+    }
+  };
 
   // 检查更新
   const handleCheckUpdate = async () => {
@@ -572,6 +623,62 @@ export function UpdateSection() {
                   {t('mirrorChyan.upToDate', { version: updateInfo.versionName })}
                 </p>
               )}
+
+              {/* 检查结果为已是最新版本时可查看当前频道最新版本的更新日志 */}
+              {updateInfo &&
+                !updateInfo.hasUpdate &&
+                !updateInfo.errorCode &&
+                !channelChangedSinceCheck && (
+                  <div className="space-y-3">
+                    <button
+                      onClick={handleToggleCurrentNote}
+                      className="mx-auto flex items-center gap-1.5 text-xs text-accent hover:underline"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      {currentNoteVisible
+                        ? t('mirrorChyan.hideReleaseNotes')
+                        : t('mirrorChyan.viewReleaseNotes')}
+                    </button>
+                    {currentNoteVisible &&
+                      (currentNoteLoading ? (
+                        <div className="flex items-center justify-center gap-2 text-xs text-text-muted">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>{t('mirrorChyan.loadingReleaseNotes')}</span>
+                        </div>
+                      ) : currentNoteFailed ? (
+                        <div className="flex items-center justify-center gap-2 text-xs text-error">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          <span>{t('mirrorChyan.loadReleaseNotesFailed')}</span>
+                        </div>
+                      ) : (
+                        currentNote && (
+                          <div className="space-y-2 p-4 bg-bg-tertiary rounded-lg border border-border">
+                            <div className="flex items-center gap-2">
+                              <FileText className="w-4 h-4 text-accent" />
+                              <span className="text-sm font-medium text-text-primary">
+                                {t('mirrorChyan.releaseNotes')}
+                              </span>
+                              <span className="font-mono text-sm text-accent font-semibold">
+                                {currentNote.versionName}
+                              </span>
+                              {currentNote.channel && currentNote.channel !== 'stable' && (
+                                <span className="px-1.5 py-0.5 bg-warning/20 text-warning text-xs rounded font-medium">
+                                  {currentNote.channel}
+                                </span>
+                              )}
+                            </div>
+                            <ReleaseNotes
+                              releaseNote={currentNote.releaseNote}
+                              showTitle={false}
+                              maxHeightClass="max-h-64"
+                              bgClass="bg-bg-secondary"
+                              textSizeClass="text-xs"
+                            />
+                          </div>
+                        )
+                      ))}
+                  </div>
+                )}
 
               {/* 网络异常导致检查失败 */}
               {checkFailed && !updateCheckLoading && (
