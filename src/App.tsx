@@ -132,6 +132,48 @@ function dispatchAutoStartTasks(onSettled?: (started: boolean) => void) {
 
 type LoadingState = 'loading' | 'success' | 'error';
 
+/** 去掉 v 前缀并转小写，用于比较更新版本号 */
+function normalizeVersion(version: string): string {
+  return version.replace(/^v/i, '').toLowerCase();
+}
+
+const RETAINED_UPDATE_LOGS_KEY = 'mxu.logs-retained-after-update';
+
+/**
+ * 判断本次启动是否应保留上次日志。
+ * 更新重启可能触发多次初始化（StrictMode）或多个实例，因此用一次性标记协调：
+ * 第一个看到有效更新标记的初始化留下认领记录，后续初始化只消费一次，下一次正常启动不再保留。
+ */
+function shouldRetainLogsAfterUpdate(
+  updateInfo: ReturnType<typeof consumeUpdateCompleteInfo>,
+  currentVersion: string | undefined,
+): boolean {
+  if (updateInfo) {
+    if (
+      updateInfo.requireVersionCheck &&
+      normalizeVersion(currentVersion || '') !== normalizeVersion(updateInfo.newVersion)
+    ) {
+      return false;
+    }
+    try {
+      localStorage.setItem(RETAINED_UPDATE_LOGS_KEY, String(Date.now()));
+    } catch {
+      // 存储不可用时退回到仅本次初始化判断
+    }
+    return true;
+  }
+
+  try {
+    if (localStorage.getItem(RETAINED_UPDATE_LOGS_KEY)) {
+      localStorage.removeItem(RETAINED_UPDATE_LOGS_KEY);
+      return true;
+    }
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
 // 页面过渡动画时长（ms）
 const PAGE_TRANSITION_DURATION = 120;
 
@@ -882,6 +924,14 @@ function AppContent() {
         log.warn('恢复后端状态失败:', err);
       }
 
+      // 更新完成标记只在更新重启后的第一次启动生效：先原子消费，再据此决定是否保留上次日志，
+      // 避免 StrictMode / 多实例重复进入时，第二个初始化把刚保留的日志又清掉。
+      const updateCompleteInfo = consumeUpdateCompleteInfo();
+      const justUpdatedBeforeLaunch = shouldRetainLogsAfterUpdate(
+        updateCompleteInfo,
+        result.interface.version,
+      );
+
       // 从后端恢复运行日志（跨页面刷新持久化）
       try {
         const backendLogs = await getAllLogsFromBackend();
@@ -897,7 +947,12 @@ function AppContent() {
           }));
         }
 
-        if (store.autoClearLogsOnLaunch) {
+        // 自动更新安装后会重启进程，此时保留上一次执行日志，便于回看任务结果。
+        // 标记已在上面消费，只有本次启动能保留，下一次正常启动仍按设置清理。
+        if (store.autoClearLogsOnLaunch && justUpdatedBeforeLaunch) {
+          log.info('检测到自动更新完成，本次启动保留上次执行日志');
+        }
+        if (store.autoClearLogsOnLaunch && !justUpdatedBeforeLaunch) {
           if (isTauri()) {
             try {
               const deleted = await invoke<number>('clear_log_files', {
@@ -1087,7 +1142,6 @@ function AppContent() {
 
       // 检查是否刚更新完成（重启后）
       const isAutoStartModeNow = useAppStore.getState().isAutoStartMode;
-      const updateCompleteInfo = consumeUpdateCompleteInfo();
       if (updateCompleteInfo?.autoTasksAlreadyRan && autoStartTasksPending) {
         // 更新前本次进程已执行过自动任务（任务结束后才自动安装并重启），
         // 重启沿用原命令行参数会再次进入自动执行，这里跳过以避免重复执行
@@ -1115,7 +1169,6 @@ function AppContent() {
           );
 
           // 比较版本：如果当前版本已经是目标版本，视为安装完成
-          const normalizeVersion = (v: string) => v.replace(/^v/i, '').toLowerCase();
           if (
             normalizeVersion(currentVersionNow) === normalizeVersion(updateCompleteInfo.newVersion)
           ) {
