@@ -29,6 +29,12 @@ import type { BuiltinSkinId } from '@/skins/types';
 /** 单个任务的运行状态 */
 export type TaskRunStatus = 'idle' | 'pending' | 'running' | 'succeeded' | 'failed';
 
+/** 单个任务的运行时间记录（仅本次进程内观察到的状态变化） */
+export interface TaskTiming {
+  startedAt: number;
+  finishedAt?: number;
+}
+
 /** 日志条目类型 */
 export type LogType = 'info' | 'success' | 'warning' | 'error' | 'agent' | 'focus';
 
@@ -511,6 +517,8 @@ export interface AppState {
 
   // 任务运行状态（只读缓存，由 restoreBackendStates 从后端填充）
   instanceTaskRunStatus: Record<string, Record<string, TaskRunStatus>>;
+  /** 本次进程内观察到的任务起止时间 */
+  instanceTaskTimings: Record<string, Record<string, TaskTiming>>;
   maaTaskIdMapping: Record<string, Record<number, string>>;
   instancePendingTaskIds: Record<string, number[]>;
   instanceCurrentTaskIndex: Record<string, number>;

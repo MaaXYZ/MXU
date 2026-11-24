@@ -81,11 +81,12 @@ import {
   sanitizeOptionValues,
 } from './helpers';
 import { persistRuntimeLogs } from '@/utils/runtimeLogPersistence';
+import { updateTaskTiming } from '@/utils/taskTiming';
 import { cacheTaskEnabledForController } from '@/utils/taskControllerCache';
 import { isPresetCompatible } from '@/utils/presetCompatibility';
 import { setLogSecretProvider, redactLogText } from '@/utils/logSecrets';
 // 从独立模块导入类型和辅助函数
-import type { AppState, LogEntry, TaskRunStatus } from './types';
+import type { AppState, LogEntry, TaskRunStatus, TaskTiming } from './types';
 
 /** 低于该速度（字节/秒）视为慢速下载 */
 const SLOW_DOWNLOAD_SPEED_BPS = 1024 * 1024;
@@ -1980,12 +1981,37 @@ export const useAppStore = create<AppState>()(
           }
         }
 
+        // 根据相邻两次快照的状态变化，维护本次进程内的任务起止时间
+        const instanceTaskTimings = { ...currentState.instanceTaskTimings };
+        const now = Date.now();
+        for (const [instanceId, statuses] of Object.entries(instanceTaskRunStatus)) {
+          const previousStatuses = currentState.instanceTaskRunStatus[instanceId] ?? {};
+          const previousTimings = currentState.instanceTaskTimings[instanceId] ?? {};
+          const backendInstance = states.instances[instanceId];
+          const nextTimings: Record<string, TaskTiming> = {};
+          for (const [taskId, status] of Object.entries(statuses)) {
+            const timing = updateTaskTiming(
+              previousTimings[taskId],
+              previousStatuses[taskId],
+              status,
+              now,
+              {
+                // 实例已停止但后端状态还停在 running 时，把计时收尾
+                runningEnded: status === 'running' && backendInstance?.isRunning === false,
+              },
+            );
+            if (timing) nextTimings[taskId] = timing;
+          }
+          instanceTaskTimings[instanceId] = nextTimings;
+        }
+
         return {
           instances: updatedInstances,
           instanceConnectionStatus: connectionStatus,
           instanceResourceLoaded: resourceLoaded,
           instanceTaskStatus: taskStatus,
           instanceTaskRunStatus,
+          instanceTaskTimings,
           maaTaskIdMapping,
           instancePendingTaskIds,
           instanceCurrentTaskIndex,
@@ -2303,6 +2329,7 @@ export const useAppStore = create<AppState>()(
 
     // 任务运行状态（只读缓存，由 restoreBackendStates 填充）
     instanceTaskRunStatus: {},
+    instanceTaskTimings: {},
     maaTaskIdMapping: {},
     instancePendingTaskIds: {},
     instanceCurrentTaskIndex: {},
@@ -2328,6 +2355,9 @@ export const useAppStore = create<AppState>()(
       set((state) => ({
         instanceTaskRunStatus: Object.fromEntries(
           Object.entries(state.instanceTaskRunStatus).filter(([id]) => id !== instanceId),
+        ),
+        instanceTaskTimings: Object.fromEntries(
+          Object.entries(state.instanceTaskTimings).filter(([id]) => id !== instanceId),
         ),
         maaTaskIdMapping: Object.fromEntries(
           Object.entries(state.maaTaskIdMapping).filter(([id]) => id !== instanceId),
