@@ -71,6 +71,7 @@ export default {
     appearance: '외관',
     hotkeys: '단축키',
     general: '일반',
+    startupUpdateCheck: '시작 시 업데이트 확인',
     scheduledUpdateCheck: '예약 업데이트 확인',
     scheduledUpdateCheckTime: '매일 확인 시간 (현지 시간)',
     taskSettings: '작업 설정',

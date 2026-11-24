@@ -48,8 +48,10 @@ export function UpdateSection() {
     setMirrorChyanCdk,
     setMirrorChyanChannel,
     scheduledUpdateCheckEnabled,
+    startupUpdateCheckEnabled,
     scheduledUpdateCheckTime,
     setScheduledUpdateCheckEnabled,
+    setStartupUpdateCheckEnabled,
     setScheduledUpdateCheckTime,
     proxySettings,
     setProxySettings,
@@ -470,6 +472,22 @@ export function UpdateSection() {
                 >
                   {t('mirrorChyan.channelBeta')}
                 </button>
+              </div>
+            </div>
+
+            {/* 启动时检查更新 */}
+            <div className="pt-4 border-t border-border">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <RefreshCw className="w-5 h-5 text-accent" />
+                  <span className="font-medium text-text-primary">
+                    {t('settings.startupUpdateCheck')}
+                  </span>
+                </div>
+                <SwitchButton
+                  value={startupUpdateCheckEnabled}
+                  onChange={setStartupUpdateCheckEnabled}
+                />
               </div>
             </div>
 

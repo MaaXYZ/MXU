@@ -70,6 +70,7 @@ export default {
     appearance: '外觀',
     hotkeys: '快捷鍵',
     general: '一般',
+    startupUpdateCheck: '啟動時自動檢查更新',
     scheduledUpdateCheck: '定時檢查更新',
     scheduledUpdateCheckTime: '每日檢查時間（本地時間）',
     taskSettings: '任務設定',
