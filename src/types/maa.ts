@@ -141,6 +141,7 @@ export const Win32InputMethod = {
   SendMessageWithWindowPos: 1n << 7n,
   PostMessageWithWindowPos: 1n << 8n,
   Interception: 1n << 9n,
+  AnchoredTouch: 1n << 10n,
 } as const;
 
 /** Win32 截图方法名称映射 */
@@ -167,6 +168,7 @@ export const Win32InputMethodNames: Record<string, bigint> = {
   SendMessageWithWindowPos: Win32InputMethod.SendMessageWithWindowPos,
   PostMessageWithWindowPos: Win32InputMethod.PostMessageWithWindowPos,
   Interception: Win32InputMethod.Interception,
+  AnchoredTouch: Win32InputMethod.AnchoredTouch,
 };
 
 /** macOS 截图方法 */
