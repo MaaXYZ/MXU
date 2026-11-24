@@ -1,6 +1,7 @@
 import { PiIcon } from './PiContent';
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef, memo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useShallow } from 'zustand/react/shallow';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
@@ -14,7 +15,7 @@ import {
   Play,
   CircleDot,
 } from 'lucide-react';
-import { useAppStore, type TaskRunStatus } from '@/stores/appStore';
+import { useAppStore } from '@/stores/appStore';
 import { maaService } from '@/services/maaService';
 import { useResolvedContent } from '@/services/contentResolver';
 import { generateTaskPipelineOverride } from '@/utils';
@@ -311,7 +312,7 @@ function OptionListRenderer({
   );
 }
 
-export function TaskItem({ instanceId, task }: TaskItemProps) {
+export const TaskItem = memo(function TaskItem({ instanceId, task }: TaskItemProps) {
   const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -334,20 +335,42 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
     language,
     getActiveInstance,
     showOptionPreview,
-    instanceTaskRunStatus,
-    instances,
+    taskRunStatus,
+    instance,
+    isAnimating,
     findMaaTaskIdBySelectedTaskId,
     basePath,
     interfaceTranslations,
-    animatingTaskIds,
     removeAnimatingTaskId,
-  } = useAppStore();
-
-  // 获取任务运行状态
-  const taskRunStatus: TaskRunStatus = instanceTaskRunStatus[instanceId]?.[task.id] || 'idle';
+  } = useAppStore(
+    useShallow((state) => ({
+      projectInterface: state.projectInterface,
+      toggleTaskEnabled: state.toggleTaskEnabled,
+      setTaskRunOnce: state.setTaskRunOnce,
+      toggleTaskExpanded: state.toggleTaskExpanded,
+      removeTaskFromInstance: state.removeTaskFromInstance,
+      confirmBeforeDelete: state.confirmBeforeDelete,
+      renameTask: state.renameTask,
+      duplicateTask: state.duplicateTask,
+      moveTaskUp: state.moveTaskUp,
+      moveTaskDown: state.moveTaskDown,
+      moveTaskToTop: state.moveTaskToTop,
+      moveTaskToBottom: state.moveTaskToBottom,
+      resolveI18nText: state.resolveI18nText,
+      language: state.language,
+      getActiveInstance: state.getActiveInstance,
+      showOptionPreview: state.showOptionPreview,
+      taskRunStatus: state.instanceTaskRunStatus[instanceId]?.[task.id] ?? 'idle',
+      instance: state.instances.find((i) => i.id === instanceId),
+      isAnimating: state.animatingTaskIds.includes(task.id),
+      findMaaTaskIdBySelectedTaskId: state.findMaaTaskIdBySelectedTaskId,
+      basePath: state.basePath,
+      interfaceTranslations: state.interfaceTranslations,
+      removeAnimatingTaskId: state.removeAnimatingTaskId,
+    })),
+  );
 
   // 获取实例运行状态
-  const instance = instances.find((i) => i.id === instanceId);
   const isInstanceRunning = instance?.isRunning || false;
 
   // 获取任务定义 - 支持 MXU 内置特殊任务与 pretask 前置任务
@@ -429,7 +452,6 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
   const prevOptionValuesRef = useRef<string | null>(null);
 
   // 入场动画状态
-  const isAnimating = animatingTaskIds.includes(task.id);
   const animationElementRef = useRef<HTMLDivElement | null>(null);
 
   // 当选项值变化且任务状态为 pending 时，调用 overridePipeline 更新任务配置
@@ -1127,4 +1149,4 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
       />
     </div>
   );
-}
+});

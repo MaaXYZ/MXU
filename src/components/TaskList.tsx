@@ -1,6 +1,7 @@
 import { PiIcon } from './PiContent';
 import { useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useShallow } from 'zustand/react/shallow';
 import {
   DndContext,
   KeyboardSensor,
@@ -119,7 +120,15 @@ function useImportConfigActions(instanceId: string) {
     renameInstance,
     setSelectedController,
     setSelectedResource,
-  } = useAppStore();
+  } = useAppStore(
+    useShallow((state) => ({
+      projectInterface: state.projectInterface,
+      updateInstance: state.updateInstance,
+      renameInstance: state.renameInstance,
+      setSelectedController: state.setSelectedController,
+      setSelectedResource: state.setSelectedResource,
+    })),
+  );
   const { t } = useTranslation();
 
   const handleImport = async (source: 'clipboard' | 'file') => {
@@ -281,7 +290,7 @@ function PresetSelector({ instanceId, presets }: { instanceId: string; presets: 
 export function TaskList() {
   const { t } = useTranslation();
   const {
-    getActiveInstance,
+    instance,
     reorderTasks,
     reorderPreActions,
     selectAllTasks,
@@ -294,9 +303,24 @@ export function TaskList() {
     selectedController,
     selectedResource,
     skippedPresetInstanceIds,
-  } = useAppStore();
+  } = useAppStore(
+    useShallow((state) => ({
+      instance: state.instances.find((i) => i.id === state.activeInstanceId) ?? null,
+      reorderTasks: state.reorderTasks,
+      reorderPreActions: state.reorderPreActions,
+      selectAllTasks: state.selectAllTasks,
+      collapseAllTasks: state.collapseAllTasks,
+      setShowAddTaskPanel: state.setShowAddTaskPanel,
+      showAddTaskPanel: state.showAddTaskPanel,
+      lastAddedTaskId: state.lastAddedTaskId,
+      clearLastAddedTaskId: state.clearLastAddedTaskId,
+      projectInterface: state.projectInterface,
+      selectedController: state.selectedController,
+      selectedResource: state.selectedResource,
+      skippedPresetInstanceIds: state.skippedPresetInstanceIds,
+    })),
+  );
 
-  const instance = getActiveInstance();
   const isInstanceRunning = instance?.isRunning || false;
   // 当前控制器/资源，未选择时回退到第一个
   const controllerName = instance

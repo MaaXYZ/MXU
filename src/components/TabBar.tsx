@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect, Suspense, lazy } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useShallow } from 'zustand/react/shallow';
 import { resolveThemeMode } from '@/themes';
 import {
   Plus,
@@ -90,7 +91,35 @@ export function TabBar({
     removeAnimatingTabId,
     startTabCloseAnimation,
     confirmBeforeDelete,
-  } = useAppStore();
+  } = useAppStore(
+    useShallow((state) => ({
+      instances: state.instances,
+      activeInstanceId: state.activeInstanceId,
+      createInstance: state.createInstance,
+      setActiveInstance: state.setActiveInstance,
+      renameInstance: state.renameInstance,
+      reorderInstances: state.reorderInstances,
+      duplicateInstance: state.duplicateInstance,
+      theme: state.theme,
+      setTheme: state.setTheme,
+      setCurrentPage: state.setCurrentPage,
+      projectInterface: state.projectInterface,
+      resolveI18nText: state.resolveI18nText,
+      language: state.language,
+      dashboardView: state.dashboardView,
+      toggleDashboardView: state.toggleDashboardView,
+      updateInfo: state.updateInfo,
+      recentlyClosed: state.recentlyClosed,
+      downloadStatus: state.downloadStatus,
+      showUpdateDialog: state.showUpdateDialog,
+      setShowUpdateDialog: state.setShowUpdateDialog,
+      animatingTabIds: state.animatingTabIds,
+      closingTabIds: state.closingTabIds,
+      removeAnimatingTabId: state.removeAnimatingTabId,
+      startTabCloseAnimation: state.startTabCloseAnimation,
+      confirmBeforeDelete: state.confirmBeforeDelete,
+    })),
+  );
 
   // 使用全局状态控制更新面板显示
   const showUpdatePanel = showUpdateDialog;
