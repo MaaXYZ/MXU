@@ -448,6 +448,8 @@ export default {
     disconnected: '未連接',
     connectionFailed: '連接失敗',
     connectionSuperseded: '實例已移除或已發起新的連線，原連線請求已取消。',
+    dllBlockedHint:
+      '如果日誌或彈窗出現「0xc000012f」或「沒有被指定在 Windows 上執行」，表示 Windows 智慧型應用程式控制封鎖了 MaaWin32ControlUnit.dll：請在「Windows 安全性 → 應用程式與瀏覽器控制 → 智慧型應用程式控制」中關閉後再試；若已關閉仍失敗，請安裝最新的 Microsoft Visual C++ 執行階段。',
     refreshDevices: '重新整理裝置',
     refreshWindows: '重新整理視窗',
     refresh: '重新整理裝置',

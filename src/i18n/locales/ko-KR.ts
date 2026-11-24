@@ -461,6 +461,8 @@ export default {
     connectionFailed: '연결에 실패했습니다',
     connectionSuperseded:
       '인스턴스가 삭제되었거나 새 연결이 요청되어 이전 연결 요청이 취소되었습니다.',
+    dllBlockedHint:
+      '로그나 대화 상자에 "0xc000012f" 또는 "Windows에서 실행되도록 지정되지 않았습니다"가 표시되면 Windows 스마트 앱 컨트롤이 MaaWin32ControlUnit.dll을 차단한 것입니다. "Windows 보안 → 앱 및 브라우저 제어 → 스마트 앱 컨트롤"에서 끈 후 다시 시도하세요. 이미 꺼져 있어도 실패하면 최신 Microsoft Visual C++ 재배포 가능 패키지를 설치하세요.',
     refreshDevices: '기기 새로고침',
     refreshWindows: '윈도우 새로고침',
     refresh: '기기 새로고침',

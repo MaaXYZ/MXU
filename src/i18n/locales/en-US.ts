@@ -479,6 +479,8 @@ export default {
     connectionFailed: 'Connection failed',
     connectionSuperseded:
       'The connection request was cancelled because the instance was removed or a newer connection was requested.',
+    dllBlockedHint:
+      'If the log or a dialog shows "0xc000012f" or "is not a valid Win32 application", Windows Smart App Control blocked MaaWin32ControlUnit.dll. Turn it off in Windows Security → App & browser control → Smart App Control, then retry. If it is already off, install the latest Microsoft Visual C++ Redistributable.',
     refreshDevices: 'Refresh Devices',
     refreshWindows: 'Refresh Windows',
     refresh: 'Refresh Devices',
