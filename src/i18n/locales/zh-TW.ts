@@ -159,6 +159,8 @@ export default {
     resetWindowLayoutHint: '將視窗大小恢復為預設值，並置中顯示',
     autoClearLogsOnLaunch: '自動清理運行日誌',
     autoClearLogsOnLaunchHint: '每次啟動項目時，自動清理運行日誌與除錯檔案',
+    minimizeOnLaunch: '啟動後最小化',
+    minimizeOnLaunchHint: '手動啟動時直接把主視窗最小化到工作列，不影響自動執行',
   },
 
   // 特殊任務
