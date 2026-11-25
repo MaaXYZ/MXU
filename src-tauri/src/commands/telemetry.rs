@@ -247,6 +247,9 @@ impl PendingFailureWorkers {
 const MAX_TRACED_NODES_PER_TASK: u32 = 1000;
 /// 退出时给已经开始压缩的附件一个短暂完成窗口；超时则发送无附件兜底事件。
 const FAILURE_WORKER_DRAIN_TIMEOUT: Duration = Duration::from_millis(750);
+/// 退出时等待 Sentry 客户端关闭的上限。SDK 关闭传输层时会无超时地等待在飞请求，
+/// 网络黑洞下可达数分钟，超时后放弃等待，随进程退出。
+const TELEMETRY_SHUTDOWN_WAIT: Duration = Duration::from_secs(2);
 /// MaaFramework may finish writing an on_error screenshot shortly after the terminal
 /// callback. Poll only inside the task's evidence epoch and stop promptly on shutdown.
 const IMAGE_SETTLE_TIMEOUT: Duration = Duration::from_secs(1);
@@ -566,14 +569,36 @@ pub fn on_app_exit() {
 
     sentry::end_session_with_status(sentry::protocol::SessionStatus::Exited);
 
-    // 丢弃守卫触发 flush（上限为 shutdown_timeout）
-    if let Ok(mut slot) = TELEMETRY_GUARD.lock() {
-        *slot = None;
+    // 丢弃守卫触发 flush 与传输层关闭；关闭会等在飞请求结束，放到辅助线程并限时等待
+    let guard = TELEMETRY_GUARD.lock().ok().and_then(|mut slot| slot.take());
+    let mut shutdown_completed = true;
+    if let Some(guard) = guard {
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let spawned = std::thread::Builder::new()
+            .name("telemetry-shutdown".into())
+            .spawn(move || {
+                drop(guard);
+                let _ = done_tx.send(());
+            });
+        shutdown_completed = match spawned {
+            Ok(_) => done_rx.recv_timeout(TELEMETRY_SHUTDOWN_WAIT).is_ok(),
+            Err(err) => {
+                log::warn!("[telemetry] 无法创建关闭线程: {err}");
+                false
+            }
+        };
+        if !shutdown_completed {
+            log::warn!(
+                "[telemetry] 客户端关闭超过 {:?}，放弃等待在飞请求",
+                TELEMETRY_SHUTDOWN_WAIT
+            );
+        }
     }
     log::info!(
-        "[telemetry] 已结束 Session 并 flush workers_completed={} fallback_events={}",
+        "[telemetry] 已结束 Session 并 flush workers_completed={} fallback_events={} shutdown_completed={}",
         workers_completed,
-        fallback_count
+        fallback_count,
+        shutdown_completed
     );
 }
 
