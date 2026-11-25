@@ -574,10 +574,12 @@ pub fn on_app_exit() {
     let mut shutdown_completed = true;
     if let Some(guard) = guard {
         let (done_tx, done_rx) = std::sync::mpsc::channel();
+        // 线程创建失败时闭包会在当前线程被丢弃，ManuallyDrop 保证此时 guard 被泄漏而不是同步关闭
+        let guard = std::mem::ManuallyDrop::new(guard);
         let spawned = std::thread::Builder::new()
             .name("telemetry-shutdown".into())
             .spawn(move || {
-                drop(guard);
+                drop(std::mem::ManuallyDrop::into_inner(guard));
                 let _ = done_tx.send(());
             });
         shutdown_completed = match spawned {
