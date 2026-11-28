@@ -604,11 +604,13 @@ export function TaskList() {
       <div
         ref={scrollContainerRef}
         data-skin-slot="task-list"
-        className="flex-1 overflow-y-auto overflow-x-hidden p-3"
+        // 顶部内边距下沉到内层：滚动容器自身不能有 padding-top，
+        // 否则吸顶的任务标题上方会露出一条滚过去的内容残影。
+        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-3"
         onClick={() => showAddTaskPanel && setShowAddTaskPanel(false)}
         onContextMenu={handleListContextMenu}
       >
-        <div data-skin-slot="task-groups" className="space-y-2">
+        <div data-skin-slot="task-groups" className="space-y-2 pt-3">
           {/* 前置任务（pretask）卡片：位于前置程序之上 */}
           {pretaskTasks.length > 0 && (
             <DndContext
