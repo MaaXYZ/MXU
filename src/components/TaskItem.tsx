@@ -1239,6 +1239,32 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
                         )}
                       </div>
                     )}
+                    {/* 展开时：面包屑占住标题与箭头之间的空位（不再单独占一行） */}
+                    {task.expanded && navVisible && (
+                      <div
+                        className="ml-2 flex min-w-0 flex-1 items-center gap-1 text-[11px] text-text-muted"
+                        // 面包屑在「点击展开/折叠」区域内，点它不应该顺手把任务折叠掉
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            nav.jumpTo(nav.activeIndex);
+                          }}
+                          className="max-w-[50%] truncate text-accent-light hover:underline"
+                          title={nav.labels[nav.activeIndex]}
+                        >
+                          {nav.labels[nav.activeIndex]}
+                        </button>
+                        {nav.subLabel && (
+                          <>
+                            <span className="shrink-0 text-border-strong">›</span>
+                            <span className="min-w-0 truncate">{nav.subLabel}</span>
+                          </>
+                        )}
+                      </div>
+                    )}
                     {/* 展开/折叠箭头 */}
                     <div className="flex shrink-0 items-center justify-end pl-2 ml-auto">
                       <ChevronRight
@@ -1274,27 +1300,6 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
             </button>
           )}
         </div>
-
-        {navVisible && (
-          <div className="flex items-center gap-1.5 px-3 pb-1.5 text-[11px] text-text-muted">
-            <span className="max-w-[40%] truncate">{displayName}</span>
-            <span className="text-border-strong">›</span>
-            <button
-              type="button"
-              onClick={() => nav.jumpTo(nav.activeIndex)}
-              className="max-w-[30%] truncate text-accent-light hover:underline"
-              title={nav.labels[nav.activeIndex]}
-            >
-              {nav.labels[nav.activeIndex]}
-            </button>
-            {nav.subLabel && (
-              <>
-                <span className="text-border-strong">›</span>
-                <span className="truncate">{nav.subLabel}</span>
-              </>
-            )}
-          </div>
-        )}
       </div>
 
       {/* 展开面板（描述和/或选项）- 使用 grid 动画实现平滑展开/折叠 */}
