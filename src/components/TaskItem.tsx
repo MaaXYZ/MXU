@@ -378,7 +378,11 @@ function useGroupNav(
       cardRef.current?.querySelector<HTMLElement>('[data-task-sticky]')?.getBoundingClientRect()
         .height ?? 0;
     const key = `${nextLabels.join('\u0001')}#${nextNested}#${Math.round(stickyHeight)}`;
-    if (key === layoutRef.current.key) return;
+    // 标签/嵌套数/吸顶高度相同，但 DOM 节点被替换（重排、重挂载）时也必须刷新，
+    // 否则观察器会继续盯着已脱离文档的旧锚点
+    const prevAnchors = layoutRef.current.anchors;
+    const anchorReplaced = anchors.length !== prevAnchors.length || anchors[0] !== prevAnchors[0];
+    if (!anchorReplaced && key === layoutRef.current.key) return;
     layoutRef.current = { anchors, key, stickyHeight };
     setLabels(nextLabels);
     setNestedGroupCount(nextNested);
@@ -438,10 +442,9 @@ function useGroupNav(
 
       const stickyHeight = Math.round(layoutRef.current.stickyHeight);
       const viewHeight = scroller.clientHeight;
-      // 签名要覆盖所有会改变相交带或锚点身份的输入：
-      // 锚点顺序/数量、吸顶高度、滚动视口高度、以及锚点元素本身是否被替换
-      const sameFirstAnchor = anchors[0] === layoutRef.current.anchors[0];
-      const signature = `${anchors.map((a) => a.dataset.groupAnchor ?? '').join(',')}|${stickyHeight}|${viewHeight}|${sameFirstAnchor ? 1 : 0}`;
+      // 签名覆盖所有会改变相交带的输入：锚点集合、吸顶高度、滚动视口高度；
+      // 锚点身份的变化由 measureLayout 负责刷新 anchors，这里只需感知结果
+      const signature = `${anchors.map((a) => a.dataset.groupAnchor ?? '').join(',')}|${stickyHeight}|${viewHeight}`;
       if (signature === lastSignature) return;
       lastSignature = signature;
 
