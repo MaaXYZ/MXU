@@ -876,7 +876,9 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
       style={style}
       onContextMenu={handleContextMenu}
       className={clsx(
-        'group bg-bg-secondary rounded-lg border border-border transition-shadow relative overflow-hidden',
+        // overflow-clip 而非 overflow-hidden：clip 不创建滚动容器，
+        // 头部 sticky 才能相对外层任务列表滚动，同时保留皮肤圆角裁剪。
+        'group bg-bg-secondary rounded-lg border border-border transition-shadow relative overflow-clip',
         isDragging && 'shadow-lg opacity-50',
         taskRunStatus === 'running' && 'task-item-running',
         isAnimating && 'animate-task-slide-in',
@@ -886,15 +888,22 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
       {taskRunStatus !== 'idle' && (
         <div
           className={clsx(
-            'absolute left-0 top-0 bottom-0 w-1.5 transition-colors',
+            'absolute left-0 top-0 bottom-0 w-1.5 transition-colors z-20',
             getStatusIndicatorClass(),
           )}
           title={t(`taskItem.status.${taskRunStatus}`)}
         />
       )}
 
-      {/* 任务头部 */}
-      <div data-skin-slot="task-item-head" className="flex items-center gap-2 p-3">
+      {/* 任务头部：吸顶，保证展开长列表向下滚动时始终能看到当前任务标题 */}
+      <div
+        data-skin-slot="task-item-head"
+        className={clsx(
+          'sticky top-0 z-10 flex items-center gap-2 p-3 bg-bg-secondary',
+          // 用 inherit 跟随皮肤对卡片圆角的覆盖，折叠时四角一致、展开时只圆上方
+          task.expanded ? 'rounded-t-[inherit] border-b border-border' : 'rounded-[inherit]',
+        )}
+      >
         {/* 拖拽手柄 */}
         <div
           {...attributes}
@@ -1062,7 +1071,7 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
           style={{ gridTemplateRows: task.expanded ? '1fr' : '0fr' }}
         >
           <div className={clsx('min-h-0', task.expanded ? 'overflow-visible' : 'overflow-hidden')}>
-            <div className="border-t border-border bg-bg-tertiary p-3 rounded-b-lg">
+            <div className="bg-bg-tertiary p-3 rounded-b-lg">
               {/* 任务描述 */}
               {hasDescription && (
                 <div className={hasOptions || isIncompatible ? 'mb-5' : ''}>
