@@ -606,7 +606,7 @@ export function TaskList() {
         data-skin-slot="task-list"
         // 顶部内边距下沉到内层：滚动容器自身不能有 padding-top，
         // 否则吸顶的任务标题上方会露出一条滚过去的内容残影。
-        className="flex-1 overflow-y-auto overflow-x-hidden px-3 pb-3"
+        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-3"
         onClick={() => showAddTaskPanel && setShowAddTaskPanel(false)}
         onContextMenu={handleListContextMenu}
       >

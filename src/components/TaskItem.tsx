@@ -266,49 +266,222 @@ function OptionListRenderer({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {groups.map((group, index) => {
-        if (group.type === 'switchGrid') {
-          return (
-            <SwitchGrid
-              key={`grid-${index}`}
-              instanceId={instanceId}
-              taskId={taskId}
-              items={buildSwitchGridItems(group.optionKeys)}
-              disabled={disabled}
-            />
-          );
-        }
-        const optionDef = getOptionDef(group.optionKey);
-        const optionControllerIncompatible = isOptionControllerIncompatible(
-          optionDef,
-          currentControllerName,
-        );
-        const optionResourceIncompatible = isOptionResourceIncompatible(
-          optionDef,
-          currentResourceName,
-        );
-        const optionIncompatible = optionControllerIncompatible || optionResourceIncompatible;
-        const parentIncompatibilityReason = optionControllerIncompatible
-          ? 'controller'
-          : optionResourceIncompatible
-            ? 'resource'
-            : undefined;
+        const anchorKey = group.type === 'switchGrid' ? `__grid_${index}` : group.optionKey;
+        const anchorDef =
+          group.type === 'switchGrid'
+            ? getOptionDef(group.optionKeys[0])
+            : getOptionDef(group.optionKey);
+        const anchorIsMxu =
+          (group.type === 'switchGrid' ? group.optionKeys[0] : group.optionKey)?.startsWith(
+            '__MXU_',
+          ) ?? false;
+        const anchorLabel = anchorDef
+          ? anchorIsMxu
+            ? t(anchorDef.label || '')
+            : resolveI18nText(anchorDef.label, langKey) || ''
+          : '';
         return (
-          <OptionEditor
-            key={group.optionKey}
-            instanceId={instanceId}
-            taskId={taskId}
-            optionKey={group.optionKey}
-            value={optionValues[group.optionKey]}
-            disabled={disabled || optionIncompatible}
-            controllerIncompatible={optionIncompatible}
-            parentIncompatibilityReason={parentIncompatibilityReason}
-          />
+          <div
+            key={anchorKey}
+            data-group-anchor={anchorKey}
+            data-group-label={anchorLabel || anchorKey}
+          >
+            {group.type === 'switchGrid' ? (
+              <SwitchGrid
+                instanceId={instanceId}
+                taskId={taskId}
+                items={buildSwitchGridItems(group.optionKeys)}
+                disabled={disabled}
+              />
+            ) : (
+              <OptionEditor
+                instanceId={instanceId}
+                taskId={taskId}
+                optionKey={group.optionKey}
+                value={optionValues[group.optionKey]}
+                disabled={disabled || isGroupOptionIncompatible(group.optionKey)}
+                controllerIncompatible={isGroupOptionIncompatible(group.optionKey)}
+                parentIncompatibilityReason={
+                  isOptionControllerIncompatible(
+                    getOptionDef(group.optionKey),
+                    currentControllerName,
+                  )
+                    ? 'controller'
+                    : isOptionResourceIncompatible(
+                          getOptionDef(group.optionKey),
+                          currentResourceName,
+                        )
+                      ? 'resource'
+                      : undefined
+                }
+              />
+            )}
+          </div>
         );
       })}
     </div>
   );
+
+  function isGroupOptionIncompatible(optionKey: string): boolean {
+    const def = getOptionDef(optionKey);
+    return (
+      isOptionControllerIncompatible(def, currentControllerName) ||
+      isOptionResourceIncompatible(def, currentResourceName)
+    );
+  }
+}
+
+/** 分组导航：为面包屑与分段条提供「当前组 / 各组权重」 */
+interface GroupNav {
+  labels: string[];
+  activeIndex: number;
+  subLabel: string;
+  nestedGroupCount: number;
+  jumpTo: (index: number) => void;
+}
+
+function useGroupNav(
+  panelRef: React.RefObject<HTMLDivElement | null>,
+  cardRef: React.RefObject<HTMLDivElement | null>,
+  enabled: boolean,
+  resolveKeyLabel: (key: string) => string,
+): GroupNav {
+  const layoutRef = useRef<{ anchors: HTMLElement[]; key: string; stickyHeight: number }>({
+    anchors: [],
+    key: '',
+    stickyHeight: 0,
+  });
+  const [labels, setLabels] = useState<string[]>([]);
+  const [nestedGroupCount, setNestedGroupCount] = useState(0);
+  const [active, setActive] = useState<{ index: number; sub: string }>({ index: 0, sub: '' });
+
+  // 布局测量：只在展开状态/尺寸变化时跑，且结果没变就不 setState
+  const measureLayout = useCallback(() => {
+    const panel = panelRef.current;
+    if (!panel) {
+      if (layoutRef.current.key !== '') {
+        layoutRef.current = { anchors: [], key: '', stickyHeight: 0 };
+        setLabels([]);
+        setNestedGroupCount(0);
+      }
+      return;
+    }
+    const anchors = Array.from(panel.querySelectorAll<HTMLElement>('[data-group-anchor]'));
+    const nextLabels = anchors.map((a) => a.dataset.groupLabel ?? '');
+    const nextNested = anchors.filter(
+      (a) => a.querySelector('[data-option-depth="1"]') !== null,
+    ).length;
+    // 吸顶块高度缓存下来，滚动时不再重复读取
+    const stickyHeight =
+      cardRef.current?.querySelector<HTMLElement>('[data-task-sticky]')?.getBoundingClientRect()
+        .height ?? 0;
+    const key = `${nextLabels.join('\u0001')}#${nextNested}#${Math.round(stickyHeight)}`;
+    if (key === layoutRef.current.key) return;
+    layoutRef.current = { anchors, key, stickyHeight };
+    setLabels(nextLabels);
+    setNestedGroupCount(nextNested);
+  }, [panelRef, cardRef]);
+
+  // 位置测量：滚动时跑，只有「当前组/子组」真的变了才 setState
+  const measureActive = useCallback(() => {
+    const panel = panelRef.current;
+    const scroller = panel?.closest('[data-skin-slot="task-list"]');
+    const card = cardRef.current;
+    if (!panel || !scroller || !card) return;
+
+    // 卡片不在视口内就直接跳过，避免为不可见内容做布局计算
+    const cardRect = card.getBoundingClientRect();
+    const scrollerRect = scroller.getBoundingClientRect();
+    if (cardRect.bottom < scrollerRect.top || cardRect.top > scrollerRect.bottom) return;
+
+    const anchors = layoutRef.current.anchors;
+    if (!anchors.length) return;
+
+    const threshold = layoutRef.current.stickyHeight + 4;
+
+    let nextIndex = 0;
+    for (let i = 0; i < anchors.length; i++) {
+      if (anchors[i].getBoundingClientRect().top - scrollerRect.top <= threshold) nextIndex = i;
+    }
+
+    let nextSub = '';
+    const nested = anchors[nextIndex]?.querySelectorAll<HTMLElement>('[data-option-depth="1"]');
+    if (nested) {
+      for (const node of nested) {
+        if (node.getBoundingClientRect().top - scrollerRect.top > threshold) break;
+        const key = node.dataset.optionKey;
+        if (key) nextSub = resolveKeyLabel(key);
+      }
+    }
+
+    setActive((prev) =>
+      prev.index === nextIndex && prev.sub === nextSub ? prev : { index: nextIndex, sub: nextSub },
+    );
+  }, [panelRef, cardRef, resolveKeyLabel]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    const scroller = panel.closest('[data-skin-slot="task-list"]');
+
+    let raf = 0;
+    // 面包屑不需要 60fps，80ms 节流把滚动路径上的 rect 读取压到个位数量级
+    let lastRun = 0;
+    const onScroll = () => {
+      const now = performance.now();
+      if (now - lastRun < 80) return;
+      lastRun = now;
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(measureActive);
+    };
+    const onLayout = () => {
+      measureLayout();
+      measureActive();
+    };
+
+    onLayout();
+    scroller?.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onLayout);
+    const observer = new ResizeObserver(onLayout);
+    observer.observe(panel);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      scroller?.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onLayout);
+      observer.disconnect();
+    };
+  }, [enabled, measureLayout, measureActive, panelRef]);
+
+  const jumpTo = useCallback(
+    (index: number) => {
+      const panel = panelRef.current;
+      const scroller = panel?.closest('[data-skin-slot="task-list"]');
+      if (!panel || !scroller) return;
+      const target = panel.querySelectorAll<HTMLElement>('[data-group-anchor]')[index];
+      if (!target) return;
+      const sticky = cardRef.current?.querySelector<HTMLElement>('[data-task-sticky]');
+      const offset = (sticky?.getBoundingClientRect().height ?? 0) + 6;
+      const top =
+        target.getBoundingClientRect().top -
+        scroller.getBoundingClientRect().top +
+        scroller.scrollTop -
+        offset;
+      scroller.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    },
+    [panelRef, cardRef],
+  );
+
+  return {
+    labels,
+    activeIndex: active.index,
+    subLabel: active.sub,
+    nestedGroupCount,
+    jumpTo,
+  };
 }
 
 export function TaskItem({ instanceId, task }: TaskItemProps) {
@@ -515,11 +688,14 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
     transition,
   };
 
-  // 合并 sortable ref 和动画 ref
+  // 合并 sortable ref、动画 ref 与分组导航用的卡片 ref
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const setRefs = useCallback(
     (node: HTMLDivElement | null) => {
       setNodeRef(node);
       animationElementRef.current = node;
+      cardRef.current = node;
     },
     [setNodeRef],
   );
@@ -549,6 +725,35 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
   const hasDescription = !!resolvedDescription.html || resolvedDescription.loading;
   // 有选项或有描述时都可以展开
   const canExpand = hasOptions || hasDescription;
+
+  // 分组导航：把 option key 解析成显示名，供面包屑第三级使用
+  const resolveKeyLabel = useCallback(
+    (key: string) => {
+      const isMxuOption = key.startsWith('__MXU_');
+      const def = isMxuOption ? findMxuOptionByKey(key) : projectInterface?.option?.[key];
+      if (!def) return '';
+      return isMxuOption ? t(def.label || key) : resolveI18nText(def.label, langKey) || key;
+    },
+    [projectInterface?.option, resolveI18nText, langKey, t],
+  );
+  // 至少存在 2 个「带子选项的顶层分组」时，面包屑与分段条才有意义；
+  // 只有 1 个分组或者全是平铺叶子项时收起这套导航，避免噪音。
+  const hasNestedGroups = useMemo(() => {
+    const keys = taskDef?.option ?? [];
+    const groupCount = keys.filter((key) => {
+      const isMxuOption = key.startsWith('__MXU_');
+      const def = isMxuOption ? findMxuOptionByKey(key) : projectInterface?.option?.[key];
+      if (!def) return false;
+      if (def.type === 'switch') return switchHasNestedOptions(def);
+      const cases = (def as { cases?: CaseItem[] }).cases;
+      return Boolean(cases?.some((item) => (item.option?.length ?? 0) > 0));
+    }).length;
+    return groupCount >= 2;
+  }, [taskDef?.option, projectInterface?.option]);
+
+  const navEnabled = canExpand && Boolean(task.expanded) && hasNestedGroups;
+  const nav = useGroupNav(panelRef, cardRef, navEnabled, resolveKeyLabel);
+  const navVisible = navEnabled && nav.nestedGroupCount >= 2;
 
   // 生成选项预览信息（最多显示3个）
   const optionPreviews = useMemo(() => {
@@ -873,12 +1078,15 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
       data-skin-slot="task-item"
       data-task-status={taskRunStatus}
       data-expanded={task.expanded}
+      data-task-enabled={task.enabled ? 'true' : 'false'}
+      data-task-title={displayName}
       style={style}
       onContextMenu={handleContextMenu}
       className={clsx(
-        // overflow-clip 而非 overflow-hidden：clip 不创建滚动容器，
-        // 头部 sticky 才能相对外层任务列表滚动，同时保留皮肤圆角裁剪。
-        'group bg-bg-secondary rounded-lg border border-border transition-shadow relative overflow-clip',
+        // overflow-clip 只在展开时需要（要给 sticky 头部让路同时裁圆角），
+        // 折叠卡片没有溢出内容，省掉每张卡一个裁剪层
+        'group bg-bg-secondary rounded-lg border border-border transition-shadow relative',
+        task.expanded && 'overflow-clip',
         isDragging && 'shadow-lg opacity-50',
         taskRunStatus === 'running' && 'task-item-running',
         isAnimating && 'animate-task-slide-in',
@@ -895,172 +1103,197 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
         />
       )}
 
-      {/* 任务头部：吸顶，保证展开长列表向下滚动时始终能看到当前任务标题 */}
+      {/* 吸顶块：标题行 +（展开时）面包屑与分段条，保证滚动时始终能定位 */}
       <div
-        data-skin-slot="task-item-head"
+        data-task-sticky
         className={clsx(
-          'sticky top-0 z-10 flex items-center gap-2 p-3 bg-bg-secondary',
-          // 用 inherit 跟随皮肤对卡片圆角的覆盖，折叠时四角一致、展开时只圆上方
-          task.expanded ? 'rounded-t-[inherit] border-b border-border' : 'rounded-[inherit]',
+          'bg-bg-secondary',
+          // sticky 只在展开时需要；折叠卡片没有可滚动内容，省掉每张卡的 sticky 计算
+          task.expanded
+            ? 'sticky top-0 z-10 rounded-t-[inherit] border-b border-border'
+            : 'rounded-[inherit]',
         )}
       >
-        {/* 拖拽手柄 */}
-        <div
-          {...attributes}
-          {...(canReorder ? listeners : {})}
-          className={clsx(
-            'p-1 rounded',
-            canReorder
-              ? 'cursor-grab active:cursor-grabbing hover:bg-bg-hover'
-              : 'cursor-not-allowed opacity-30',
-          )}
-        >
-          <GripVertical className="w-4 h-4 text-text-muted" />
-        </div>
-
-        {/* 启用复选框 - 运行时或不兼容时禁用 */}
-        <div
-          className={clsx(
-            'flex items-center relative',
-            isInstanceRunning || isIncompatible ? 'opacity-50' : '',
-          )}
-          title={
-            isIncompatible
-              ? incompatibleReason
-              : checkboxState === 'once'
-                ? t('taskItem.runOnceHint')
-                : undefined
-          }
-        >
-          <TriStateCheckbox
-            state={checkboxState}
-            disabled={isInstanceRunning || isIncompatible}
-            onClick={handleCheckboxClick}
-            onContextMenu={handleCheckboxContextMenu}
-          />
-          {/* 不兼容警告图标 */}
-          {isIncompatible && (
-            <AlertCircle className="w-3.5 h-3.5 text-warning absolute -top-1 -right-1 pointer-events-none" />
-          )}
-        </div>
-
-        <PiIcon icon={taskDef?.icon} />
-        {/* 任务名称 + 展开区域容器 */}
-        <div className="flex-1 flex items-center min-w-0">
-          {isEditing ? (
-            <InlineNameEditor
-              value={editName}
-              onChange={setEditName}
-              onSave={handleSaveEdit}
-              onCancel={handleCancelEdit}
-              placeholder={originalLabel}
-            />
-          ) : (
-            <>
-              {/* 任务名称：单击切换选中 */}
-              <div
-                className={clsx(
-                  'flex items-center gap-1 min-w-0 overflow-hidden',
-                  isInstanceRunning || isIncompatible ? 'cursor-not-allowed' : 'cursor-pointer',
-                )}
-                onClick={handleNameClick}
-                title={t('taskItem.clickToToggle')}
-              >
-                <span
-                  className={clsx(
-                    'min-w-0 text-sm font-medium truncate',
-                    task.enabled
-                      ? 'text-text-primary'
-                      : task.runOnce
-                        ? 'text-accent'
-                        : 'text-text-muted',
-                  )}
-                >
-                  {displayName}
-                </span>
-                {task.customName && (
-                  <span className="min-w-0 truncate text-xs text-text-muted">
-                    ({originalLabel})
-                  </span>
-                )}
-              </div>
-
-              {/* 不带选项的任务：直接显示不兼容警告 */}
-              {!canExpand && isIncompatible && (
-                <div className="flex-1 flex items-center gap-1.5 mx-2 overflow-hidden">
-                  <Tooltip content={supportedControllerHint || undefined}>
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs text-warning">
-                      <AlertCircle className="w-3 h-3" />
-                      {incompatibleReason}
-                    </span>
-                  </Tooltip>
-                </div>
-              )}
-
-              {/* 展开/折叠点击区域（包含选项预览） */}
-              {canExpand && (
-                <div
-                  onClick={() => toggleTaskExpanded(instanceId, task.id)}
-                  className="flex-1 min-w-0 flex items-center self-stretch min-h-[28px] cursor-pointer"
-                  title={task.expanded ? t('taskItem.collapse') : t('taskItem.expand')}
-                >
-                  {/* 选项预览标签 - 未展开时显示：不兼容时显示警告，否则显示选项预览 */}
-                  {!task.expanded && (
-                    <div className="flex-1 flex items-center gap-1.5 mx-2 overflow-hidden">
-                      {isIncompatible ? (
-                        <Tooltip content={supportedControllerHint || undefined}>
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs text-warning">
-                            <AlertCircle className="w-3 h-3" />
-                            {incompatibleReason}
-                          </span>
-                        </Tooltip>
-                      ) : (
-                        showOptionPreview &&
-                        optionPreviews.length > 0 &&
-                        optionPreviews.map((preview) => (
-                          <OptionPreviewTag
-                            key={preview.key}
-                            label={preview.label}
-                            value={preview.value}
-                            type={preview.type}
-                          />
-                        ))
-                      )}
-                    </div>
-                  )}
-                  {/* 展开/折叠箭头 */}
-                  <div className="flex shrink-0 items-center justify-end pl-2 ml-auto">
-                    <ChevronRight
-                      className={clsx(
-                        'w-4 h-4 text-text-secondary transition-transform duration-150 ease-out',
-                        task.expanded && 'rotate-90',
-                      )}
-                    />
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* 删除按钮 - hover 时显示，运行时隐藏 */}
-        {!isEditing && canDelete && (
-          <button
-            onClick={() => {
-              if (!confirmBeforeDelete) {
-                removeTaskFromInstance(instanceId, task.id);
-                return;
-              }
-              setShowDeleteConfirm(true);
-            }}
+        <div data-skin-slot="task-item-head" className="flex items-center gap-2 p-3">
+          {/* 拖拽手柄 */}
+          <div
+            {...attributes}
+            {...(canReorder ? listeners : {})}
             className={clsx(
-              'p-1 rounded opacity-0 group-hover:opacity-100 transition-all',
-              'text-text-muted hover:bg-error/10 hover:text-error',
+              'p-1 rounded',
+              canReorder
+                ? 'cursor-grab active:cursor-grabbing hover:bg-bg-hover'
+                : 'cursor-not-allowed opacity-30',
             )}
-            title={t('taskItem.remove')}
           >
-            <X className="w-3.5 h-3.5" />
-          </button>
+            <GripVertical className="w-4 h-4 text-text-muted" />
+          </div>
+
+          {/* 启用复选框 - 运行时或不兼容时禁用 */}
+          <div
+            className={clsx(
+              'flex items-center relative',
+              isInstanceRunning || isIncompatible ? 'opacity-50' : '',
+            )}
+            title={
+              isIncompatible
+                ? incompatibleReason
+                : checkboxState === 'once'
+                  ? t('taskItem.runOnceHint')
+                  : undefined
+            }
+          >
+            <TriStateCheckbox
+              state={checkboxState}
+              disabled={isInstanceRunning || isIncompatible}
+              onClick={handleCheckboxClick}
+              onContextMenu={handleCheckboxContextMenu}
+            />
+            {/* 不兼容警告图标 */}
+            {isIncompatible && (
+              <AlertCircle className="w-3.5 h-3.5 text-warning absolute -top-1 -right-1 pointer-events-none" />
+            )}
+          </div>
+
+          <PiIcon icon={taskDef?.icon} />
+          {/* 任务名称 + 展开区域容器 */}
+          <div className="flex-1 flex items-center min-w-0">
+            {isEditing ? (
+              <InlineNameEditor
+                value={editName}
+                onChange={setEditName}
+                onSave={handleSaveEdit}
+                onCancel={handleCancelEdit}
+                placeholder={originalLabel}
+              />
+            ) : (
+              <>
+                {/* 任务名称：单击切换选中 */}
+                <div
+                  className={clsx(
+                    'flex items-center gap-1 min-w-0 overflow-hidden',
+                    isInstanceRunning || isIncompatible ? 'cursor-not-allowed' : 'cursor-pointer',
+                  )}
+                  onClick={handleNameClick}
+                  title={t('taskItem.clickToToggle')}
+                >
+                  <span
+                    className={clsx(
+                      'min-w-0 text-sm font-medium truncate',
+                      task.enabled
+                        ? 'text-text-primary'
+                        : task.runOnce
+                          ? 'text-accent'
+                          : 'text-text-muted',
+                    )}
+                  >
+                    {displayName}
+                  </span>
+                  {task.customName && (
+                    <span className="min-w-0 truncate text-xs text-text-muted">
+                      ({originalLabel})
+                    </span>
+                  )}
+                </div>
+
+                {/* 不带选项的任务：直接显示不兼容警告 */}
+                {!canExpand && isIncompatible && (
+                  <div className="flex-1 flex items-center gap-1.5 mx-2 overflow-hidden">
+                    <Tooltip content={supportedControllerHint || undefined}>
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs text-warning">
+                        <AlertCircle className="w-3 h-3" />
+                        {incompatibleReason}
+                      </span>
+                    </Tooltip>
+                  </div>
+                )}
+
+                {/* 展开/折叠点击区域（包含选项预览） */}
+                {canExpand && (
+                  <div
+                    onClick={() => toggleTaskExpanded(instanceId, task.id)}
+                    className="flex-1 min-w-0 flex items-center self-stretch min-h-[28px] cursor-pointer"
+                    title={task.expanded ? t('taskItem.collapse') : t('taskItem.expand')}
+                  >
+                    {/* 选项预览标签 - 未展开时显示：不兼容时显示警告，否则显示选项预览 */}
+                    {!task.expanded && (
+                      <div className="flex-1 flex items-center gap-1.5 mx-2 overflow-hidden">
+                        {isIncompatible ? (
+                          <Tooltip content={supportedControllerHint || undefined}>
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs text-warning">
+                              <AlertCircle className="w-3 h-3" />
+                              {incompatibleReason}
+                            </span>
+                          </Tooltip>
+                        ) : (
+                          showOptionPreview &&
+                          optionPreviews.length > 0 &&
+                          optionPreviews.map((preview) => (
+                            <OptionPreviewTag
+                              key={preview.key}
+                              label={preview.label}
+                              value={preview.value}
+                              type={preview.type}
+                            />
+                          ))
+                        )}
+                      </div>
+                    )}
+                    {/* 展开/折叠箭头 */}
+                    <div className="flex shrink-0 items-center justify-end pl-2 ml-auto">
+                      <ChevronRight
+                        className={clsx(
+                          'w-4 h-4 text-text-secondary transition-transform duration-150 ease-out',
+                          task.expanded && 'rotate-90',
+                        )}
+                      />
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* 删除按钮 - hover 时显示，运行时隐藏 */}
+          {!isEditing && canDelete && (
+            <button
+              onClick={() => {
+                if (!confirmBeforeDelete) {
+                  removeTaskFromInstance(instanceId, task.id);
+                  return;
+                }
+                setShowDeleteConfirm(true);
+              }}
+              className={clsx(
+                'p-1 rounded opacity-0 group-hover:opacity-100 transition-all',
+                'text-text-muted hover:bg-error/10 hover:text-error',
+              )}
+              title={t('taskItem.remove')}
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {navVisible && (
+          <div className="flex items-center gap-1.5 px-3 pb-1.5 text-[11px] text-text-muted">
+            <span className="max-w-[40%] truncate">{displayName}</span>
+            <span className="text-border-strong">›</span>
+            <button
+              type="button"
+              onClick={() => nav.jumpTo(nav.activeIndex)}
+              className="max-w-[30%] truncate text-accent-light hover:underline"
+              title={nav.labels[nav.activeIndex]}
+            >
+              {nav.labels[nav.activeIndex]}
+            </button>
+            {nav.subLabel && (
+              <>
+                <span className="text-border-strong">›</span>
+                <span className="truncate">{nav.subLabel}</span>
+              </>
+            )}
+          </div>
         )}
       </div>
 
@@ -1071,7 +1304,7 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
           style={{ gridTemplateRows: task.expanded ? '1fr' : '0fr' }}
         >
           <div className={clsx('min-h-0', task.expanded ? 'overflow-visible' : 'overflow-hidden')}>
-            <div className="bg-bg-tertiary p-3 rounded-b-lg">
+            <div ref={panelRef} className="bg-bg-tertiary p-3 rounded-b-lg">
               {/* 任务描述 */}
               {hasDescription && (
                 <div className={hasOptions || isIncompatible ? 'mb-5' : ''}>

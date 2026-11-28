@@ -210,6 +210,12 @@ export interface AppState {
   clearAllTaskRunOnce: (instanceId: string) => void;
   toggleTaskExpanded: (instanceId: string, taskId: string) => void;
   toggleOptionCollapsed: (instanceId: string, taskId: string, optionKey: string) => void;
+  setOptionCollapsed: (
+    instanceId: string,
+    taskId: string,
+    optionKey: string,
+    collapsed: boolean,
+  ) => void;
   setTaskOptionValue: (
     instanceId: string,
     taskId: string,

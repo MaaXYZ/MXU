@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { getInterfaceLangKey } from '@/i18n';
 import { getSelectedCasesWithOptions, findSwitchCase } from '@/utils/optionHelpers';
+import { isPasswordInput } from '@/utils/passwordOptionValues';
 import { getCheckboxMaxCount, getCheckboxMinCount } from '@/utils/checkboxOptionValidation';
 import { SwitchButton, TextInput, FileInput, TimeInput, HotkeyInput } from './FormControls';
 import { Tooltip } from './ui/Tooltip';
@@ -490,16 +491,77 @@ export function OptionEditor({
   const nestedGroups = getSelectedCasesWithOptions(optionDef, effectiveValue).map(toNestedGroup);
   const nestedOptionKeys = nestedGroups.flatMap((g) => g.optionKeys);
 
-  // 当前选项的子选项是否处于折叠状态（缺省展开）
-  const isCollapsed = globalScope ? localCollapsed : !!collapsedOptions?.[optionKey];
+  // 当前选项的子选项是否处于折叠状态。
+  // 顶层分组（depth 0）缺省折叠，让长选项任务一眼能看全；更深层缺省展开。
+  const collapsedByDefault = !globalScope && depth === 0;
+  const isCollapsed = globalScope
+    ? localCollapsed
+    : (collapsedOptions?.[optionKey] ?? collapsedByDefault);
   const handleToggleCollapsed = () => {
     if (effectiveDisabled) return;
     if (globalScope) {
       setLocalCollapsed((prev) => !prev);
     } else {
-      useAppStore.getState().toggleOptionCollapsed(instanceId, taskId, optionKey);
+      useAppStore.getState().setOptionCollapsed(instanceId, taskId, optionKey, !isCollapsed);
     }
   };
+
+  // 折叠态摘要：取子树里最多 2 个「有实际取值」的叶子项，拼成「标签 值」，
+  // 让人不展开也能确认当前配置（密码类输入一律打码）。
+  const collapsedSummary = useMemo(() => {
+    if (!isCollapsed || nestedOptionKeys.length === 0) return '';
+    const parts: string[] = [];
+    const resolveDef = (key: string) =>
+      key.startsWith('__MXU_') ? findMxuOptionByKey(key) : projectInterface?.option?.[key];
+
+    const walk = (key: string, level: number, seen: Set<string>) => {
+      if (parts.length >= 2 || level > 3 || seen.has(key)) return;
+      seen.add(key);
+      const def = resolveDef(key);
+      if (!def) return;
+
+      const children = getSelectedCasesWithOptions(def, allOptionValues[key]).flatMap(
+        (c) => c.option ?? [],
+      );
+      if (children.length > 0) {
+        children.forEach((child) => walk(child, level + 1, seen));
+        return;
+      }
+
+      const value = allOptionValues[key];
+      let text = '';
+      if (def.type === 'checkbox') {
+        const total = def.cases.length;
+        const selected = value?.type === 'checkbox' ? value.caseNames.length : 0;
+        if (total > 0) text = `${selected}/${total}`;
+      } else if (def.type === 'input') {
+        const first = def.inputs[0];
+        if (first) {
+          const raw = value?.type === 'input' ? value.values[first.name] : first.default;
+          if (raw) text = isPasswordInput(first) ? '••••' : String(raw);
+        }
+      } else if (def.type === 'select' || def.type === undefined) {
+        const caseName =
+          value?.type === 'select' ? value.caseName : (def.default_case ?? def.cases[0]?.name);
+        const item = def.cases.find((c) => c.name === caseName) ?? def.cases[0];
+        if (item) text = resolveI18nText(item.label, langKey) || item.name;
+      }
+      if (!text) return;
+      const label = resolveI18nText(def.label, langKey) || key;
+      parts.push(`${label.slice(0, 8)} ${text}`);
+    };
+
+    const seen = new Set<string>();
+    for (const key of nestedOptionKeys) walk(key, 0, seen);
+    return parts.join(' · ');
+  }, [
+    isCollapsed,
+    nestedOptionKeys,
+    allOptionValues,
+    projectInterface?.option,
+    resolveI18nText,
+    langKey,
+  ]);
 
   // Switch 类型
   if (optionDef.type === 'switch') {
@@ -520,7 +582,11 @@ export function OptionEditor({
     };
 
     return (
-      <div className={clsx('space-y-3', depth > 0 && 'ml-4 pl-3 border-l-2 border-border')}>
+      <div
+        className={clsx('space-y-3', depth > 0 && 'ml-4 pl-3 border-l-2 border-border')}
+        data-option-key={optionKey}
+        data-option-depth={depth}
+      >
         <div
           className={clsx(
             'flex items-center justify-between gap-3 rounded-md px-2 py-1.5 -mx-2 transition-colors',
@@ -551,6 +617,14 @@ export function OptionEditor({
               translations={translations}
             />
           </div>
+          {isCollapsed && collapsedSummary && (
+            <span
+              className="hidden min-w-0 shrink truncate text-right text-xs text-text-muted sm:inline"
+              title={collapsedSummary}
+            >
+              {collapsedSummary}
+            </span>
+          )}
           {nestedOptionKeys.length > 0 && (
             <OptionCollapseArrow
               collapsed={isCollapsed}
@@ -572,7 +646,11 @@ export function OptionEditor({
         {nestedOptionKeys.length > 0 && (
           <div
             className="grid transition-[grid-template-rows] duration-150 ease-out"
-            style={{ gridTemplateRows: isCollapsed ? '0fr' : '1fr' }}
+            style={{
+              gridTemplateRows: isCollapsed ? '0fr' : '1fr',
+              // 折叠时高度为 0，但父级 space-y 仍会给它留外边距，这里显式抹掉
+              marginTop: isCollapsed ? 0 : undefined,
+            }}
           >
             <div className={clsx('min-h-0', isCollapsed ? 'overflow-hidden' : 'overflow-visible')}>
               <div className="space-y-3">
@@ -723,7 +801,11 @@ export function OptionEditor({
         {nestedOptionKeys.length > 0 && (
           <div
             className="grid transition-[grid-template-rows] duration-150 ease-out"
-            style={{ gridTemplateRows: isCollapsed ? '0fr' : '1fr' }}
+            style={{
+              gridTemplateRows: isCollapsed ? '0fr' : '1fr',
+              // 折叠时高度为 0，但父级 space-y 仍会给它留外边距，这里显式抹掉
+              marginTop: isCollapsed ? 0 : undefined,
+            }}
           >
             <div className={clsx('min-h-0', isCollapsed ? 'overflow-hidden' : 'overflow-visible')}>
               <div className="space-y-3">
@@ -899,7 +981,11 @@ export function OptionEditor({
       {nestedOptionKeys.length > 0 && (
         <div
           className="grid transition-[grid-template-rows] duration-150 ease-out"
-          style={{ gridTemplateRows: isCollapsed ? '0fr' : '1fr' }}
+          style={{
+            gridTemplateRows: isCollapsed ? '0fr' : '1fr',
+            // 折叠时高度为 0，但父级 space-y 仍会给它留外边距，这里显式抹掉
+            marginTop: isCollapsed ? 0 : undefined,
+          }}
         >
           <div className={clsx('min-h-0', isCollapsed ? 'overflow-hidden' : 'overflow-visible')}>
             <div className="space-y-3">

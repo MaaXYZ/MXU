@@ -933,6 +933,30 @@ export const useAppStore = create<AppState>()(
         ),
       })),
 
+    // 显式设置折叠状态：顶层分组缺省折叠（不落库），
+    // 若沿用 toggle 语义，首次点击会因「缺省值未存储」而算反。
+    setOptionCollapsed: (instanceId, taskId, optionKey, collapsed) =>
+      set((state) => ({
+        instances: state.instances.map((i) =>
+          i.id === instanceId
+            ? {
+                ...i,
+                selectedTasks: i.selectedTasks.map((t) =>
+                  t.id === taskId
+                    ? {
+                        ...t,
+                        collapsedOptions: {
+                          ...(t.collapsedOptions ?? {}),
+                          [optionKey]: collapsed,
+                        },
+                      }
+                    : t,
+                ),
+              }
+            : i,
+        ),
+      })),
+
     setTaskOptionValue: (instanceId, taskId, optionKey, value) => {
       const pi = get().projectInterface;
 
