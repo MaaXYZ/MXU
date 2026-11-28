@@ -384,77 +384,98 @@ function useGroupNav(
     setNestedGroupCount(nextNested);
   }, [panelRef, cardRef]);
 
-  // 位置测量：滚动时跑，只有「当前组/子组」真的变了才 setState
-  const measureActive = useCallback(() => {
-    const panel = panelRef.current;
-    const scroller = panel?.closest('[data-skin-slot="task-list"]');
-    const card = cardRef.current;
-    if (!panel || !scroller || !card) return;
-
-    // 卡片不在视口内就直接跳过，避免为不可见内容做布局计算
-    const cardRect = card.getBoundingClientRect();
-    const scrollerRect = scroller.getBoundingClientRect();
-    if (cardRect.bottom < scrollerRect.top || cardRect.top > scrollerRect.bottom) return;
-
-    const anchors = layoutRef.current.anchors;
-    if (!anchors.length) return;
-
-    const threshold = layoutRef.current.stickyHeight + 4;
-
-    let nextIndex = 0;
-    for (let i = 0; i < anchors.length; i++) {
-      if (anchors[i].getBoundingClientRect().top - scrollerRect.top <= threshold) nextIndex = i;
-    }
-
-    let nextSub = '';
-    const nested = anchors[nextIndex]?.querySelectorAll<HTMLElement>('[data-option-depth="1"]');
-    if (nested) {
+  // 子组名只在「当前分组变化」时算一次，不在滚动帧里算
+  const resolveSubLabel = useCallback(
+    (index: number) => {
+      const panel = panelRef.current;
+      const scroller = panel?.closest('[data-skin-slot="task-list"]');
+      if (!panel || !scroller) return '';
+      const anchors = panel.querySelectorAll<HTMLElement>('[data-group-anchor]');
+      const nested = anchors[index]?.querySelectorAll<HTMLElement>('[data-option-depth="1"]');
+      if (!nested) return '';
+      const scrollerTop = scroller.getBoundingClientRect().top;
+      const threshold = layoutRef.current.stickyHeight + 4;
+      let sub = '';
       for (const node of nested) {
-        if (node.getBoundingClientRect().top - scrollerRect.top > threshold) break;
+        if (node.getBoundingClientRect().top - scrollerTop > threshold) break;
         const key = node.dataset.optionKey;
-        if (key) nextSub = resolveKeyLabel(key);
+        if (key) sub = resolveKeyLabel(key);
       }
-    }
-
-    setActive((prev) =>
-      prev.index === nextIndex && prev.sub === nextSub ? prev : { index: nextIndex, sub: nextSub },
-    );
-  }, [panelRef, cardRef, resolveKeyLabel]);
+      return sub;
+    },
+    [panelRef, resolveKeyLabel],
+  );
 
   useEffect(() => {
     if (!enabled) return;
     const panel = panelRef.current;
-    if (!panel) return;
-    const scroller = panel.closest('[data-skin-slot="task-list"]');
+    const card = cardRef.current;
+    if (!panel || !card) return;
+    const scroller = panel.closest('[data-skin-slot="task-list"]') as HTMLElement | null;
+    if (!scroller) return;
 
-    let raf = 0;
-    // 面包屑不需要 60fps，80ms 节流把滚动路径上的 rect 读取压到个位数量级
-    let lastRun = 0;
-    const onScroll = () => {
-      const now = performance.now();
-      if (now - lastRun < 80) return;
-      lastRun = now;
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(measureActive);
+    let observer: IntersectionObserver | null = null;
+    let resizeObserver: ResizeObserver | null = null;
+    let debounceTimer = 0;
+    let lastSignature = '';
+
+    const applyActive = (index: number) => {
+      setActive((prev) => {
+        if (prev.index === index) return prev;
+        // 换组时才读一次 DOM 求子组名
+        const sub = resolveSubLabel(index);
+        return { index, sub };
+      });
     };
-    const onLayout = () => {
+
+    // 用 IntersectionObserver 代替 scroll + rAF + getBoundingClientRect：
+    // 滚动时主线程完全不跑测量代码，判定由浏览器合成阶段完成。
+    const attach = () => {
       measureLayout();
-      measureActive();
+      const anchors = layoutRef.current.anchors;
+      if (!anchors.length) return;
+
+      // 结构或吸顶高度没变就不重建观察器，避免展开动画期间反复 observe
+      const signature = `${anchors.length}:${Math.round(layoutRef.current.stickyHeight)}`;
+      if (signature === lastSignature) return;
+      lastSignature = signature;
+
+      observer?.disconnect();
+      // 目标带：吸顶头下沿起、高 1px 的一条横线
+      const top = Math.round(layoutRef.current.stickyHeight) + 2;
+      observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            const index = anchors.indexOf(entry.target as HTMLElement);
+            if (index >= 0) applyActive(index);
+          }
+        },
+        {
+          root: scroller,
+          rootMargin: `-${top}px 0px -${Math.max(1, scroller.clientHeight - top - 1)}px 0px`,
+        },
+      );
+      for (const anchor of anchors) observer.observe(anchor);
     };
 
-    onLayout();
-    scroller?.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onLayout);
-    const observer = new ResizeObserver(onLayout);
-    observer.observe(panel);
+    attach();
+    applyActive(0);
+
+    // 展开/折叠动画期间面板每帧都在变尺寸，防抖后再重算，避开动画帧
+    const scheduleAttach = () => {
+      window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(attach, 150);
+    };
+    resizeObserver = new ResizeObserver(scheduleAttach);
+    resizeObserver.observe(panel);
 
     return () => {
-      cancelAnimationFrame(raf);
-      scroller?.removeEventListener('scroll', onScroll);
-      window.removeEventListener('resize', onLayout);
-      observer.disconnect();
+      window.clearTimeout(debounceTimer);
+      observer?.disconnect();
+      resizeObserver?.disconnect();
     };
-  }, [enabled, measureLayout, measureActive, panelRef]);
+  }, [enabled, measureLayout, resolveSubLabel, panelRef]);
 
   const jumpTo = useCallback(
     (index: number) => {
