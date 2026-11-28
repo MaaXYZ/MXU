@@ -26,7 +26,7 @@ export interface SavedTask {
   optionValues: Record<string, OptionValue>;
   /** 任务卡片是否展开；缺省 = 收起，向后兼容 */
   expanded?: boolean;
-  /** 各选项的子选项折叠状态（optionKey → 是否折叠）；缺省 = 展开，向后兼容 */
+  /** 各选项的子选项折叠状态（optionKey → 是否折叠）。缺省时：顶层分组折叠、更深的子选项展开 */
   collapsedOptions?: Record<string, boolean>;
 }
 

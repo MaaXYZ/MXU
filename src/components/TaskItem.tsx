@@ -415,6 +415,7 @@ function useGroupNav(
     if (!scroller) return;
 
     let observer: IntersectionObserver | null = null;
+    let bottomObserver: IntersectionObserver | null = null;
     let resizeObserver: ResizeObserver | null = null;
     let debounceTimer = 0;
     let lastSignature = '';
@@ -435,14 +436,19 @@ function useGroupNav(
       const anchors = layoutRef.current.anchors;
       if (!anchors.length) return;
 
-      // 结构或吸顶高度没变就不重建观察器，避免展开动画期间反复 observe
-      const signature = `${anchors.length}:${Math.round(layoutRef.current.stickyHeight)}`;
+      const stickyHeight = Math.round(layoutRef.current.stickyHeight);
+      const viewHeight = scroller.clientHeight;
+      // 签名要覆盖所有会改变相交带或锚点身份的输入：
+      // 锚点顺序/数量、吸顶高度、滚动视口高度、以及锚点元素本身是否被替换
+      const sameFirstAnchor = anchors[0] === layoutRef.current.anchors[0];
+      const signature = `${anchors.map((a) => a.dataset.groupAnchor ?? '').join(',')}|${stickyHeight}|${viewHeight}|${sameFirstAnchor ? 1 : 0}`;
       if (signature === lastSignature) return;
       lastSignature = signature;
 
       observer?.disconnect();
+      bottomObserver?.disconnect();
       // 目标带：吸顶头下沿起、高 1px 的一条横线
-      const top = Math.round(layoutRef.current.stickyHeight) + 2;
+      const top = stickyHeight + 2;
       observer = new IntersectionObserver(
         (entries) => {
           for (const entry of entries) {
@@ -453,10 +459,28 @@ function useGroupNav(
         },
         {
           root: scroller,
-          rootMargin: `-${top}px 0px -${Math.max(1, scroller.clientHeight - top - 1)}px 0px`,
+          rootMargin: `-${top}px 0px -${Math.max(1, viewHeight - top - 1)}px 0px`,
         },
       );
       for (const anchor of anchors) observer.observe(anchor);
+
+      // 最后一个分组可能短到滚不到顶部相交带（滚到底了它也没越过顶线），
+      // 因此单独盯一个贴在面板末尾的哨兵：它进入视口底部区域即判定为"到底"。
+      const sentinel = panel.querySelector('[data-group-sentinel]');
+      if (sentinel) {
+        bottomObserver = new IntersectionObserver(
+          (entries) => {
+            for (const entry of entries) {
+              if (entry.isIntersecting) applyActive(anchors.length - 1);
+            }
+          },
+          {
+            root: scroller,
+            rootMargin: `-${Math.max(0, viewHeight - 40)}px 0px 0px 0px`,
+          },
+        );
+        bottomObserver.observe(sentinel);
+      }
     };
 
     attach();
@@ -469,10 +493,13 @@ function useGroupNav(
     };
     resizeObserver = new ResizeObserver(scheduleAttach);
     resizeObserver.observe(panel);
+    // 滚动容器自身高度变化（窗口缩放/侧栏折叠）也要重建相交带
+    resizeObserver.observe(scroller);
 
     return () => {
       window.clearTimeout(debounceTimer);
       observer?.disconnect();
+      bottomObserver?.disconnect();
       resizeObserver?.disconnect();
     };
   }, [enabled, measureLayout, resolveSubLabel, panelRef]);
@@ -1369,6 +1396,8 @@ export function TaskItem({ instanceId, task }: TaskItemProps) {
                   currentResourceName={currentResourceName}
                 />
               )}
+              {/* 哨兵：供「滚到底时选中最后一个分组」判定，不参与布局 */}
+              {hasOptions && <div data-group-sentinel className="h-px w-full" aria-hidden="true" />}
             </div>
           </div>
         </div>
